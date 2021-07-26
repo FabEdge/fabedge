@@ -9,12 +9,12 @@ data:
     certFile: /etc/ipsec.d/certs/connectorCert.pem
     viciSocket: /var/run/charon.vici
     # period to sync tunnel/route/iptables
-    syncPeriod: 1m
+    syncPeriod: 5m
     # CIDR used for pods at edge nodes
-    edgePodCIDR: 2.0.0.0/8
+    edgePodCIDR: 10.10.0.0/16
     # namespace for fabedge
     fabedgeNS: fabedge
-    debounceDuration: 1s
+    debounceDuration: 5s
   tunnels.yaml: |
     id: C=CN, O=strongSwan, CN=connector
     name: cloud-connector

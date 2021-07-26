@@ -17,15 +17,15 @@ spec:
     spec:
       containers:
         - name: operator
-          image: harbor.edge.io:30003/library/fabedge/operator:dev
+          image: fabedge/operator
           imagePullPolicy: IfNotPresent
           args:
             # agent所在的namespace，要跟connector, operator在同一namespace
             - -namespace=fabedge
             # 边缘节点的Pod所在的网段，根据环境配置
             - -edge-pod-cidr=10.10.0.0/16
-            - -agent-image=fabedge/agent:latest
-            - -strongswan-image=strongswan:5.9.1
+            - -agent-image=fabedge/agent
+            - -strongswan-image=fabedge/strongswan
             # connector组件所用的configmap名称
             - -connector-config=connector-config
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称

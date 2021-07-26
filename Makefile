@@ -53,7 +53,7 @@ e2e-test:
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:
 	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile .
-
+images: ${IMAGES}
 clean:
 	rm -rf ${OUTPUT_DIR}
 

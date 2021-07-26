@@ -33,7 +33,7 @@ spec:
       serviceAccountName: connector
       containers:
         - name: strongswan
-          image: harbor.edge.io:30003/library/fabedge/strongswan:dev
+          image: fabedge/strongswan
           readinessProbe:
             exec:
               command:
@@ -57,7 +57,7 @@ spec:
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
-          image: harbor.edge.io:30003/library/fabedge/connector:dev
+          image: fabedge/connector
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: var-run
