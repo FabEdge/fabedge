@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: connector-config
+  namespace: fabedge
+data:
+  connector.yaml: |
+    tunnelConfig: /etc/fabedge/tunnels.yaml
+    certFile: /etc/ipsec.d/certs/connectorCert.pem
+    viciSocket: /var/run/charon.vici
+    # period to sync tunnel/route/iptables
+    syncPeriod: 1m
+    # CIDR used for pods at edge nodes
+    edgePodCIDR: 2.0.0.0/8
+    # namespace for fabedge
+    fabedgeNS: fabedge
+    debounceDuration: 1s
+  tunnels.yaml: |
+    id: C=CN, O=strongSwan, CN=connector
+    name: cloud-connector
+    ip: 10.20.8.169
+    subnets:
+    - 10.233.0.0/16

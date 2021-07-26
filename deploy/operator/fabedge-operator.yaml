@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fabedge-operator
+  namespace: fabedge
+  labels:
+    app: fabedge-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fabedge-operator
+  template:
+    metadata:
+      labels:
+        app: fabedge-operator
+    spec:
+      containers:
+        - name: operator
+          image: harbor.edge.io:30003/library/fabedge/operator:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            # agent所在的namespace，要跟connector, operator在同一namespace
+            - -namespace=fabedge
+            # 边缘节点的Pod所在的网段，根据环境配置
+            - -edge-pod-cidr=10.10.0.0/16
+            - -agent-image=fabedge/agent:latest
+            - -strongswan-image=strongswan:5.9.1
+            # connector组件所用的configmap名称
+            - -connector-config=connector-config
+            # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
+            - -endpoint-id-format=C=CH, O=strongSwan, CN={node}
+            - -masq-outgoing=false
+            - -v=5
+      hostNetwork: true
+      serviceAccountName: fabedge-operator
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/edge
+                    operator: DoesNotExist
