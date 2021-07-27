@@ -13,7 +13,7 @@
 
 ## 项目目标
 
-针对云边协同，边边协同等边缘计算领域的网络需求，在fabric的基础上，打造一款专门针对边缘场景的CNI插件，fabedge。
+针对云边协同，边边协同等边缘计算领域的网络需求，提供一套安全，易用的边缘网络解决方案，fabedge。
 
 ## 前提和假设
 
@@ -27,7 +27,7 @@
 
 
 ## 架构图
-- faedge 利用两个通道实现云边数据交换，一个是kubeedge管理的websock/quic通道，用于控制信令；令一个是fabedge管理的加密隧道，用于应用之间的数据传输。
+- faedge 利用两个通道实现云边数据交换，一个是kubeedge管理的websock通道，用于控制信令；令一个是fabedge管理的加密隧道，用于应用之间的数据传输。
 - operator在云端监听node，service，endpoint等k8s资源，为每个边缘节点生成一个configmap，包含本节点子网，隧道，负载均衡等相关配置信息。同时operator负责为每个边缘节点生成相应的pod，用于启动本节点上的agent。
 - connector负责终结到边缘节点加密隧道，在云和边缘节点进行流量转发。它依赖云端CNI插件将流量转发到connector以外的节点，目前支持callico。
 - 边缘节点使用社区CNI插件，bridge 和 host-local。
@@ -38,5 +38,4 @@
   - 管理本节点的负载均衡信息，会优先使用本地服务后端，其次使用云端后端。
 
 ![fabric-edge-arch](images/fabric-edge-arch.png)
-
 
