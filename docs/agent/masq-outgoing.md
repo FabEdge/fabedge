@@ -25,13 +25,17 @@ A common use case for enabling NAT outgoing, is to allow pods with private IP ad
 
    Here it is **ens3**.  if can not get it,  this feature can not be used.
 
-2. Add the iptables rule
+2. the iptables rules are generated.
 
    ```bash
-   iptables -t nat -A POSTROUTING -s 2.16.48.192/26 -o ens3 -j MASQUERADE  
+   root@edge2:~# iptables -t nat -S
+   -A POSTROUTING -j fabedge-nat-outgoing
+   -A fabedge-nat-outgoing -s 10.10.48.192/26 -d 10.10.0.0/16 -j RETURN
+   -A fabedge-nat-outgoing -s 10.10.48.192/26 -d 10.233.0.0/16 -j RETURN
+   -A fabedge-nat-outgoing -s 10.10.48.192/26 -o ens3 -j MASQUERADE
    ```
-
-   the source is subnet used by local pods. 
-
+   
+   > the source is subnet used by local pods. 
+   
    
 
