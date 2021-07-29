@@ -43,6 +43,9 @@ Fabedge supports weak network environments, such as 4/5G, WiFi，LoRa, etc., and
 # FabEdge vs Calico/Flannel 
 Fabedge is different from generic Kubernetes network plug-ins such as Calico/Flannel. These plug-ins are used in the data centers to solve the internal network problems of the kubernetes cluster. Fabedge solves the edge computing networing qutestions:  how to communitcate between the PODs on different edge nodes, how to community between cloud and edge etc, after the edge node is connected to the cloud cluster using Kubeedge. Currently Fabedge can seamlessly integrate with Calico and will be extended to others  in the near future.  
 
+# Guides
+Get start with [this doc](docs/install.md).
+
 # Contributing, Support, Discussion, and Community
 If you have questions, feel free to reach out to us in the following ways:
 
