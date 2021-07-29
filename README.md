@@ -1,4 +1,6 @@
 # What is FabEdge
+<img src="https://user-images.githubusercontent.com/88021699/127422127-e79a00d1-ac8e-4a1e-993c-d6f81bfb3bf9.jpg" width="50%">  
+
 FabEdge is an open source edge networking solution based on kubernetes and kubeedge. It solves the problems including complex network configuration management,   network fragmentation, the lack of service discovery ability and topology awareness in edge etc. 
 
 Fabedge supports weak network environments, such as 4/5G, WiFi，LoRa, etc., and supports dynamic IP addresses of edge nodes, which is suitable for scenarios such as the Internet of Things and the Internet of Vehicles.
