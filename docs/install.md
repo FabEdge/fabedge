@@ -1,6 +1,6 @@
-# Fabedge部署
+# FabEdge部署
 
-Fabedge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基础上构建的网络方案，主要包含以下组件：
+FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基础上构建的网络方案，主要包含以下组件：
 
 -  **Operator**， 运行在云端任何节点，监听节点，服务等相关资源变化，自动为Agent维护配置，并管理Agent生命周期。
 - **Connector**，运行在云端选定节点，负责到边缘节点的隧道的管理。
