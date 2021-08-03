@@ -52,7 +52,7 @@ Get start with [this doc](docs/install.md).
 If you have questions, feel free to reach out to us in the following ways:
 
 · Please send email to fabedge@beyondcent.com  
-· [社区微信交流群见官网底部](http://fabedge.io)
+· [社区微信交流群见官网底部](http://www.fabedge.io)
 
 Please submit any FabEdge bugs, issues, and feature requests to [FabEdge GitHub Issue](https://github.com/FabEdge/fabedge/issues).
 
