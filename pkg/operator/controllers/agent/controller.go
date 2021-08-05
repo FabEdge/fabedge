@@ -347,6 +347,7 @@ func (ctl *agentController) createAgentPodIfNeeded(ctx context.Context, node *co
 
 func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *corev1.Pod {
 	hostPathDirectory := corev1.HostPathDirectory
+	hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
 	hostPathFile := corev1.HostPathFile
 	privileged := true
 	defaultMode := int32(420)
@@ -452,7 +453,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: "/etc/cni",
-							Type: &hostPathDirectory,
+							Type: &hostPathDirectoryOrCreate,
 						},
 					},
 				},
