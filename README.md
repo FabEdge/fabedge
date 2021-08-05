@@ -53,7 +53,7 @@ If you have questions, feel free to reach out to us in the following ways:
 
 · Please send email to fabedge@beyondcent.com  
 · WeChat Group 扫码加入微信交流群  
-<img src="https://user-images.githubusercontent.com/88021699/128162295-c76c46fb-f577-41e7-946e-5736336827f0.png" width="30%">  
+<img src="https://user-images.githubusercontent.com/88021699/128297803-d08235b2-9c68-42da-8bd6-29cf8ba13559.png" width="30%">  
 
 Please submit any FabEdge bugs, issues, and feature requests to [FabEdge GitHub Issue](https://github.com/FabEdge/fabedge/issues).
 
