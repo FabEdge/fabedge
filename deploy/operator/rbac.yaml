@@ -23,6 +23,12 @@ rules:
   - apiGroups:
       - ""
     resources:
+      - nodes
+    verbs:
+      - update
+  - apiGroups:
+      - ""
+    resources:
       - configmaps
       - pods
     verbs:
