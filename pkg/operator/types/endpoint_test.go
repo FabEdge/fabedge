@@ -67,7 +67,7 @@ var _ = Describe("Endpoint", func() {
 })
 
 var _ = Describe("GenerateNewEndpointFunc", func() {
-	newEndpoint := types.GenerateNewEndpointFunc("C=CH, O=strongSwan, CN={node}")
+	newEndpoint := types.GenerateNewEndpointFunc("C=CH, O=StrongSwan, CN={node}")
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",
@@ -87,7 +87,7 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 	endpoint := newEndpoint(node)
 
 	It("should replace {node} in id format", func() {
-		Expect(endpoint.ID).Should(Equal("C=CH, O=strongSwan, CN=edge1"))
+		Expect(endpoint.ID).Should(Equal("C=CH, O=StrongSwan, CN=edge1"))
 	})
 
 	It("should extract subnets from annotations", func() {
