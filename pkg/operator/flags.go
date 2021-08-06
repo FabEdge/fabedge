@@ -46,7 +46,7 @@ func init() {
 
 	flag.StringVar(&agentImage, "agent-image", "fabedge/agent:latest", "Used the image to create agent container of agent pod")
 	flag.StringVar(&strongswanImage, "strongswan-image", "strongswan:5.9.1", "Used the image to create strongswan container of agent pod")
-	flag.StringVar(&endpointIDFormat, "endpoint-id-format", "C=CH, O=strongSwan, CN={node}", "the id format of tunnel endpoint")
+	flag.StringVar(&endpointIDFormat, "endpoint-id-format", "C=CH, O=StrongSwan, CN={node}", "the id format of tunnel endpoint")
 	flag.BoolVar(&masqOutgoing, "masq-outgoing", true, "Determine if perform outbound NAT from edge pods to outside of the cluster")
 
 	flag.StringVar(&connectorConfig, "connector-config", "cloud-tunnels-config", "the name of configmap for fabedge-connector")
