@@ -253,6 +253,7 @@ var _ = Describe("AgentController", func() {
 			Expect(len(pod.Spec.Volumes)).To(Equal(6))
 
 			hostPathDirectory := corev1.HostPathDirectory
+			hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
 			hostPathFile := corev1.HostPathFile
 			defaultMode := int32(420)
 			edgeTunnelConfigMap := getAgentConfigMapName(nodeName)
@@ -268,7 +269,7 @@ var _ = Describe("AgentController", func() {
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: "/etc/cni",
-							Type: &hostPathDirectory,
+							Type: &hostPathDirectoryOrCreate,
 						},
 					},
 				},
