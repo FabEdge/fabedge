@@ -57,7 +57,7 @@ var _ = Describe("AgentController", func() {
 		ctx      context.Context
 		cancel   context.CancelFunc
 
-		newEndpoint = types.GenerateNewEndpointFunc("C=CH, O=StrongSwan, CN={node}")
+		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
 
 		getNodeName = testutil.GenerateGetNameFunc("edge")
 	)
@@ -407,13 +407,13 @@ var _ = Describe("AgentController", func() {
 		BeforeEach(func() {
 			nodeName = getNodeName()
 			connectorEndpoint = types.Endpoint{
-				ID:      "C=CH, O=StrongSwan, CN=connector",
+				ID:      "C=CN, O=StrongSwan, CN=connector",
 				Name:    constants.ConnectorEndpointName,
 				IP:      "192.168.1.1",
 				Subnets: []string{"2.2.1.1/26"},
 			}
 			edge2Endpoint = types.Endpoint{
-				ID:      "C=CH, O=StrongSwan, CN=edge2",
+				ID:      "C=CN, O=StrongSwan, CN=edge2",
 				Name:    "edge2",
 				IP:      "10.20.8.141",
 				Subnets: []string{"2.2.1.65/26"},

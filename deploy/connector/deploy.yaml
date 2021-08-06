@@ -4,7 +4,7 @@ metadata:
   name: connector
   namespace: fabedge
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: connector
@@ -30,7 +30,6 @@ spec:
                   - connector
             topologyKey: kubernetes.io/hostname
       hostNetwork: true
-      serviceAccountName: connector
       containers:
         - name: strongswan
           image: fabedge/strongswan
