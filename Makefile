@@ -32,6 +32,8 @@ define HELP_INFO
 #   make connector-image
 #   make strongswan-image
 #   make operator-image
+#   make agent-image
+#   make e2e-test
 endef
 help:
 	echo ${HELP_INFO}
