@@ -2,27 +2,53 @@
 
 FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基础上构建的网络方案，主要包含以下组件：
 
--  **Operator**， 运行在云端任何节点，监听节点，服务等相关资源变化，自动为Agent维护配置，并管理Agent生命周期。
+- **Operator**， 运行在云端任何节点，监听节点，服务等相关资源变化，自动为Agent维护配置，并管理Agent生命周期。
 - **Connector**，运行在云端选定节点，负责到边缘节点的隧道的管理。
-- **Agent**，运行在每个边缘节点，负责本节点的隧道，负载均衡管理。
+- **Agent**，运行在每个边缘节点，负责本节点的隧道，负载均衡等配置管理。
 
 ## 前提条件
 
-### 云端
-
-- [kubernetes 集群（使用calico网络插件）](https://github.com/kubernetes-sigs/kubespray)
-- [Kubeedge](https://kubeedge.io/en/docs/) 
-
-### 边缘端
-
-- 一个或多个[Kubeedge](https://kubeedge.io/en/docs/)边缘节点
+- [kubernetes (v1.19.7+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
+- [Kubeedge (v1.5.0+, 至少有一个边缘节点)](https://kubeedge.io/en/docs/)  
 
 ## 安装步骤
+
+### 关闭**rp_filter**
+
+在**所有云端节点**执行下面命令：
+
+```shell
+root@node1:~# for i in `ls /proc/sys/net/ipv4/conf/*/rp_filter`; do  echo 0 >$i; done
+
+#保存配置
+root@node1:~# vi /etc/sysctl.conf
+..
+net.ipv4.conf.default.rp_filter=0
+net.ipv4.conf.all.rp_filter=0
+..
+
+#确认配置生效
+root@node1:~# sysctl -a | grep rp_filter | grep -v arp
+..
+net.ipv4.conf.cali18867a5062d.rp_filter = 0
+net.ipv4.conf.cali6202a829553.rp_filter = 0
+..
+```
+
+### 启动nodelocaldns服务
+
+确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)的pod启动正常
+
+```shell
+root@node1:~# kubectl get po -n kube-system -o wide| grep nodelocaldns
+nodelocaldns-4m2jx                              1/1     Running     0          4h4m    10.20.8.141    node1           
+nodelocaldns-p5h9k                              1/1     Running     0          3h50m   10.20.8.139    edge1      
+```
 
 ### 获取Fabedge
 
 ```shell
-root@node1:~# git clone https://github.com/fabedge/fabeedge.git
+root@node1:~# git clone https://github.com/FabEdge/fabedge.git
 ```
 
 ### 为[strongswan](https://www.strongswan.org/)生成证书
@@ -33,36 +59,52 @@ root@node1:~# git clone https://github.com/fabedge/fabeedge.git
    root@node1:~# kubectl get node
      NAME    STATUS   ROLES                   AGE    VERSION
      edge1   Ready    agent,edge              107m   v1.19.3-kubeedge-v1.1.0
-     node1   Ready    connector,master,node   97d    v1.19.7
+     node1   Ready    master,node             97d    v1.19.7
    
+   # 云端执行，生成证书
    root@node1:~# docker run --rm -v /ipsec.d:/ipsec.d fabedge/strongswan:latest /genCert.sh edge1  
    
-   root@node1:~# scp /ipsec.d/cacerts/ca.pem          <user>:<pass>@edge1:/etc/fabedge/cacerts/
-   root@node1:~# scp /ipsec.d/certs/edge1_cert.pem    <user>:<pass>@edge1:/etc/fabedge/certs/
-   root@node1:~# scp /ipsec.d/private/edge1_key.pem   <user>:<pass>@edge1:/etc/fabedge/private/
-   root@node1:~# scp /ipsec.d/edge1.ipsec.secrets     <user>:<pass>@edge1:/etc/fabedge/ipsec.secrets
+   # 登录边缘节点，在边缘节点edge1上创建目录
+   root@edge1:~# mkdir -p /etc/fabedge/ipsec 
+   root@edge1:~# cd /etc/fabedge/ipsec 
+   root@edge1:~# mkdir -p cacerts certs private 
+   
+   # 将生成的证书copy到边缘节点, 
+   # 注意证书名字: edge1_cert -> edgecert.pem, edge1.ipsec.secrets -> ipsec.secrets
+   # “edgecert.pem”，“ipsec.secrets” 是固定名字，不能改变
+   root@node1:~# scp /ipsec.d/cacerts/ca.pem          <user>@edge1:/etc/fabedge/ipsec/cacerts/ca.pem
+   root@node1:~# scp /ipsec.d/certs/edge1_cert.pem    <user>@edge1:/etc/fabedge/ipsec/certs/edgecert.pem
+   root@node1:~# scp /ipsec.d/private/edge1_key.pem   <user>@edge1:/etc/fabedge/ipsec/private/edge1_key.pem
+   root@node1:~# scp /ipsec.d/edge1.ipsec.secrets     <user>@edge1:/etc/fabedge/ipsec/ipsec.secrets
    ```
 
-1. 为connector服务生成证书，并拷贝到**每个**运行connector服务的节点上， 以node1为例，
+2. 为connector服务生成证书，并拷贝到运行connector服务的节点上， 以node1为例，
 
    ```shell
    root@node1:~# kubectl get node
      NAME    STATUS   ROLES                   AGE    VERSION
      edge1   Ready    agent,edge              107m   v1.19.3-kubeedge-v1.1.0         
-     node1   Ready    connector,master,node   97d    v1.19.7    
+     node1   Ready    master,node             97d    v1.19.7    
    
+   # 在node1上执行, 生成证书
    root@node1:~# docker run --rm -v /ipsec.d:/ipsec.d fabedge/strongswan:latest /genCert.sh connector  
    
-   root@node1:~# scp /ipsec.d/cacerts/ca.pem              <user>:<pass>@node1:/etc/fabedge/cacerts/
-   root@node1:~# scp /ipsec.d/certs/connector_cert.pem    <user>:<pass>@node1:/etc/fabedge/certs/
-   root@node1:~# scp /ipsec.d/private/connector_key.pem   <user>:<pass>@node1:/etc/fabedge/private/
-   root@node1:~# scp /ipsec.d/connector.ipsec.secrets     <user>:<pass>@node1:/etc/fabedge/ipsec.secrets
+   # 在node1上执行，创建目录
+   root@node1:~# mkdir -p /etc/fabedge/ipsec 
+   root@node1:~# cd /etc/fabedge/ipsec 
+   root@node1:~# mkdir -p cacerts certs private 
+   
+   # 在node1上执行，copy证书
+   root@node1:~# cp /ipsec.d/cacerts/ca.pem                /etc/fabedge/ipsec/cacerts/ca.pem
+   root@node1:~# cp /ipsec.d/certs/connector_cert.pem     /etc/fabedge/ipsec/certs/connector_cert.pem
+   root@node1:~# cp /ipsec.d/private/connector_key.pem   /etc/fabedge/ipsec/private/connector_key.pem
+   root@node1:~# cp /ipsec.d/connector.ipsec.secrets    /etc/fabedge/ipsec/ipsec.secrets
    ```
 
 
-###  创建namespace
+###  创建命名空间
 
-创建fabedge的资源使用的namespace，默认为fabedge
+创建fabedge的资源使用的namespace，默认为**fabedge**，
 
 ```shell
 root@node1:~# kubectl create ns fabedge
@@ -70,7 +112,7 @@ root@node1:~# kubectl create ns fabedge
 
 ### 部署Connector
 
-1. 在云端选取1-3个运行connector的节点，并为**每个**节点做标记，以node1为例，
+1. 在云端选取一个节点运行connector，为节点做标记，以node1为例，
 
    ```shell
    root@node1:~# kubectl get node
@@ -102,112 +144,45 @@ root@node1:~# kubectl create ns fabedge
        viciSocket: /var/run/charon.vici
        # period to sync tunnel/route/rules regularly
        syncPeriod: 5m
-       # CIDR used by pods on edge nodes, modify it per your env.
        edgePodCIDR: 10.10.0.0/16
        # namespace for fabedge resources
        fabedgeNS: fabedge
        debounceDuration: 5s
      tunnels.yaml: |
        # connector identity in certificate 
-       id: C=CN, O=strongSwan, CN=connector
+       id: C=CN, O=StrongSwan, CN=connector
        # connector name
        name: cloud-connector
-       ip: 10.20.8.169    # ip of connector to terminate tunnels   
+       ip: 10.20.8.169    # ip address of node, which runs connector   
        subnets:
-       - 10.233.0.0/16  # CIDR used by pod & service in the cloud k8s cluster
+       - 10.233.0.0/17  # CIDR used by pod & service in the cloud cluster
    ```
    
-3. 为connector创建configmap
+   > **注意：**
+   >
+   > **edgePodCIDR**：选择一个大的网段，每个边缘节点会从中分配一个小段，每个边缘POD会从这个小段分配一个IP地址，不能和云端pod或service网段冲突。
+   >
+   > **ip**：运行connector服务的节点的IP地址，从边缘节点必须到这个地址可达。
+   >
+   > **subnets**: 需要包含service clusterIP CIDR和pod clusterIP CIDR
+   >
+   > 比如，serviceClusterIPCIDR是10.233.0.0/18，podClusterIPCIDR = 10.233.64.0/18 那么subnets是10.233.0.0/17
+   >
+   > 获取serviceClusterIPCIDR和podClusterIPCIDR的方法如下：
+   >
+   > ```shell
+   > # service clusterIP CIDR
+   > root@node1:~# grep -rn "service-cluster-ip-range" /etc/kubernetes/manifests
+   > # pod clusterIP CIDR
+   > root@node1:~# calicoctl.sh get ipPool
+   > ```
+   
+5. 为connector创建configmap
 
    ```shell
    root@node1:~# kubectl apply -f ~/fabedge/deploy/connector/cm.yaml
    ```
 
-4. 修改connector的配置
-
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: connector
-     namespace: fabedge
-   spec:
-     replicas: 3   # number of connectors, 1-3
-     selector:
-       matchLabels:
-         app: connector
-     template:
-       metadata:
-         labels:
-           app: connector
-       spec:
-         affinity:
-           nodeAffinity:
-             requiredDuringSchedulingIgnoredDuringExecution:
-               nodeSelectorTerms:
-                 - matchExpressions:
-                     - key: node-role.kubernetes.io/connector
-                       operator: Exists
-           podAntiAffinity:
-             requiredDuringSchedulingIgnoredDuringExecution:
-             - labelSelector:
-                 matchExpressions:
-                   - key: app
-                     operator: In
-                     values:
-                     - connector
-               topologyKey: kubernetes.io/hostname
-         hostNetwork: true
-         serviceAccountName: connector
-         containers:
-           - name: strongswan
-             image: fabedge/strongswan
-             readinessProbe:
-               exec:
-                 command:
-                 - /usr/sbin/swanctl
-                 - --version
-               initialDelaySeconds: 15
-               periodSeconds: 10
-             securityContext:
-               capabilities:
-                 add: ["NET_ADMIN", "SYS_MODULE"]
-             volumeMounts:
-               - name: var-run
-                 mountPath: /var/run/
-               - name: ipsec-d
-                 mountPath: /etc/ipsec.d/
-                 readOnly: true
-               - name: ipsec-secrets
-                 mountPath: /etc/ipsec.secrets
-                 readOnly: true
-           - name: connector
-             securityContext:
-               capabilities:
-                 add: ["NET_ADMIN"]
-             image: fabedge/connector
-             imagePullPolicy: IfNotPresent
-             volumeMounts:
-               - name: var-run
-                 mountPath: /var/run/
-               - name: connector-config
-                 mountPath: /etc/fabedge/
-               - name: ipsec-d
-                 mountPath: /etc/ipsec.d/
-                 readOnly: true
-         volumes:
-           - name: var-run
-             emptyDir: {}
-           - name: connector-config
-             configMap:
-               name: connector-config
-           - name: ipsec-d
-             hostPath:
-               path: /etc/fabedge/ipsec/
-           - name: ipsec-secrets
-             hostPath:
-               path: /etc/fabedge/ipsec/ipsec.secrets
-   ```
 
 5. 部署connector
 
@@ -217,7 +192,7 @@ root@node1:~# kubectl create ns fabedge
 
 6. 修改calico配置
 
-   按实际环境修改cidr属性，disabled为true
+   cidr为前面分配的edgePodCIDR，disabled为true
 
    ```shell
    root@node1:~# vi ~/fabedge/deploy/connector/ippool.yaml
@@ -230,7 +205,6 @@ root@node1:~# kubectl create ns fabedge
      name: fabedge
    spec:
      blockSize: 26
-     # CIDR used by pods on edge nodes
      cidr: 10.10.0.0/16
      natOutgoing: false
      disabled: true
@@ -240,8 +214,87 @@ root@node1:~# kubectl create ns fabedge
 9. 创建calico pool
 
    ```shell
-   root@node1:~# calicoctl create --filename=~/fabedge/deploy/connector/ippool.yaml
-   root@node1:~# calicoctl get IPPool --output yaml   # 确认pool创建成功
+   # 不同环境，calico的命令可能会不同
+   root@node1:~# calicoctl.sh create --filename=～/fabedge/deploy/connector/ippool.yaml
+   root@node1:~# calicoctl.sh get IPPool --output yaml   # 确认pool创建成功
+   ```
+
+### 配置边缘节点
+
+1. 修改edgecore配置文件
+
+   ```shell
+   root@edge1:~# vi /etc/kubeedge/config/edgecore.yaml
+   ```
+
+   禁用edgeMesh
+
+   ```yaml
+   edgeMesh:
+     enable: false
+   ```
+
+   启用CNI
+
+   ```yaml
+   edged:
+       enable: true
+       # 默认配置，如无必要，不要修改
+       cniBinDir: /opt/cni/bin
+       cniCacheDirs: /var/lib/cni/cache
+       cniConfDir: /etc/cni/net.d
+       # 这一行默认配置文件是没有的，得自己添加  
+       networkPluginName: cni
+       networkPluginMTU: 1500
+   ```
+
+   配置域名和DNS
+
+   ```yaml
+   edged:
+       clusterDNS: "169.254.25.10"
+       clusterDomain: "cluster.local"
+   ```
+
+   > 可以在云端执行如下操作获取相关信息
+   >
+   > ```shell
+   > root@node1:~# kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}"
+   >   cluster.local:53 {
+   >     ...
+   >     bind 169.254.25.10
+   >     ...
+   >   }
+   > 
+   > root@node1:~# grep -rn "cluster-name" /etc/kubernetes/manifests/kube-controller-manager.yaml
+   >  20:    - --cluster-name=cluster.local
+   > 
+   >  # 本例中，domain为cluster.local,  dns为169.254.25.10
+   > ```
+
+3. 安装CNI插件
+
+   ```shell
+   root@edge1:~# mkdir -p cni /opt/cni/bin /etc/cni/net.d /var/lib/cni/cache
+   root@edge1:~# cd cni
+   root@edge1:~/cni# wget https://github.com/containernetworking/plugins/releases/download/v0.9.1/cni-plugins-linux-amd64-v0.9.1.tgz
+   root@edge1:~/cni# tar xvf cni-plugins-linux-amd64-v0.9.1.tgz
+   root@edge1:~/cni# cp bridge host-local loopback /opt/cni/bin
+   ```
+
+4. 重启edgecore
+
+   ```shell
+   root@edge1:~# systemctl restart edgecore
+   ```
+
+5. 确认边缘节点就绪
+
+   ```shell
+   root@node1:~# kubectl get node
+     NAME    STATUS   ROLES                   AGE    VERSION
+     edge1   Ready    agent,edge              107m   v1.19.3-kubeedge-v1.1.0
+     node1   Ready    connector,master,node   97d    v1.19.7
    ```
 
 ### 部署Operator
@@ -288,89 +341,20 @@ root@node1:~# kubectl create ns fabedge
                - -agent-image=fabedge/agent     
                - -strongswan-image=fabedge/strongswan  
                - -connector-config=connector-config
-               - -endpoint-id-format=C=CH, O=strongSwan, CN={node}
+               - -endpoint-id-format=C=CN, O=StrongSwan, CN={node}
                - -v=5
          hostNetwork: true
          serviceAccountName: fabedge-operator
    ```
    
-1. 创建Operator
+   >**注意：**
+   >
+   >**edge-network-cidr**为前面分配的edgePodCIDR
    
+3. 创建Operator
+
    ```shell
    root@node1:~# kubectl apply -f ~/fabedge/deploy/operator
-   ```
-### 配置边缘节点
-
-1. 修改edgecore配置文件
-
-   ```shell
-   root@edge1:~# vi /etc/kubeedge/config/edgecore.yaml
-   ```
-
-   禁用edgeMesh
-
-   ```yaml
-   edgeMesh:
-     enable: false
-   ```
-
-   启用CNI
-
-   ```yaml
-   edged:
-       enable: true
-       # 默认配置，如无必要，不要修改
-       cniBinDir: /opt/cni/bin
-       cniCacheDirs: /var/lib/cni/cache
-       cniConfDir: /etc/cni/net.d
-       # 这一行默认配置文件是没有的，得自己添加  
-       networkPluginName: cni
-       networkPluginMTU: 1500
-   ```
-
-   配置域名和DNS
-
-   ```yaml
-   edged:
-       clusterDNS: "169.254.25.10"
-       clusterDomain: "cluster.local"
-   ```
-
-   > 可以用如下方法获取相关信息
-
-   ```shell
-   root@node1:~# kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}"
-     cluster.local:53 {
-       ...
-       bind 169.254.25.10
-       ...
-     }
-   # 本例中，domain为cluster.local,  dns为169.254.25.10
-   ```
-
-3. 安装CNI插件
-
-   ```shell
-   root@edge1:~# mkdir cni
-   root@edge1:~# cd cni
-   root@edge1:~/cni# wget https://github.com/containernetworking/plugins/releases/download/v0.9.1/cni-plugins-linux-amd64-v0.9.1.tgz
-   root@edge1:~/cni# tar xvf cni-plugins-linux-amd64-v0.9.1.tgz
-   root@edge1:~/cni# cp bridge host-local loopback /opt/cni/bin
-   ```
-
-4. 重启edgecore
-
-   ```shell
-   root@edge1:~# systemctl restart edgecore
-   ```
-
-5. 确认边缘节点就绪
-
-   ```shell
-   root@node1:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              107m   v1.19.3-kubeedge-v1.1.0
-     node1   Ready    connector,master,node   97d    v1.19.7
    ```
 
 ### 确认服务正常启动

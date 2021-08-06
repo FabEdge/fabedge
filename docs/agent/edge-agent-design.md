@@ -22,18 +22,18 @@ agent配置文件分两部分：
 * 需要跟agent通信的节点的网络信息(见示例peers)
 
 ```yaml
-id: C=CH, O=strongSwan, CN=edge2
+id: C=CN, O=StrongSwan, CN=edge2
 name: edge2
 ip: 10.20.8.4
 subnets:
   - 2.16.48.192/26
 peers:
-  - id: C=CH, O=strongSwan, CN=node1
+  - id: C=CN, O=StrongSwan, CN=node1
     name: node1
     ip: 10.20.8.169
     subnets:
       - 10.233.0.0/16
-  - id: C=CH, O=strongSwan, CN=edge3
+  - id: C=CN, O=StrongSwan, CN=edge3
     name: edge3
     ip: 10.20.8.12
     subnets:
@@ -50,10 +50,10 @@ net-cloud: IKEv1/2, no reauthentication, rekeying every 14400s
   local:  10.20.8.4
   remote: 10.20.8.141
   local public key authentication:
-    id: C=CH, O=strongSwan, CN=edge2
-    certs: C=CH, O=strongSwan, CN=edge2
+    id: C=CN, O=StrongSwan, CN=edge2
+    certs: C=CN, O=StrongSwan, CN=edge2
   remote public key authentication:
-    id: C=CH, O=strongSwan, CN=node1
+    id: C=CN, O=StrongSwan, CN=node1
   net-cloud-child: TUNNEL, rekeying every 3600s
     local:  2.16.48.192/26
     remote: 10.233.0.0/16
@@ -67,7 +67,7 @@ conn net-cloud
           leftcert=edge2Cert.pem
           right=10.10.0.1
           rightsubnet=10.10.0.0/16,4000:eeee:0:01ff::/64
-          rightid="C=CH, O=strongSwan, CN=node1"
+          rightid="C=CN, O=StrongSwan, CN=node1"
           auto=start
 ```
 

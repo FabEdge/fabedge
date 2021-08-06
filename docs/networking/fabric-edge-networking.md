@@ -23,13 +23,13 @@ apt install strongswan-starter strongswan-pki
 # 生成CA的密钥，证书，一个环境只需要一套。
 cd /etc/ipsec.d/
 ipsec pki --gen --type rsa --size 4096 --outform pem > private/strongswanKey.pem
-ipsec pki --self --ca --lifetime 3650 --in private/strongswanKey.pem --type rsa --dn "C=CN, O=strongSwan, CN=Root CA" --outform pem > cacerts/strongswanCert.pem
+ipsec pki --self --ca --lifetime 3650 --in private/strongswanKey.pem --type rsa --dn "C=CN, O=StrongSwan, CN=Root CA" --outform pem > cacerts/strongswanCert.pem
 
 # 在CA的节点上给其它每个节点创建密钥，证书，然后复制到节点相应目录里。以edge2为例：
 ipsec pki --gen --type rsa --size 2048 --outform pem > private/edge2Key.pem
 chmod 600 private/edge2Key.pem
 
-ipsec pki --pub --in private/edge2Key.pem --type rsa | ipsec pki --issue --lifetime 730 --cacert cacerts/strongswanCert.pem --cakey private/strongswanKey.pem --dn "C=CN, O=strongSwan, CN=edge2" --san edge2 --flag serverAuth --flag ikeIntermediate --outform pem > certs/edge2Cert.pem
+ipsec pki --pub --in private/edge2Key.pem --type rsa | ipsec pki --issue --lifetime 730 --cacert cacerts/strongswanCert.pem --cakey private/strongswanKey.pem --dn "C=CN, O=StrongSwan, CN=edge2" --san edge2 --flag serverAuth --flag ikeIntermediate --outform pem > certs/edge2Cert.pem
 
 # 配置ipsec.secrets
 # cat ipsec.secrets
@@ -123,7 +123,7 @@ conn net-edge3  #到另外边缘节点
           leftcert=edge2Cert.pem   									#自己的证书
           right=10.20.8.12         									#对端的地址
           rightsubnet=2.2.2.32/27  									#对端的网段
-          rightid="C=CH, O=strongSwan, CN=edge3"    #对端的证书里DN
+          rightid="C=CN, O=StrongSwan, CN=edge3"    #对端的证书里DN
           auto=add
 
 conn net-cloud  #到云端
@@ -132,7 +132,7 @@ conn net-cloud  #到云端
           leftcert=edge2Cert.pem
           right=10.20.8.141
           rightsubnet=10.233.0.0/16
-          rightid="C=CH, O=strongSwan, CN=node1"
+          rightid="C=CN, O=StrongSwan, CN=node1"
           auto=start
 ```
 
@@ -145,7 +145,7 @@ conn net-edge2
           leftcert=node1Cert.pem
           right=10.20.8.4
           rightsubnet=2.2.2.0/27
-          rightid="C=CH, O=strongSwan, CN=edge2"
+          rightid="C=CN, O=StrongSwan, CN=edge2"
           auto=add
 
 conn net-edge3
@@ -154,7 +154,7 @@ conn net-edge3
           leftcert=node1Cert.pem
           right=10.20.8.12
           rightsubnet=2.2.2.32/27
-          rightid="C=CH, O=strongSwan, CN=edge3"
+          rightid="C=CN, O=StrongSwan, CN=edge3"
           auto=add
 ```
 
