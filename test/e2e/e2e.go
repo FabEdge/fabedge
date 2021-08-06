@@ -325,7 +325,7 @@ func WaitForAllPodsReady(cli client.Client) {
 		}
 
 		for _, pod := range pods.Items {
-			if pod.Status.Phase == corev1.PodPending {
+			if pod.Status.Phase != corev1.PodRunning {
 				return false, nil
 			}
 		}
