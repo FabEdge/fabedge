@@ -1,6 +1,7 @@
 FROM alpine:3.11
 
-RUN apk --update add strongswan && \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
+    apk --update add strongswan && \
     rm -rf /var/cache/apk/* && \
     mkdir /ipsec.d
 
