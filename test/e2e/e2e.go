@@ -47,6 +47,9 @@ const (
 
 	labelKeyApp      = "app"
 	labelKeyInstance = "instance"
+
+	// add a random label, prevent kubeedge to cache it
+	labelKeyRand = "random"
 )
 
 var (
@@ -188,6 +191,7 @@ func preparePodOnEachNode(cli client.Client) {
 		pod := newNginxPod(node, serviceName)
 		createObject(cli, &pod)
 
+
 		framework.Logf("create net-tool pod on node %s", node.Name)
 		pod = newNetToolPod(node)
 		createObject(cli, &pod)
@@ -202,6 +206,7 @@ func newNginxPod(node corev1.Node, serviceName string) corev1.Pod {
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: serviceName,
+				labelKeyRand: fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
 		Spec: podSpec(node.Name),
@@ -216,6 +221,7 @@ func newNetToolPod(node corev1.Node) corev1.Pod {
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: instanceNetTool,
+				labelKeyRand: fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
 		Spec: podSpec(node.Name),
@@ -226,6 +232,8 @@ func podSpec(nodeName string) corev1.PodSpec {
 	return corev1.PodSpec{
 		HostNetwork: false,
 		NodeName:    nodeName,
+		// workaround, or it will fail at edgecore
+		AutomountServiceAccountToken: new(bool),
 		Containers: []corev1.Container{
 			{
 				Name:            "net-tool",
@@ -329,6 +337,9 @@ func WaitForAllPodsReady(cli client.Client) {
 				return false, nil
 			}
 		}
+
+		// wait the pods to be ready, not only to be running, especially on slow environment
+		time.Sleep(15 * time.Second)
 
 		return true, nil
 	})
