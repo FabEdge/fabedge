@@ -308,7 +308,7 @@ root@node1:~# kubectl create ns fabedge
 
 2. 修改配置文件
 
-   按实际环境修改edge-network-cidr
+   修改edge-pod-cidr,  使用前面edgePodCIDR
 
    ```shell
    root@node1:~# vi ~/fabedge/deploy/operator/fabedge-operator.yaml
@@ -334,23 +334,22 @@ root@node1:~# kubectl create ns fabedge
        spec:
          containers:
            - name: operator
-             image: fabedge/operator:latest
+             image: fabedge/operator
              imagePullPolicy: IfNotPresent
              args:
+               # agent所在的namespace，要跟connector, operator在同一namespace
                - -namespace=fabedge
-               - -edge-network-cidr=10.10.0.0/16     # edge pod使用的网络
-               - -agent-image=fabedge/agent     
-               - -strongswan-image=fabedge/strongswan  
+               # 边缘节点的Pod所在的网段，根据环境配置
+               - -edge-pod-cidr=10.10.0.0/16
+               - -agent-image=fabedge/agent
+               - -strongswan-image=fabedge/strongswan
+               # connector组件所用的configmap名称
                - -connector-config=connector-config
+               # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
                - -endpoint-id-format=C=CN, O=StrongSwan, CN={node}
+               - -masq-outgoing=true
                - -v=5
-         hostNetwork: true
-         serviceAccountName: fabedge-operator
    ```
-   
-   >**注意：**
-   >
-   >**edge-network-cidr**为前面分配的edgePodCIDR
    
 3. 创建Operator
 
