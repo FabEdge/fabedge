@@ -271,6 +271,10 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 
 // outbound NAT from pods to outside of the cluster
 func (m *Manager) configureOutboundRules(subnet string) error {
+	if err := m.ensureChain(TableNat, ChainNatOutgoing); err != nil {
+		return err
+	}
+
 	if m.masqOutgoing {
 		m.log.V(3).Info("configure outgoing NAT iptables rules", "masqOutgoing", m.masqOutgoing)
 		iFace, err := m.netLink.GetDefaultIFace()
@@ -279,10 +283,6 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		ensureRule := m.ipt.AppendUnique
-		if err := m.ensureChain(TableNat, ChainNatOutgoing); err != nil {
-			return err
-		}
-
 		if err := ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
 			return err
 		}
@@ -341,9 +341,6 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 			}
 		}
 
-		if err := m.ipt.DeleteChain(TableNat, ChainNatOutgoing); err != nil {
-			return err
-		}
 	}
 	return nil
 }
