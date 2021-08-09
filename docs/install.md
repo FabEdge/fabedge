@@ -155,7 +155,8 @@ root@node1:~# kubectl create ns fabedge
        name: cloud-connector
        ip: 10.20.8.169    # ip address of node, which runs connector   
        subnets:
-       - 10.233.0.0/17  # CIDR used by pod & service in the cloud cluster
+       - 10.233.0.0/18  # service cluster-ip range
+       - 10.233.64.0/18 # pod ip range in cloud
    ```
    
    > **注意：**
@@ -164,17 +165,17 @@ root@node1:~# kubectl create ns fabedge
    >
    > **ip**：运行connector服务的节点的IP地址，从边缘节点必须到这个地址可达。
    >
-   > **subnets**: 需要包含service clusterIP CIDR和pod clusterIP CIDR
-   >
-   > 比如，serviceClusterIPCIDR是10.233.0.0/18，podClusterIPCIDR = 10.233.64.0/18 那么subnets是10.233.0.0/17
-   >
-   > 获取serviceClusterIPCIDR和podClusterIPCIDR的方法如下：
+   > **subnets**: 需要包含service cluster-ip range和pod ip range in cloud
    >
    > ```shell
-   > # service clusterIP CIDR
+   > # 获取 service cluster ip range
    > root@node1:~# grep -rn "service-cluster-ip-range" /etc/kubernetes/manifests
-   > # pod clusterIP CIDR
+   > /etc/kubernetes/manifests/kube-apiserver.yaml:50:    - --service-cluster-ip-range=10.233.0.0/18
+   > 
+   > # 获取 pod ip range in cloud
    > root@node1:~# calicoctl.sh get ipPool
+   > NAME           CIDR             SELECTOR
+   > default-pool   10.233.64.0/18   all()
    > ```
    
 5. 为connector创建configmap
