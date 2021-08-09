@@ -17,14 +17,17 @@ package agent
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"net"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-logr/logr"
 	"github.com/jjeffery/stringset"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -153,7 +156,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, err
 	}
 
-	if err := ctl.createAgentPodIfNeeded(ctx, &node); err != nil {
+	if err := ctl.syncAgentPod(ctx, &node); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -321,28 +324,40 @@ func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Nod
 	return err
 }
 
-func (ctl *agentController) createAgentPodIfNeeded(ctx context.Context, node *corev1.Node) error {
+func (ctl *agentController) syncAgentPod(ctx context.Context, node *corev1.Node) error {
 	agentPodName := getAgentPodName(node.Name)
-	key := ObjectKey{
-		Name:      agentPodName,
-		Namespace: ctl.namespace,
-	}
 
-	var pod corev1.Pod
-	err := ctl.client.Get(ctx, key, &pod)
-	if err == nil || !errors.IsNotFound(err) {
+	log := ctl.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", ctl.namespace)
+
+	var oldPod corev1.Pod
+	err := ctl.client.Get(ctx, ObjectKey{Name: agentPodName, Namespace: ctl.namespace}, &oldPod)
+	switch {
+	case err == nil:
+		newPod := ctl.buildAgentPod(ctl.namespace, node.Name, agentPodName)
+		if newPod.Labels[constants.KeyPodHash] == oldPod.Labels[constants.KeyPodHash] {
+			return nil
+		}
+
+		// we will not create agent pod now because pod termination may last for a long time,
+		// during that time, create pod may get collision error
+		log.V(3).Info("agent pod may be out of date, delete it")
+		err = ctl.client.Delete(context.TODO(), &oldPod)
+		if err != nil {
+			log.Error(err, "failed to delete agent pod")
+		}
+		return err
+	case errors.IsNotFound(err):
+		log.V(5).Info("Agent pod is not found, create it now")
+		newPod := ctl.buildAgentPod(ctl.namespace, node.Name, agentPodName)
+		err = ctl.client.Create(ctx, newPod)
+		if err != nil {
+			log.Error(err, "failed to create agent pod")
+		}
+		return err
+	default:
+		log.Error(err, "failed to get agent pod")
 		return err
 	}
-
-	ctl.log.V(5).Info("Agent pod not found, create it now", "nodeName", node.Name, "podName", agentPodName, "namespace", ctl.namespace)
-
-	agentPod := ctl.buildAgentPod(ctl.namespace, node.Name, agentPodName)
-	err = ctl.client.Create(ctx, agentPod)
-	if err != nil {
-		ctl.log.Error(err, "failed to create agent pod")
-	}
-
-	return err
 }
 
 func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *corev1.Pod {
@@ -498,6 +513,8 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 			},
 		},
 	}
+
+	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)
 	return pod
 }
 
@@ -582,4 +599,18 @@ func getAgentConfigMapName(nodeName string) string {
 
 func getAgentPodName(nodeName string) string {
 	return fmt.Sprintf("fabedge-agent-%s", nodeName)
+}
+
+// ComputeHash returns a hash value calculated from pod spec
+func computePodHash(spec corev1.PodSpec) string {
+	hasher := fnv.New32a()
+	printer := spew.ConfigState{
+		Indent:         " ",
+		SortKeys:       true,
+		DisableMethods: true,
+		SpewKeys:       true,
+	}
+	_, _ = printer.Fprintf(hasher, "%#v", spec)
+
+	return rand.SafeEncodeString(fmt.Sprint(hasher.Sum32()))
 }
