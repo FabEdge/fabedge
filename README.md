@@ -1,6 +1,6 @@
 # What is FabEdge
 
-![build](https://github.com/FabEdge/fabedge/actions/workflows/go.yml/badge.svg)
+![build](https://github.com/FabEdge/fabedge/actions/workflows/build.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 
 <img src="https://user-images.githubusercontent.com/88021699/127422127-e79a00d1-ac8e-4a1e-993c-d6f81bfb3bf9.jpg" width="50%">  
