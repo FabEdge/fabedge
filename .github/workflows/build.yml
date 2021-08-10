@@ -34,4 +34,4 @@ jobs:
         docker push fabedge/operator
         docker push fabedge/agent
         docker push fabedge/strongswan
-      if: contains(github.ref, "main")
+      if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
