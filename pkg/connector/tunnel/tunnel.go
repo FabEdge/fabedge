@@ -50,12 +50,10 @@ func ReadCfgFromFile() error {
 			Name: fmt.Sprintf("cloud-%s", peer.Name),
 
 			LocalID:      netConf.ID,
-			LocalAddress: []string{netConf.IP},
 			LocalSubnets: netConf.Subnets,
 			LocalCerts:   []string{cert},
 
 			RemoteID:      peer.ID,
-			RemoteAddress: []string{peer.IP},
 			RemoteSubnets: remoteSubnets,
 		}
 		connections = append(connections, con)

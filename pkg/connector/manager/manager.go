@@ -50,10 +50,10 @@ func NewManager() *Manager {
 func runTasks(interval time.Duration, handler ...func()) {
 	t := time.Tick(interval)
 	for {
-		<-t
 		for _, h := range handler {
 			h()
 		}
+		<-t
 	}
 }
 
