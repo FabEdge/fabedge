@@ -31,7 +31,4 @@ type ConnConfig struct {
 	RemoteID      string
 	RemoteAddress []string
 	RemoteSubnets []string
-
-	IF_ID_IN  *uint
-	IF_ID_OUT *uint
 }

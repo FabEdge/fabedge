@@ -83,7 +83,11 @@ func newManager() (*Manager, error) {
 		return nil, err
 	}
 
-	tm, err := strongswan.New()
+	var opts strongswan.Options
+	if supportXfrm {
+		opts = append(opts, strongswan.WithInterfaceID(&xfrmInterfaceIFID))
+	}
+	tm, err := strongswan.New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -197,12 +201,6 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 		} else {
 			peerSubnets := m.addIPToSubnets(peer.IP, peer.Subnets)
 			conn.RemoteSubnets = peerSubnets
-		}
-
-		// the kernel has supported xfrm interface since version 4.19+
-		if m.supportXfrm {
-			conn.IF_ID_IN = &m.xfrmInterfaceID
-			conn.IF_ID_OUT = &m.xfrmInterfaceID
 		}
 
 		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)

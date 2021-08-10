@@ -31,6 +31,7 @@ type StrongSwanManager struct {
 	socketPath  string
 	certsPath   string
 	startAction string
+	interfaceID *uint
 }
 
 type connection struct {
@@ -99,8 +100,8 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 		RemoteAddrs: cnf.RemoteAddress,
 		Proposals:   []string{"aes128-sha256-x25519"},
 		Encap:       "no",
-		IF_ID_IN:    cnf.IF_ID_IN,
-		IF_ID_OUT:   cnf.IF_ID_OUT,
+		IF_ID_IN:    m.interfaceID,
+		IF_ID_OUT:   m.interfaceID,
 		LocalAuth: authConf{
 			ID:         cnf.LocalID,
 			AuthMethod: "pubkey",
