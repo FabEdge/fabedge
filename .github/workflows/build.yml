@@ -30,9 +30,6 @@ jobs:
         
     - name: Build Images
       run: |
-        make connector-image
-        make operator-image
-        make agent-image
         make strongswan-image
 
     - name: Push Images
