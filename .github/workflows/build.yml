@@ -2,7 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      [ main ]
+    paths-ignore:
+      - 'docs/**'
   pull_request:
 
 jobs:
