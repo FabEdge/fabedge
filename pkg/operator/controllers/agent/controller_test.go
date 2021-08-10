@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	. "github.com/fabedge/fabedge/internal/util/ginkgoext"
 	testutil "github.com/fabedge/fabedge/internal/util/test"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
@@ -248,6 +249,7 @@ var _ = Describe("AgentController", func() {
 			Expect(pod.Namespace).To(Equal(namespace))
 			Expect(pod.Name).To(Equal(agentPodName))
 			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyAlways))
+			Expect(pod.Labels[constants.KeyPodHash]).ShouldNot(BeEmpty())
 
 			Expect(len(pod.Spec.Containers)).To(Equal(2))
 			Expect(len(pod.Spec.Volumes)).To(Equal(6))
@@ -393,6 +395,32 @@ var _ = Describe("AgentController", func() {
 			}
 			Expect(pod.Spec.Containers[1].VolumeMounts).To(Equal(strongswanVolumeMounts))
 		})
+
+		It("should delete agent pod if pod hash is changed", func() {
+			nodeName := getNodeName()
+			ctx := context.TODO()
+
+			node := newNode(nodeName, "10.40.20.181", "")
+			Expect(k8sClient.Create(ctx, &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+
+			var pod corev1.Pod
+			agentPodName := getAgentPodName(nodeName)
+			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())
+			pod.Labels[constants.KeyPodHash] = "different-hash"
+			Expect(k8sClient.Update(ctx, &pod)).Should(Succeed())
+
+			// trigger reconciling
+			node.ResourceVersion = ""
+			node.Annotations = map[string]string{"something": "different"}
+			Expect(k8sClient.Update(ctx, &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+
+			pod = corev1.Pod{}
+			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())
+			Expect(pod.DeletionTimestamp).ShouldNot(BeNil())
+		})
+
 	})
 
 	Context("with community", func() {
