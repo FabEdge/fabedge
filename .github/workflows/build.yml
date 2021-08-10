@@ -7,9 +7,9 @@ on:
     paths-ignore:
       - 'docs/**'
   pull_request:
-      branches:
+    branches:
       - main 
-      paths-ignore:
+    paths-ignore:
       - 'docs/**'
 
 jobs:
@@ -24,13 +24,16 @@ jobs:
       with:
         go-version: 1.16
 
-    - name: Remove CN proxies
+    - name: Remove proxies
       run: |
-        bash build/utils/prebuild_for_github.sh
+        bash build/utils/no_proxy.sh
         
     - name: Build Images
       run: |
         make strongswan-image
+        make connector-image
+        make operator-image
+        make agent-image
 
     - name: Push Images
       env:
