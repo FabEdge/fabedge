@@ -3,10 +3,14 @@ name: Build
 on:
   push:
     branches:
-      [ main ]
+      - main 
     paths-ignore:
       - 'docs/**'
   pull_request:
+      branches:
+      - main 
+      paths-ignore:
+      - 'docs/**'
 
 jobs:
 
@@ -41,4 +45,4 @@ jobs:
         docker push fabedge/operator
         docker push fabedge/agent
         docker push fabedge/strongswan
-      if: ${{ github.ref == 'refs/heads/master' || contains(github.ref, 'release') }}
+      if: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'release') }}
