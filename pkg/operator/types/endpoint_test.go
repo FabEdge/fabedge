@@ -72,7 +72,7 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",
 			Annotations: map[string]string{
-				constants.KeyNodeSubnets: "2.2.0.1/26,2.2.0.128/26",
+				constants.KeyPodSubnets: "2.2.0.1/26,2.2.0.128/26",
 			},
 		},
 		Status: corev1.NodeStatus{

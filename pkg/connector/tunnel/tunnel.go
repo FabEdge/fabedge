@@ -31,30 +31,31 @@ var (
 func ReadCfgFromFile() error {
 	cfgFile := viper.GetString("tunnelconfig")
 
-	netConf, err := netconf.LoadNetworkConf(cfgFile)
+	nc, err := netconf.LoadNetworkConf(cfgFile)
 	if err != nil {
 		return err
 	}
+
+	netconf.EnsureNodeSubnets(&nc)
 
 	cert := viper.GetString("certFile")
 	connections = []tunnel.ConnConfig{}
 	connNames = stringset.New()
 
-	for _, peer := range netConf.Peers {
-
-		// append the ip of peer alongside remote subnets
-		remoteSubnets := []string{peer.IP}
-		remoteSubnets = append(remoteSubnets, peer.Subnets...)
+	for _, peer := range nc.Peers {
 
 		con := tunnel.ConnConfig{
 			Name: fmt.Sprintf("cloud-%s", peer.Name),
 
-			LocalID:      netConf.ID,
-			LocalSubnets: netConf.Subnets,
-			LocalCerts:   []string{cert},
+			LocalID:          nc.ID,
+			LocalCerts:       []string{cert},
+			LocalSubnets:     nc.Subnets,
+			LocalNodeSubnets: nc.NodeSubnets,
 
-			RemoteID:      peer.ID,
-			RemoteSubnets: remoteSubnets,
+			RemoteID:          peer.ID,
+			RemoteAddress:     []string{peer.IP},
+			RemoteSubnets:     peer.Subnets,
+			RemoteNodeSubnets: peer.NodeSubnets,
 		}
 		connections = append(connections, con)
 		connNames.Add(con.Name)

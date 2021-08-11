@@ -112,9 +112,19 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 			AuthMethod: "pubkey",
 		},
 		Children: map[string]childSAConf{
-			fmt.Sprintf("%s-%d", cnf.Name, 1): {
+			fmt.Sprintf("%s-p2p", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
+				StartAction: m.startAction,
+			},
+			fmt.Sprintf("%s-n2p", cnf.Name): {
+				LocalTS:     cnf.LocalNodeSubnets,
+				RemoteTS:    cnf.RemoteSubnets,
+				StartAction: m.startAction,
+			},
+			fmt.Sprintf("%s-p2n", cnf.Name): {
+				LocalTS:     cnf.LocalSubnets,
+				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
 			},
 		},

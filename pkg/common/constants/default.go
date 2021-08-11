@@ -15,12 +15,12 @@
 package constants
 
 const (
-	KeyNodeSubnets = "fabedge.io/subnets"
-	KeyFabedgeAPP  = "fabedge.io/app"
-	KeyCreatedBy   = "fabedge.io/created-by"
-	KeyPodHash     = "fabedge.io/pod-spec-hash"
-	AppAgent       = "fabedge-agent"
-	AppOperator    = "fabedge-operator"
+	KeyPodSubnets = "fabedge.io/subnets"
+	KeyFabedgeAPP = "fabedge.io/app"
+	KeyCreatedBy  = "fabedge.io/created-by"
+	KeyPodHash    = "fabedge.io/pod-spec-hash"
+	AppAgent      = "fabedge-agent"
+	AppOperator   = "fabedge-operator"
 
 	ConnectorConfigFileName = "tunnels.yaml"
 	ConnectorEndpointName   = "cloud-connector"

@@ -23,12 +23,14 @@ type Manager interface {
 type ConnConfig struct {
 	Name string // must be unique
 
-	LocalID      string
-	LocalAddress []string
-	LocalSubnets []string
-	LocalCerts   []string
+	LocalID          string
+	LocalAddress     []string
+	LocalSubnets     []string
+	LocalNodeSubnets []string
+	LocalCerts       []string
 
-	RemoteID      string
-	RemoteAddress []string
-	RemoteSubnets []string
+	RemoteID          string
+	RemoteAddress     []string
+	RemoteSubnets     []string
+	RemoteNodeSubnets []string
 }

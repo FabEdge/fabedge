@@ -224,9 +224,10 @@ func getConnectorEndpoint(cli client.Client, namespace string, cmName string) (e
 	}
 
 	return types.Endpoint{
-		ID:      conf.ID,
-		IP:      conf.IP,
-		Name:    conf.Name,
-		Subnets: conf.Subnets,
+		ID:          conf.ID,
+		IP:          conf.IP,
+		Name:        conf.Name,
+		Subnets:     conf.Subnets,
+		NodeSubnets: conf.NodeSubnets,
 	}, nil
 }

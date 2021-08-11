@@ -251,7 +251,7 @@ func (ctl *agentController) allocateSubnet(ctx context.Context, node corev1.Node
 		node.Annotations = map[string]string{}
 	}
 	// for now, we just supply one subnet allocation
-	node.Annotations[constants.KeyNodeSubnets] = subnet.String()
+	node.Annotations[constants.KeyPodSubnets] = subnet.String()
 
 	err = ctl.client.Update(ctx, &node)
 	if err != nil {

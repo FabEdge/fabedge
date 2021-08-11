@@ -64,10 +64,11 @@ var _ = Describe("Controller", func() {
 			Subnets: []string{"2.2.0.65/26"},
 		}
 		connectorEndpoint = types.Endpoint{
-			ID:      constants.ConnectorEndpointName,
-			Name:    constants.ConnectorEndpointName,
-			IP:      "10.20.40.182",
-			Subnets: []string{"2.2.0.65/26"},
+			ID:          constants.ConnectorEndpointName,
+			Name:        constants.ConnectorEndpointName,
+			IP:          "10.20.40.182",
+			Subnets:     []string{"2.2.0.65/26"},
+			NodeSubnets: []string{"10.20.40.0/24"},
 		}
 
 		store = storepkg.NewStore()

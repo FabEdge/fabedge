@@ -28,10 +28,11 @@ import (
 type NewEndpointFunc func(node corev1.Node) Endpoint
 
 type Endpoint struct {
-	ID      string
-	Name    string
-	IP      string
-	Subnets []string
+	ID          string
+	Name        string
+	IP          string
+	Subnets     []string
+	NodeSubnets []string
 }
 
 func (e Endpoint) Equal(o Endpoint) bool {
@@ -51,15 +52,23 @@ func (e Endpoint) IsValid() bool {
 		}
 	}
 
+	for _, subnet := range e.NodeSubnets {
+		_, _, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return false
+		}
+	}
+
 	return true
 }
 
 func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
 	return netconf.TunnelEndpoint{
-		ID:      e.ID,
-		IP:      e.IP,
-		Name:    e.Name,
-		Subnets: e.Subnets,
+		ID:          e.ID,
+		IP:          e.IP,
+		Name:        e.Name,
+		Subnets:     e.Subnets,
+		NodeSubnets: e.NodeSubnets,
 	}
 }
 
@@ -86,7 +95,7 @@ func GenerateNewEndpointFunc(idFormat string) NewEndpointFunc {
 			ID:      id,
 			Name:    node.Name,
 			IP:      ip,
-			Subnets: strings.Split(annotations[constants.KeyNodeSubnets], ","),
+			Subnets: strings.Split(annotations[constants.KeyPodSubnets], ","),
 		}
 	}
 }
