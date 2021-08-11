@@ -69,8 +69,10 @@ func SyncConnections() error {
 	}
 
 	viciSocket := viper.GetString("vicisocket")
-	tm, err := strongswan.New(strongswan.WithSocketFile(viciSocket),
-		strongswan.SetStartActions("none"))
+	tm, err := strongswan.New(
+		strongswan.SocketFile(viciSocket),
+		strongswan.StartAction("none"),
+	)
 	if err != nil {
 		return err
 	}
@@ -101,7 +103,7 @@ func SyncConnections() error {
 
 func UnloadConnections() error {
 	viciSocket := viper.GetString("vicisocket")
-	tm, err := strongswan.New(strongswan.WithSocketFile(viciSocket))
+	tm, err := strongswan.New(strongswan.SocketFile(viciSocket))
 	if err != nil {
 		return err
 	}

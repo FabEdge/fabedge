@@ -85,7 +85,7 @@ func newManager() (*Manager, error) {
 
 	var opts strongswan.Options
 	if supportXfrm {
-		opts = append(opts, strongswan.WithInterfaceID(&xfrmInterfaceIFID))
+		opts = append(opts, strongswan.InterfaceID(&xfrmInterfaceIFID))
 	}
 	tm, err := strongswan.New(opts...)
 	if err != nil {
