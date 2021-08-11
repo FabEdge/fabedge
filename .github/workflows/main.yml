@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main 
+    paths-ignore:
+      - 'docs/**'
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+
+    - name: Remove proxies
+      run: |
+        bash build/utils/no_proxy.sh
+        
+    - name: Build Images
+      run: |
+        make strongswan-image
+        make connector-image
+        make operator-image
+        make agent-image
+
+    - name: Push Images
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      run: |
+        echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
+        docker push fabedge/connector 
+        docker push fabedge/operator
+        docker push fabedge/agent
+        docker push fabedge/strongswan

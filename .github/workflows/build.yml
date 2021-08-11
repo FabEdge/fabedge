@@ -1,11 +1,6 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - main 
-    paths-ignore:
-      - 'docs/**'
   pull_request:
     branches:
       - main 
@@ -28,21 +23,6 @@ jobs:
       run: |
         bash build/utils/no_proxy.sh
         
-    - name: Build Images
+    - name: Build
       run: |
-        make strongswan-image
-        make connector-image
-        make operator-image
-        make agent-image
-
-    - name: Push Images
-      env:
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-      run: |
-        echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
-        docker push fabedge/connector 
-        docker push fabedge/operator
-        docker push fabedge/agent
-        docker push fabedge/strongswan
-      if: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'release') }}
+        make all
