@@ -25,16 +25,17 @@ import (
 
 	debpkg "github.com/bep/debounce"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/common/netconf"
-	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	"github.com/fabedge/fabedge/third_party/ipvs"
 	"github.com/go-logr/logr"
 	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/exec"
+
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/common/netconf"
+	"github.com/fabedge/fabedge/pkg/tunnel"
+	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
+	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
 const (
@@ -61,9 +62,9 @@ type Manager struct {
 	debounce func(func())
 
 	netLink           ipvs.NetLinkHandle
-	supportXfrm       bool
 	ipvs              ipvs.Interface
 	masqOutgoing      bool
+	useXfrm           bool
 	xfrmInterfaceName string
 	xfrmInterfaceID   uint
 	edgePodCIDR       string
@@ -81,7 +82,7 @@ func newManager() (*Manager, error) {
 	}
 
 	var opts strongswan.Options
-	if supportXfrm {
+	if supportXfrm && useXfrm {
 		opts = append(opts, strongswan.InterfaceID(&xfrmInterfaceIFID))
 	}
 	tm, err := strongswan.New(opts...)
@@ -108,8 +109,8 @@ func newManager() (*Manager, error) {
 		debounce: debpkg.New(time.Duration(debounceDuration) * time.Second),
 
 		netLink:           ipvs.NewNetLinkHandle(false),
-		supportXfrm:       supportXfrm,
 		ipvs:              ipvs.New(exec.New()),
+		useXfrm:           supportXfrm && useXfrm,
 		masqOutgoing:      masqOutgoing,
 		xfrmInterfaceName: xfrmInterfaceName,
 		xfrmInterfaceID:   xfrmInterfaceIFID,
@@ -171,7 +172,11 @@ func (m *Manager) mainNetwork() error {
 	m.log.V(3).Info("cni config is written")
 
 	m.log.V(3).Info("keep iptables rules")
-	return m.ensureIPTablesRules(conf)
+	if err = m.ensureIPTablesRules(conf); err != nil {
+		return err
+	}
+
+	return m.ensureInterfacesAndRoutes()
 }
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
@@ -383,47 +388,59 @@ func (m *Manager) sync() {
 	}
 }
 
-func (m *Manager) syncLoadBalanceRules() error {
+func (m *Manager) ensureInterfacesAndRoutes() error {
+	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", dummyInterfaceName)
 	if _, err := m.netLink.EnsureDummyDevice(dummyInterfaceName); err != nil {
 		return err
 	}
-	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", dummyInterfaceName)
 
 	// the kernel has supported xfrm interface since version 4.19+
-	if m.supportXfrm {
+	if m.useXfrm {
+		log := m.log.V(3).WithValues("xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
+
+		log.Info("ensure that the xfrm interface exists")
 		if err := m.netLink.EnsureXfrmInterface(m.xfrmInterfaceName, uint32(m.xfrmInterfaceID)); err != nil {
-			m.log.Error(err, "failed to create xfrm interface", "xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
+			log.Error(err, "failed to create xfrm interface")
 			return err
 		}
 
-		m.log.V(3).Info("ensure that the xfrm interface exists", "xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
-
-		// add a route to another edge node
-		if err := m.netLink.EnsureRouteAdd(edgePodCIDR, m.xfrmInterfaceName); err != nil {
+		log.Info("add a route to edge node", "edgePodCIDR", m.edgePodCIDR)
+		if err := m.netLink.EnsureRouteAdd(m.edgePodCIDR, m.xfrmInterfaceName); err != nil {
+			m.log.Error(err, "failed to add route", "xfrmInterface", m.xfrmInterfaceName, "podCIDR", m.edgePodCIDR)
 			return err
 		}
-		m.log.V(3).Info("add a route to another edge node", "edgePodCIDR", edgePodCIDR, "xfrmInterface", m.xfrmInterfaceName)
 
 		connectorSubnets, err := m.getConnectorSubnets()
 		if err != nil {
+			log.Error(err, "failed to get connector subnets")
 			return err
 		}
-		if connectorSubnets == nil {
-			return fmt.Errorf("connector subnets not found")
-		}
 
-		// add routes to the cloud
+		// add routes to the cloud connector
 		for _, subnet := range connectorSubnets {
 			if err := m.netLink.EnsureRouteAdd(subnet, m.xfrmInterfaceName); err != nil {
+				m.log.Error(err, "failed to create route", "subnet", subnet)
 				return err
 			}
 		}
-		m.log.V(3).Info("add routes to the cloud", "connectorSubnets", connectorSubnets, "xfrmInterface", m.xfrmInterfaceName)
 	}
+	return nil
+}
 
+func (m *Manager) syncLoadBalanceRules() error {
 	// sync service clusterIP bound to kube-ipvs0
 	// sync ipvs
-	return m.syncService()
+	conf, err := loadServiceConf(m.servicesConfPath)
+	if err != nil {
+		return err
+	}
+
+	servers := toServers(conf)
+	if err := m.syncServiceClusterIPBind(servers); err != nil {
+		return err
+	}
+
+	return m.syncVirtualServer(servers)
 }
 
 func (m *Manager) getConnectorSubnets() ([]string, error) {
@@ -438,20 +455,6 @@ func (m *Manager) getConnectorSubnets() ([]string, error) {
 		}
 	}
 	return nil, nil
-}
-
-func (m *Manager) syncService() error {
-	conf, err := loadServiceConf(m.servicesConfPath)
-	if err != nil {
-		return err
-	}
-
-	servers := toServers(conf)
-	if err := m.syncServiceClusterIPBind(servers); err != nil {
-		return err
-	}
-
-	return m.syncVirtualServer(servers)
 }
 
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {

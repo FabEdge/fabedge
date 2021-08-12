@@ -67,6 +67,7 @@ type agentController struct {
 	strongswanImage string
 	edgePodCIRD     string
 	masqOutgoing    bool
+	useXfrm         bool
 }
 
 type Config struct {
@@ -77,6 +78,7 @@ type Config struct {
 	Namespace       string
 	AgentImage      string
 	StrongswanImage string
+	UseXfrm         bool
 	MasqOutgoing    bool
 	EdgePodCIDR     string
 
@@ -93,6 +95,7 @@ func AddToManager(cnf Config) error {
 		strongswanImage: cnf.StrongswanImage,
 		edgePodCIRD:     cnf.EdgePodCIDR,
 		masqOutgoing:    cnf.MasqOutgoing,
+		useXfrm:         cnf.UseXfrm,
 
 		alloc:       cnf.Allocator,
 		store:       cnf.Store,
@@ -400,6 +403,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						"-edge-pod-cidr",
 						ctl.edgePodCIRD,
 						fmt.Sprintf("-masq-outgoing=%t", ctl.masqOutgoing),
+						fmt.Sprintf("-use-xfrm=%t", ctl.useXfrm),
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
