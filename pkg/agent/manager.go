@@ -48,11 +48,47 @@ const (
 	TableNat         = "nat"
 )
 
+type CNI struct {
+	Version     string
+	ConfDir     string
+	NetworkName string
+	BridgeName  string
+}
+
+type Config struct {
+	LocalCerts       []string
+	SyncPeriod       time.Duration
+	DebounceDuration time.Duration
+	TunnelsConfPath  string
+	ServicesConfPath string
+	MasqOutgoing     bool
+
+	DummyInterfaceName string
+	EdgePodCIDR        string
+
+	UseXfrm           bool
+	XfrmInterfaceName string
+	XfrmInterfaceID   uint
+
+	CNI CNI
+}
+
 type Manager struct {
+	cni CNI
+
 	localCerts       []string
 	syncPeriod       time.Duration
 	tunnelsConfPath  string
 	servicesConfPath string
+
+	netLink            ipvs.NetLinkHandle
+	ipvs               ipvs.Interface
+	masqOutgoing       bool
+	useXfrm            bool
+	xfrmInterfaceName  string
+	xfrmInterfaceID    uint
+	dummyInterfaceName string
+	edgePodCIDR        string
 
 	tm  tunnel.Manager
 	ipt *iptables.IPTables
@@ -60,17 +96,9 @@ type Manager struct {
 
 	events   chan struct{}
 	debounce func(func())
-
-	netLink           ipvs.NetLinkHandle
-	ipvs              ipvs.Interface
-	masqOutgoing      bool
-	useXfrm           bool
-	xfrmInterfaceName string
-	xfrmInterfaceID   uint
-	edgePodCIDR       string
 }
 
-func newManager() (*Manager, error) {
+func newManager(cnf Config) (*Manager, error) {
 	kernelHandler := ipvs.NewLinuxKernelHandler()
 	if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
 		return nil, err
@@ -80,10 +108,11 @@ func newManager() (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
+	cnf.UseXfrm = supportXfrm && cnf.UseXfrm
 
 	var opts strongswan.Options
-	if supportXfrm && useXfrm {
-		opts = append(opts, strongswan.InterfaceID(&xfrmInterfaceIFID))
+	if cnf.UseXfrm {
+		opts = append(opts, strongswan.InterfaceID(&cnf.XfrmInterfaceID))
 	}
 	tm, err := strongswan.New(opts...)
 	if err != nil {
@@ -96,25 +125,28 @@ func newManager() (*Manager, error) {
 	}
 
 	m := &Manager{
-		localCerts:       []string{localCert},
-		syncPeriod:       time.Duration(syncPeriod) * time.Second,
-		tunnelsConfPath:  tunnelsConfPath,
-		servicesConfPath: servicesConfPath,
+		cni:              cnf.CNI,
+		localCerts:       cnf.LocalCerts,
+		syncPeriod:       cnf.SyncPeriod,
+		tunnelsConfPath:  cnf.TunnelsConfPath,
+		servicesConfPath: cnf.ServicesConfPath,
+
+		useXfrm:            cnf.UseXfrm,
+		masqOutgoing:       cnf.MasqOutgoing,
+		xfrmInterfaceName:  cnf.XfrmInterfaceName,
+		xfrmInterfaceID:    cnf.XfrmInterfaceID,
+		dummyInterfaceName: cnf.DummyInterfaceName,
+		edgePodCIDR:        cnf.EdgePodCIDR,
 
 		tm:  tm,
 		ipt: ipt,
 		log: klogr.New().WithName("manager"),
 
 		events:   make(chan struct{}),
-		debounce: debpkg.New(time.Duration(debounceDuration) * time.Second),
+		debounce: debpkg.New(cnf.DebounceDuration),
 
-		netLink:           ipvs.NewNetLinkHandle(false),
-		ipvs:              ipvs.New(exec.New()),
-		useXfrm:           supportXfrm && useXfrm,
-		masqOutgoing:      masqOutgoing,
-		xfrmInterfaceName: xfrmInterfaceName,
-		xfrmInterfaceID:   xfrmInterfaceIFID,
-		edgePodCIDR:       edgePodCIDR,
+		netLink: ipvs.NewNetLinkHandle(false),
+		ipvs:    ipvs.New(exec.New()),
 	}
 
 	return m, nil
@@ -356,11 +388,11 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	}
 
 	cni := CNINetConf{
-		CNIVersion: cniVersion,
-		Name:       cniNetworkName,
+		CNIVersion: m.cni.Version,
+		Name:       m.cni.NetworkName,
 		Type:       "bridge",
 
-		Bridge:           cniBridgeName,
+		Bridge:           m.cni.BridgeName,
 		IsDefaultGateway: true,
 		ForceAddress:     true,
 
@@ -370,7 +402,7 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		},
 	}
 
-	filename := filepath.Join(cniConfDir, fmt.Sprintf("%s.conf", cniNetworkName))
+	filename := filepath.Join(m.cni.ConfDir, fmt.Sprintf("%s.conf", m.cni.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")
 	if err != nil {
 		return err
@@ -389,8 +421,8 @@ func (m *Manager) sync() {
 }
 
 func (m *Manager) ensureInterfacesAndRoutes() error {
-	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", dummyInterfaceName)
-	if _, err := m.netLink.EnsureDummyDevice(dummyInterfaceName); err != nil {
+	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", m.dummyInterfaceName)
+	if _, err := m.netLink.EnsureDummyDevice(m.dummyInterfaceName); err != nil {
 		return err
 	}
 
@@ -458,12 +490,12 @@ func (m *Manager) getConnectorSubnets() ([]string, error) {
 }
 
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {
-	bindAddrs, err := m.netLink.ListBindAddress(dummyInterfaceName)
+	bindAddrs, err := m.netLink.ListBindAddress(m.dummyInterfaceName)
 	if err != nil {
 		return err
 	}
 	bindAddrSet := sets.NewString(bindAddrs...)
-	m.log.V(3).Info("list all IP addresses which are bound in Dummy interface", "dummyInterface", dummyInterfaceName, "ipAddrs", bindAddrs)
+	m.log.V(3).Info("list all IP addresses which are bound in Dummy interface", "dummyInterface", m.dummyInterfaceName, "ipAddrs", bindAddrs)
 
 	allServiceAddrs := sets.NewString()
 	for _, s := range servers {
@@ -473,7 +505,7 @@ func (m *Manager) syncServiceClusterIPBind(servers []server) error {
 
 	addAddrs := allServiceAddrs.Difference(bindAddrSet)
 	for addr := range addAddrs {
-		if _, err := m.netLink.EnsureAddressBind(addr, dummyInterfaceName); err != nil {
+		if _, err := m.netLink.EnsureAddressBind(addr, m.dummyInterfaceName); err != nil {
 			return err
 		}
 	}
@@ -481,7 +513,7 @@ func (m *Manager) syncServiceClusterIPBind(servers []server) error {
 
 	deleteAddrs := bindAddrSet.Difference(allServiceAddrs)
 	for addr := range deleteAddrs {
-		if err := m.netLink.UnbindAddress(addr, dummyInterfaceName); err != nil {
+		if err := m.netLink.UnbindAddress(addr, m.dummyInterfaceName); err != nil {
 			return err
 		}
 	}

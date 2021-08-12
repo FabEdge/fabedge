@@ -49,14 +49,36 @@ func Execute() error {
 		return err
 	}
 
-	manager, err := newManager()
+	manager, err := newManager(Config{
+		LocalCerts:       []string{localCert},
+		SyncPeriod:       AsSecond(syncPeriod),
+		DebounceDuration: AsSecond(debounceDuration),
+
+		TunnelsConfPath:  tunnelsConfPath,
+		ServicesConfPath: servicesConfPath,
+
+		EdgePodCIDR:  edgePodCIDR,
+		MasqOutgoing: masqOutgoing,
+
+		DummyInterfaceName: dummyInterfaceName,
+		UseXfrm:            useXfrm,
+		XfrmInterfaceName:  xfrmInterfaceName,
+		XfrmInterfaceID:    xfrmInterfaceID,
+
+		CNI: CNI{
+			Version:     cniVersion,
+			ConfDir:     cniConfDir,
+			NetworkName: cniNetworkName,
+			BridgeName:  cniBridgeName,
+		},
+	})
 	if err != nil {
 		log.Error(err, "failed to create manager")
 		return err
 	}
 	go manager.start()
 
-	err = watchFile(tunnelsConfPath, servicesConfPath, func(event fsnotify.Event) {
+	err = watchFiles(tunnelsConfPath, servicesConfPath, func(event fsnotify.Event) {
 		log.V(5).Info("tunnels or services config may change", "file", event.Name, "event", event.Op.String())
 		manager.notify()
 	})
