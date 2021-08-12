@@ -132,7 +132,7 @@ var _ = Describe("AgentController", func() {
 			node = corev1.Node{}
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyNodeSubnets]).Should(BeEmpty())
+			Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
 		})
 
 		It("should allocate a subnet to a edge node if this node has no subnet", func() {
@@ -159,11 +159,11 @@ var _ = Describe("AgentController", func() {
 
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyNodeSubnets]).ShouldNot(BeEmpty())
+			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
 			ep, ok := store.GetEndpoint(nodeName)
 			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyNodeSubnets]))
+			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 		})
 
 		It("should allocate a subnet to a edge node if this node's subnet is invalid", func() {
@@ -179,9 +179,9 @@ var _ = Describe("AgentController", func() {
 
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyNodeSubnets]).ShouldNot(BeEmpty())
+			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyNodeSubnets])
+			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
@@ -198,9 +198,9 @@ var _ = Describe("AgentController", func() {
 
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyNodeSubnets]).ShouldNot(BeEmpty())
+			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyNodeSubnets])
+			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
@@ -221,9 +221,9 @@ var _ = Describe("AgentController", func() {
 
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyNodeSubnets]).ShouldNot(BeEmpty())
+			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyNodeSubnets])
+			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
@@ -420,7 +420,6 @@ var _ = Describe("AgentController", func() {
 			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())
 			Expect(pod.DeletionTimestamp).ShouldNot(BeNil())
 		})
-
 	})
 
 	Context("with community", func() {
@@ -435,10 +434,11 @@ var _ = Describe("AgentController", func() {
 		BeforeEach(func() {
 			nodeName = getNodeName()
 			connectorEndpoint = types.Endpoint{
-				ID:      "C=CN, O=StrongSwan, CN=connector",
-				Name:    constants.ConnectorEndpointName,
-				IP:      "192.168.1.1",
-				Subnets: []string{"2.2.1.1/26"},
+				ID:          "C=CN, O=StrongSwan, CN=connector",
+				Name:        constants.ConnectorEndpointName,
+				IP:          "192.168.1.1",
+				Subnets:     []string{"2.2.1.1/26"},
+				NodeSubnets: []string{"192.168.1.0/24"},
 			}
 			edge2Endpoint = types.Endpoint{
 				ID:      "C=CN, O=StrongSwan, CN=edge2",
@@ -559,7 +559,7 @@ var _ = Describe("AgentController", func() {
 						"node-role.kubernetes.io/edge": "",
 					},
 					Annotations: map[string]string{
-						constants.KeyNodeSubnets: subnets,
+						constants.KeyPodSubnets: subnets,
 					},
 				},
 				Status: corev1.NodeStatus{
@@ -626,7 +626,7 @@ func newNode(name, ip, subnets string) corev1.Node {
 
 	if subnets != "" {
 		node.Annotations = map[string]string{
-			constants.KeyNodeSubnets: subnets,
+			constants.KeyPodSubnets: subnets,
 		}
 	}
 

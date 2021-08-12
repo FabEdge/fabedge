@@ -19,25 +19,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"path/filepath"
 	"strings"
 	"time"
 
 	debpkg "github.com/bep/debounce"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2/klogr"
-	"k8s.io/utils/exec"
-	utilnet "k8s.io/utils/net"
-
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	"github.com/fabedge/fabedge/third_party/ipvs"
+	"github.com/go-logr/logr"
+	"github.com/jjeffery/stringset"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2/klogr"
+	"k8s.io/utils/exec"
 )
 
 const (
@@ -83,7 +80,11 @@ func newManager() (*Manager, error) {
 		return nil, err
 	}
 
-	tm, err := strongswan.New()
+	var opts strongswan.Options
+	if supportXfrm {
+		opts = append(opts, strongswan.InterfaceID(&xfrmInterfaceIFID))
+	}
+	tm, err := strongswan.New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,34 +176,24 @@ func (m *Manager) mainNetwork() error {
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 	newNames := stringset.New()
-	subnets := m.addIPToSubnets(conf.IP, conf.Subnets)
+
+	netconf.EnsureNodeSubnets(&conf)
 
 	for _, peer := range conf.Peers {
 		newNames.Add(peer.Name)
+
 		conn := tunnel.ConnConfig{
 			Name: peer.Name,
 
-			LocalID:      conf.ID,
-			LocalAddress: []string{conf.IP},
-			LocalSubnets: subnets,
-			LocalCerts:   m.localCerts,
+			LocalID:          conf.ID,
+			LocalSubnets:     conf.Subnets,
+			LocalNodeSubnets: conf.NodeSubnets,
+			LocalCerts:       m.localCerts,
 
-			RemoteID:      peer.ID,
-			RemoteAddress: []string{peer.IP},
-		}
-
-		// connector does not need to add its IP address to tunnel.remoteSubnets
-		if peer.Name == constants.ConnectorEndpointName {
-			conn.RemoteSubnets = peer.Subnets
-		} else {
-			peerSubnets := m.addIPToSubnets(peer.IP, peer.Subnets)
-			conn.RemoteSubnets = peerSubnets
-		}
-
-		// the kernel has supported xfrm interface since version 4.19+
-		if m.supportXfrm {
-			conn.IF_ID_IN = &m.xfrmInterfaceID
-			conn.IF_ID_OUT = &m.xfrmInterfaceID
+			RemoteID:          peer.ID,
+			RemoteAddress:     []string{peer.IP},
+			RemoteSubnets:     peer.Subnets,
+			RemoteNodeSubnets: peer.NodeSubnets,
 		}
 
 		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
@@ -229,15 +220,6 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 	}
 
 	return nil
-}
-
-func (m *Manager) addIPToSubnets(ip string, subnets []string) []string {
-	if utilnet.IsIPv4(net.ParseIP(ip)) {
-		subnets = append(subnets, strings.Join([]string{ip, "32"}, "/"))
-	} else {
-		subnets = append(subnets, strings.Join([]string{ip, "128"}, "/"))
-	}
-	return subnets
 }
 
 func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {

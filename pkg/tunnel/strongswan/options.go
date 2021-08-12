@@ -14,22 +14,29 @@
 
 package strongswan
 
+type Options []option
 type option func(manager *StrongSwanManager)
 
-func WithSocketFile(path string) option {
+func SocketFile(path string) option {
 	return func(m *StrongSwanManager) {
 		m.socketPath = path
 	}
 }
 
-func WithCertsDir(path string) option {
+func CertsDir(path string) option {
 	return func(m *StrongSwanManager) {
 		m.certsPath = path
 	}
 }
 
-func SetStartActions(startAction string) option {
+func StartAction(startAction string) option {
 	return func(m *StrongSwanManager) {
 		m.startAction = startAction
+	}
+}
+
+func InterfaceID(id *uint) option {
+	return func(m *StrongSwanManager) {
+		m.interfaceID = id
 	}
 }

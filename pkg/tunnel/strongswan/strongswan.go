@@ -31,6 +31,7 @@ type StrongSwanManager struct {
 	socketPath  string
 	certsPath   string
 	startAction string
+	interfaceID *uint
 }
 
 type connection struct {
@@ -99,8 +100,8 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 		RemoteAddrs: cnf.RemoteAddress,
 		Proposals:   []string{"aes128-sha256-x25519"},
 		Encap:       "no",
-		IF_ID_IN:    cnf.IF_ID_IN,
-		IF_ID_OUT:   cnf.IF_ID_OUT,
+		IF_ID_IN:    m.interfaceID,
+		IF_ID_OUT:   m.interfaceID,
 		LocalAuth: authConf{
 			ID:         cnf.LocalID,
 			AuthMethod: "pubkey",
@@ -111,9 +112,19 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 			AuthMethod: "pubkey",
 		},
 		Children: map[string]childSAConf{
-			fmt.Sprintf("%s-%d", cnf.Name, 1): {
+			fmt.Sprintf("%s-p2p", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
+				StartAction: m.startAction,
+			},
+			fmt.Sprintf("%s-n2p", cnf.Name): {
+				LocalTS:     cnf.LocalNodeSubnets,
+				RemoteTS:    cnf.RemoteSubnets,
+				StartAction: m.startAction,
+			},
+			fmt.Sprintf("%s-p2n", cnf.Name): {
+				LocalTS:     cnf.LocalSubnets,
+				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
 			},
 		},
