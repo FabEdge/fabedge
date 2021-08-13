@@ -57,7 +57,6 @@ spec:
             capabilities:
               add: ["NET_ADMIN"]
           image: fabedge/connector
-          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: var-run
               mountPath: /var/run/
