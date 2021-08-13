@@ -28,9 +28,10 @@ import (
 )
 
 type Manager struct {
-	config *config
-	tm     tunnel.Manager
-	ipt    *iptables.IPTables
+	config      *config
+	tm          tunnel.Manager
+	ipt         *iptables.IPTables
+	connections []tunnel.ConnConfig
 }
 
 type config struct {
@@ -84,10 +85,10 @@ func runTasks(interval time.Duration, handler ...func()) {
 
 func (m *Manager) Start() {
 	routeTaskFn := func() {
-		if err := m.syncRoutes(m.config.edgePodCIDR); err != nil {
+		if err := m.syncRoutes(); err != nil {
 			klog.Errorf("error to sync routes: %s", err)
 		} else {
-			klog.Infof("routes:%s are synced", m.config.edgePodCIDR)
+			klog.Info("routes are synced")
 		}
 	}
 
@@ -107,7 +108,7 @@ func (m *Manager) Start() {
 		}
 	}
 
-	tasks := []func(){routeTaskFn, iptablesTaskFn, tunnelTaskFn}
+	tasks := []func(){tunnelTaskFn, routeTaskFn, iptablesTaskFn}
 
 	// repeats regular tasks periodically
 	go runTasks(m.config.interval, tasks...)
@@ -126,10 +127,10 @@ func (m *Manager) Start() {
 }
 
 func (m *Manager) gracefulShutdown() {
-	_ = delRoutes(m.config.edgePodCIDR)
+	_ = m.RouteCleanup()
 
-	cmd := exec.Command("ip", "xfrm", "policy", "flush")
-	_ = cmd.Run()
-	cmd = exec.Command("ip", "xfrm", "state", "flush")
-	_ = cmd.Run()
+	command := exec.Command("ip", "xfrm", "policy", "flush")
+	_ = command.Run()
+	command = exec.Command("ip", "xfrm", "state", "flush")
+	_ = command.Run()
 }
