@@ -1,5 +1,5 @@
 OUTPUT_DIR := _output
-BINARIES := agent connector operator
+BINARIES := agent connector operator cert
 IMAGES := $(addsuffix -image, $(BINARIES))
 IMAGES := $(IMAGES) strongswan-image installer-image
 
@@ -29,6 +29,7 @@ define HELP_INFO
 #   make agent
 #   make connector
 #   make operator
+#   make cert
 #   make connector-image
 #   make strongswan-image
 #   make operator-image
