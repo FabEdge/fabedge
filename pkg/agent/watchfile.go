@@ -18,7 +18,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-func watchFile(tunnelsConfpath, servicesConfPath string, handleFn func(event fsnotify.Event)) error {
+func watchFiles(tunnelsConfpath, servicesConfPath string, handleFn func(event fsnotify.Event)) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err

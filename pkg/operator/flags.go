@@ -36,6 +36,7 @@ var (
 	leaderRenewDeadline int64
 
 	ipvsScheduler string
+	useXfrm       bool
 )
 
 func init() {
@@ -58,5 +59,5 @@ func init() {
 	flag.Int64Var(&leaderRenewDeadline, "leader-renew-deadline", 4, "The duration(seconds) that the acting controlplane will retry refreshing leadership before giving up")
 
 	flag.StringVar(&ipvsScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
-
+	flag.BoolVar(&useXfrm, "use-xfrm", false, "let agent use xfrm if edge OS supports")
 }

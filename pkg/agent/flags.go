@@ -17,6 +17,7 @@ package agent
 import (
 	"flag"
 	"fmt"
+	"time"
 )
 
 var (
@@ -39,7 +40,8 @@ var (
 
 	dummyInterfaceName string
 	xfrmInterfaceName  string
-	xfrmInterfaceIFID  uint
+	xfrmInterfaceID    uint
+	useXfrm            bool
 )
 
 func init() {
@@ -61,8 +63,9 @@ func init() {
 	flag.StringVar(&edgePodCIDR, "edge-pod-cidr", "2.0.0.0/8", "CIDR of the edge pod")
 
 	flag.StringVar(&dummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "the name of dummy interface")
+	flag.BoolVar(&useXfrm, "use-xfrm", false, "use xfrm when OS has this feature")
 	flag.StringVar(&xfrmInterfaceName, "xfrm-interface-name", "ipsec42", "the name of xfrm interface")
-	flag.UintVar(&xfrmInterfaceIFID, "xfrm-interface-if-id", 42, "the if_id of xfrm interface")
+	flag.UintVar(&xfrmInterfaceID, "xfrm-interface-id", 42, "the id of xfrm interface")
 }
 
 func validateFlags() error {
@@ -75,4 +78,8 @@ func validateFlags() error {
 	}
 
 	return nil
+}
+
+func AsSecond(value int64) time.Duration {
+	return time.Duration(value) * time.Second
 }

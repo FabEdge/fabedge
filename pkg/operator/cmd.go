@@ -115,6 +115,7 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			StrongswanImage: strongswanImage,
 			EdgePodCIDR:     edgePodCIDR,
 			MasqOutgoing:    masqOutgoing,
+			UseXfrm:         useXfrm,
 		}
 		if err = agentctl.AddToManager(agentConfig); err != nil {
 			log.Error(err, "failed to add agent controller to manager")

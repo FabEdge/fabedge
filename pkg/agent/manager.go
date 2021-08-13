@@ -25,16 +25,17 @@ import (
 
 	debpkg "github.com/bep/debounce"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/common/netconf"
-	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	"github.com/fabedge/fabedge/third_party/ipvs"
 	"github.com/go-logr/logr"
 	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/exec"
+
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/common/netconf"
+	"github.com/fabedge/fabedge/pkg/tunnel"
+	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
+	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
 const (
@@ -47,11 +48,47 @@ const (
 	TableNat         = "nat"
 )
 
+type CNI struct {
+	Version     string
+	ConfDir     string
+	NetworkName string
+	BridgeName  string
+}
+
+type Config struct {
+	LocalCerts       []string
+	SyncPeriod       time.Duration
+	DebounceDuration time.Duration
+	TunnelsConfPath  string
+	ServicesConfPath string
+	MasqOutgoing     bool
+
+	DummyInterfaceName string
+	EdgePodCIDR        string
+
+	UseXfrm           bool
+	XfrmInterfaceName string
+	XfrmInterfaceID   uint
+
+	CNI CNI
+}
+
 type Manager struct {
+	cni CNI
+
 	localCerts       []string
 	syncPeriod       time.Duration
 	tunnelsConfPath  string
 	servicesConfPath string
+
+	netLink            ipvs.NetLinkHandle
+	ipvs               ipvs.Interface
+	masqOutgoing       bool
+	useXfrm            bool
+	xfrmInterfaceName  string
+	xfrmInterfaceID    uint
+	dummyInterfaceName string
+	edgePodCIDR        string
 
 	tm  tunnel.Manager
 	ipt *iptables.IPTables
@@ -59,17 +96,9 @@ type Manager struct {
 
 	events   chan struct{}
 	debounce func(func())
-
-	netLink           ipvs.NetLinkHandle
-	supportXfrm       bool
-	ipvs              ipvs.Interface
-	masqOutgoing      bool
-	xfrmInterfaceName string
-	xfrmInterfaceID   uint
-	edgePodCIDR       string
 }
 
-func newManager() (*Manager, error) {
+func newManager(cnf Config) (*Manager, error) {
 	kernelHandler := ipvs.NewLinuxKernelHandler()
 	if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
 		return nil, err
@@ -79,10 +108,11 @@ func newManager() (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
+	cnf.UseXfrm = supportXfrm && cnf.UseXfrm
 
 	var opts strongswan.Options
-	if supportXfrm {
-		opts = append(opts, strongswan.InterfaceID(&xfrmInterfaceIFID))
+	if cnf.UseXfrm {
+		opts = append(opts, strongswan.InterfaceID(&cnf.XfrmInterfaceID))
 	}
 	tm, err := strongswan.New(opts...)
 	if err != nil {
@@ -95,25 +125,28 @@ func newManager() (*Manager, error) {
 	}
 
 	m := &Manager{
-		localCerts:       []string{localCert},
-		syncPeriod:       time.Duration(syncPeriod) * time.Second,
-		tunnelsConfPath:  tunnelsConfPath,
-		servicesConfPath: servicesConfPath,
+		cni:              cnf.CNI,
+		localCerts:       cnf.LocalCerts,
+		syncPeriod:       cnf.SyncPeriod,
+		tunnelsConfPath:  cnf.TunnelsConfPath,
+		servicesConfPath: cnf.ServicesConfPath,
+
+		useXfrm:            cnf.UseXfrm,
+		masqOutgoing:       cnf.MasqOutgoing,
+		xfrmInterfaceName:  cnf.XfrmInterfaceName,
+		xfrmInterfaceID:    cnf.XfrmInterfaceID,
+		dummyInterfaceName: cnf.DummyInterfaceName,
+		edgePodCIDR:        cnf.EdgePodCIDR,
 
 		tm:  tm,
 		ipt: ipt,
 		log: klogr.New().WithName("manager"),
 
 		events:   make(chan struct{}),
-		debounce: debpkg.New(time.Duration(debounceDuration) * time.Second),
+		debounce: debpkg.New(cnf.DebounceDuration),
 
-		netLink:           ipvs.NewNetLinkHandle(false),
-		supportXfrm:       supportXfrm,
-		ipvs:              ipvs.New(exec.New()),
-		masqOutgoing:      masqOutgoing,
-		xfrmInterfaceName: xfrmInterfaceName,
-		xfrmInterfaceID:   xfrmInterfaceIFID,
-		edgePodCIDR:       edgePodCIDR,
+		netLink: ipvs.NewNetLinkHandle(false),
+		ipvs:    ipvs.New(exec.New()),
 	}
 
 	return m, nil
@@ -154,24 +187,29 @@ func (m *Manager) notify() {
 }
 
 func (m *Manager) mainNetwork() error {
+	m.log.V(3).Info("load network config")
 	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
 	if err != nil {
 		return err
 	}
-	m.log.V(3).Info("network conf loaded", "netconf", conf)
 
+	m.log.V(3).Info("synchronize tunnels")
 	if err = m.ensureConnections(conf); err != nil {
 		return err
 	}
-	m.log.V(3).Info("tunnels are configured")
 
+	m.log.V(3).Info("generate cni config file")
 	if err = m.generateCNIConfig(conf); err != nil {
 		return err
 	}
-	m.log.V(3).Info("cni config is written")
 
 	m.log.V(3).Info("keep iptables rules")
-	return m.ensureIPTablesRules(conf)
+	if err = m.ensureIPTablesRules(conf); err != nil {
+		return err
+	}
+
+	m.log.V(3).Info("maintain dummy/xfrm interface and routes")
+	return m.ensureInterfacesAndRoutes()
 }
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
@@ -224,11 +262,13 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 	if err := m.ensureChain(TableFilter, ChainFabEdge); err != nil {
+		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdge)
 		return err
 	}
 
 	ensureRule := m.ipt.AppendUnique
 	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdge); err != nil {
+		m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
 		return err
 	}
 
@@ -236,10 +276,12 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 	// to handle removing old subnet
 	for _, subnet := range conf.Subnets {
 		if err := ensureRule(TableFilter, ChainFabEdge, "-s", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdge, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
 			return err
 		}
 
 		if err := ensureRule(TableFilter, ChainFabEdge, "-d", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdge, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
 			return err
 		}
 
@@ -254,6 +296,7 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 // outbound NAT from pods to outside of the cluster
 func (m *Manager) configureOutboundRules(subnet string) error {
 	if err := m.ensureChain(TableNat, ChainNatOutgoing); err != nil {
+		m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainNatOutgoing)
 		return err
 	}
 
@@ -261,69 +304,79 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		m.log.V(3).Info("configure outgoing NAT iptables rules", "masqOutgoing", m.masqOutgoing)
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil {
+			m.log.Error(err, "failed to get default interface")
 			return err
 		}
 
 		ensureRule := m.ipt.AppendUnique
-		if err := ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+		if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, m.edgePodCIDR))
 			return err
 		}
 
 		connectorSubnets, err := m.getConnectorSubnets()
 		if err != nil {
+			m.log.Error(err, "failed to gt connector subnets")
 			return err
 		}
 
 		for _, connSubnet := range connectorSubnets {
-			if err := ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+			if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+				m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
 				return err
 			}
 		}
 
-		if err := ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+		if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
 			return err
 		}
 
-		if err := ensureRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
+		if err = ensureRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainNatOutgoing))
 			return err
 		}
 	} else {
 		m.log.V(3).Info("remove NAT outgoing iptables rules if it exists", "masqOutgoing", m.masqOutgoing)
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil && strings.Contains(err.Error(), "not found") {
-			m.log.V(3).Info("iFace was not found in the default route. The NAT outgoing iptables rules does not exist, skip to delete the NAT outgoing iptables rules")
-			return nil
-		}
-		if err != nil && !strings.Contains(err.Error(), "not found") {
+			if strings.Contains(err.Error(), "not found") {
+				m.log.V(3).Info("default iFace was not found, skip deleting the NAT outgoing iptables rules")
+				err = nil
+			}
 			return err
 		}
 
 		deleteRule := m.ipt.DeleteIfExists
-
-		if err := deleteRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
+		if err = deleteRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainNatOutgoing))
 			return err
 		}
 
-		if err := deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+		if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
 			return err
 		}
 
-		if err := deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+		if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-d %s -J RETURN", m.edgePodCIDR))
 			return err
 		}
 
 		connectorSubnets, err := m.getConnectorSubnets()
 		if err != nil {
+			m.log.Error(err, "failed to get connector subnets")
 			return err
 		}
 
 		for _, connSubnet := range connectorSubnets {
-			if err := deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+			if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+				m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
 				return err
 			}
 		}
-
 	}
+
 	return nil
 }
 
@@ -333,11 +386,11 @@ func (m *Manager) ensureChain(table, chain string) error {
 		return err
 	}
 
-	if !exists {
-		return m.ipt.NewChain(table, chain)
+	if exists {
+		return nil
 	}
 
-	return nil
+	return m.ipt.NewChain(table, chain)
 }
 
 func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
@@ -351,11 +404,11 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	}
 
 	cni := CNINetConf{
-		CNIVersion: cniVersion,
-		Name:       cniNetworkName,
+		CNIVersion: m.cni.Version,
+		Name:       m.cni.NetworkName,
 		Type:       "bridge",
 
-		Bridge:           cniBridgeName,
+		Bridge:           m.cni.BridgeName,
 		IsDefaultGateway: true,
 		ForceAddress:     true,
 
@@ -365,14 +418,20 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		},
 	}
 
-	filename := filepath.Join(cniConfDir, fmt.Sprintf("%s.conf", cniNetworkName))
+	filename := filepath.Join(m.cni.ConfDir, fmt.Sprintf("%s.conf", m.cni.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")
 	if err != nil {
+		m.log.Error(err, "failed to marshal cni config")
 		return err
 	}
 
 	m.log.V(5).Info("generate cni configuration", "cni", cni)
-	return ioutil.WriteFile(filename, data, 0644)
+	err = ioutil.WriteFile(filename, data, 0644)
+	if err != nil {
+		m.log.Error(err, "failed to write cni config file")
+	}
+
+	return err
 }
 
 func (m *Manager) sync() {
@@ -383,47 +442,64 @@ func (m *Manager) sync() {
 	}
 }
 
-func (m *Manager) syncLoadBalanceRules() error {
-	if _, err := m.netLink.EnsureDummyDevice(dummyInterfaceName); err != nil {
+func (m *Manager) ensureInterfacesAndRoutes() error {
+	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", m.dummyInterfaceName)
+	if _, err := m.netLink.EnsureDummyDevice(m.dummyInterfaceName); err != nil {
+		m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", dummyInterfaceName)
 		return err
 	}
-	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", dummyInterfaceName)
 
 	// the kernel has supported xfrm interface since version 4.19+
-	if m.supportXfrm {
+	if m.useXfrm {
+		log := m.log.V(3).WithValues("xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
+
+		log.Info("ensure that the xfrm interface exists")
 		if err := m.netLink.EnsureXfrmInterface(m.xfrmInterfaceName, uint32(m.xfrmInterfaceID)); err != nil {
-			m.log.Error(err, "failed to create xfrm interface", "xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
+			log.Error(err, "failed to create xfrm interface")
 			return err
 		}
 
-		m.log.V(3).Info("ensure that the xfrm interface exists", "xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
-
-		// add a route to another edge node
-		if err := m.netLink.EnsureRouteAdd(edgePodCIDR, m.xfrmInterfaceName); err != nil {
+		log.Info("add a route to edge node", "edgePodCIDR", m.edgePodCIDR)
+		if err := m.netLink.EnsureRouteAdd(m.edgePodCIDR, m.xfrmInterfaceName); err != nil {
+			m.log.Error(err, "failed to add route", "xfrmInterface", m.xfrmInterfaceName, "podCIDR", m.edgePodCIDR)
 			return err
 		}
-		m.log.V(3).Info("add a route to another edge node", "edgePodCIDR", edgePodCIDR, "xfrmInterface", m.xfrmInterfaceName)
 
 		connectorSubnets, err := m.getConnectorSubnets()
 		if err != nil {
+			log.Error(err, "failed to get connector subnets")
 			return err
 		}
-		if connectorSubnets == nil {
-			return fmt.Errorf("connector subnets not found")
-		}
 
-		// add routes to the cloud
+		// add routes to the cloud connector
 		for _, subnet := range connectorSubnets {
-			if err := m.netLink.EnsureRouteAdd(subnet, m.xfrmInterfaceName); err != nil {
+			if err = m.netLink.EnsureRouteAdd(subnet, m.xfrmInterfaceName); err != nil {
+				m.log.Error(err, "failed to create route", "subnet", subnet)
 				return err
 			}
 		}
-		m.log.V(3).Info("add routes to the cloud", "connectorSubnets", connectorSubnets, "xfrmInterface", m.xfrmInterfaceName)
 	}
+	return nil
+}
 
+func (m *Manager) syncLoadBalanceRules() error {
 	// sync service clusterIP bound to kube-ipvs0
 	// sync ipvs
-	return m.syncService()
+	m.log.V(3).Info("load services config file")
+	conf, err := loadServiceConf(m.servicesConfPath)
+	if err != nil {
+		m.log.Error(err, "failed to load services config")
+		return err
+	}
+
+	m.log.V(3).Info("binding cluster ips to dummy interface")
+	servers := toServers(conf)
+	if err = m.syncServiceClusterIPBind(servers); err != nil {
+		return err
+	}
+
+	m.log.V(3).Info("synchronize ipvs rules")
+	return m.syncVirtualServer(servers)
 }
 
 func (m *Manager) getConnectorSubnets() ([]string, error) {
@@ -437,81 +513,68 @@ func (m *Manager) getConnectorSubnets() ([]string, error) {
 			return p.Subnets, nil
 		}
 	}
+
 	return nil, nil
 }
 
-func (m *Manager) syncService() error {
-	conf, err := loadServiceConf(m.servicesConfPath)
-	if err != nil {
-		return err
-	}
-
-	servers := toServers(conf)
-	if err := m.syncServiceClusterIPBind(servers); err != nil {
-		return err
-	}
-
-	return m.syncVirtualServer(servers)
-}
-
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {
-	bindAddrs, err := m.netLink.ListBindAddress(dummyInterfaceName)
+	log := m.log.WithValues("dummyInterface", m.dummyInterfaceName)
+
+	addresses, err := m.netLink.ListBindAddress(m.dummyInterfaceName)
 	if err != nil {
+		log.Error(err, "failed to get addresses from dummyInterface")
 		return err
 	}
-	bindAddrSet := sets.NewString(bindAddrs...)
-	m.log.V(3).Info("list all IP addresses which are bound in Dummy interface", "dummyInterface", dummyInterfaceName, "ipAddrs", bindAddrs)
 
-	allServiceAddrs := sets.NewString()
+	boundedAddresses := sets.NewString(addresses...)
+	allServiceAddresses := sets.NewString()
 	for _, s := range servers {
-		allServiceAddrs.Insert(s.virtualServer.Address.String())
+		allServiceAddresses.Insert(s.virtualServer.Address.String())
 	}
-	m.log.V(3).Info("extract clusterIP of all services", "clusterIPs", allServiceAddrs)
 
-	addAddrs := allServiceAddrs.Difference(bindAddrSet)
-	for addr := range addAddrs {
-		if _, err := m.netLink.EnsureAddressBind(addr, dummyInterfaceName); err != nil {
+	for addr := range allServiceAddresses.Difference(boundedAddresses) {
+		if _, err = m.netLink.EnsureAddressBind(addr, m.dummyInterfaceName); err != nil {
+			log.Error(err, "failed to bind address", "addr", addr)
 			return err
 		}
 	}
-	m.log.V(3).Info("get IP addresses to be bound to dummy interface", "IPAddrs", addAddrs)
 
-	deleteAddrs := bindAddrSet.Difference(allServiceAddrs)
-	for addr := range deleteAddrs {
-		if err := m.netLink.UnbindAddress(addr, dummyInterfaceName); err != nil {
+	for addr := range boundedAddresses.Difference(allServiceAddresses) {
+		if err = m.netLink.UnbindAddress(addr, m.dummyInterfaceName); err != nil {
+			log.Error(err, "failed to unbind address", "addr", addr)
 			return err
 		}
 	}
-	m.log.V(3).Info("get IP addresses to be unbound to dummy interface", "IPAddrs", deleteAddrs)
+
 	return nil
 }
 
 func (m *Manager) syncVirtualServer(servers []server) error {
 	oldVirtualServers, err := m.ipvs.GetVirtualServers()
 	if err != nil {
+		m.log.Error(err, "failed to get ipvs virtual servers")
 		return err
 	}
 	oldVirtualServerSet := sets.NewString()
-	oldVirtualServerMap := make(map[string]*ipvs.VirtualServer)
+	oldVirtualServerMap := make(map[string]*ipvs.VirtualServer, len(oldVirtualServers))
 	for _, vs := range oldVirtualServers {
 		oldVirtualServerSet.Insert(vs.String())
 		oldVirtualServerMap[vs.String()] = vs
 	}
-	m.log.V(3).Info("get old virtual servers", "virtualServers", oldVirtualServerSet)
 
 	allVirtualServerSet := sets.NewString()
-	allVirtualServerMap := make(map[string]*ipvs.VirtualServer)
-	allVirtualServers := make(map[string]server)
+	allVirtualServerMap := make(map[string]*ipvs.VirtualServer, len(servers))
+	allVirtualServers := make(map[string]server, len(servers))
 	for _, s := range servers {
 		allVirtualServerSet.Insert(s.virtualServer.String())
 		allVirtualServerMap[s.virtualServer.String()] = s.virtualServer
 		allVirtualServers[s.virtualServer.String()] = s
 	}
-	m.log.V(3).Info("get all virtual servers", "virtualServers", allVirtualServerSet)
 
 	virtualServersToAdd := allVirtualServerSet.Difference(oldVirtualServerSet)
 	for vs := range virtualServersToAdd {
 		if err := m.ipvs.AddVirtualServer(allVirtualServerMap[vs]); err != nil {
+			m.log.Error(err, "failed to add virtual server", "virtualServer", vs)
 			return err
 		}
 
@@ -521,15 +584,14 @@ func (m *Manager) syncVirtualServer(servers []server) error {
 			return err
 		}
 	}
-	m.log.V(3).Info("added virtual servers", "virtualServers", virtualServersToAdd)
 
 	virtualServersToDel := oldVirtualServerSet.Difference(allVirtualServerSet)
 	for vs := range virtualServersToDel {
 		if err := m.ipvs.DeleteVirtualServer(oldVirtualServerMap[vs]); err != nil {
+			m.log.Error(err, "failed to delete virtual server", "virtualServer", vs)
 			return err
 		}
 	}
-	m.log.V(3).Info("deleted virtual servers", "virtualServers", virtualServersToDel)
 
 	virtualServersToUpdate := allVirtualServerSet.Intersection(oldVirtualServerSet)
 	for vs := range virtualServersToUpdate {
@@ -539,13 +601,14 @@ func (m *Manager) syncVirtualServer(servers []server) error {
 			return err
 		}
 	}
-	m.log.V(3).Info("updated virtual servers", "virtualServers", virtualServersToUpdate)
+
 	return nil
 }
 
 func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServers []*ipvs.RealServer) error {
 	oldRealServers, err := m.ipvs.GetRealServers(virtualServer)
 	if err != nil {
+		m.log.Error(err, "failed to get real servers")
 		return err
 	}
 	oldRealServerSet := sets.NewString()
@@ -554,7 +617,6 @@ func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServe
 		oldRealServerSet.Insert(rs.String())
 		oldRealServerMap[rs.String()] = rs
 	}
-	m.log.V(3).Info("get old real servers of the virtual server", "virtualServer", virtualServer, "realServers", oldRealServerSet)
 
 	allRealServerSet := sets.NewString()
 	allRealServerMap := make(map[string]*ipvs.RealServer)
@@ -562,22 +624,22 @@ func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServe
 		allRealServerSet.Insert(rs.String())
 		allRealServerMap[rs.String()] = rs
 	}
-	m.log.V(3).Info("get all real servers of the virtual server", "virtualServer", virtualServer, "realServers", allRealServerSet)
 
 	realServersToAdd := allRealServerSet.Difference(oldRealServerSet)
 	for rs := range realServersToAdd {
 		if err := m.ipvs.AddRealServer(virtualServer, allRealServerMap[rs]); err != nil {
+			m.log.Error(err, "failed to add real server", "realServer", rs)
 			return err
 		}
 	}
-	m.log.V(3).Info("added new real servers of the virtual server", "virtualServer", virtualServer, "realServers", realServersToAdd)
 
 	realServersToDel := oldRealServerSet.Difference(allRealServerSet)
 	for rs := range realServersToDel {
 		if err := m.ipvs.DeleteRealServer(virtualServer, oldRealServerMap[rs]); err != nil {
+			m.log.Error(err, "failed to delete real server", "realServer", rs)
 			return err
 		}
 	}
-	m.log.V(3).Info("deleted inactive real servers of the virtual server", "virtualServer", virtualServer, "realServers", realServersToDel)
+
 	return nil
 }
