@@ -22,8 +22,7 @@ import (
 )
 
 var (
-	connections []tunnel.ConnConfig
-	connNames   stringset.Set
+	connNames stringset.Set
 )
 
 func (m *Manager) readCfgFromFile() error {
@@ -34,7 +33,7 @@ func (m *Manager) readCfgFromFile() error {
 
 	netconf.EnsureNodeSubnets(&nc)
 
-	connections = []tunnel.ConnConfig{}
+	m.connections = nil
 	connNames = stringset.New()
 
 	for _, peer := range nc.Peers {
@@ -52,7 +51,7 @@ func (m *Manager) readCfgFromFile() error {
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
 		}
-		connections = append(connections, con)
+		m.connections = append(m.connections, con)
 		connNames.Add(con.Name)
 	}
 
@@ -79,7 +78,7 @@ func (m *Manager) syncConnections() error {
 	}
 
 	// load active connections
-	for _, c := range connections {
+	for _, c := range m.connections {
 		if err = m.tm.LoadConn(c); err != nil {
 			return err
 		}
