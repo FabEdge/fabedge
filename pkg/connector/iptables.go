@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package iptables
-
-import (
-	"github.com/coreos/go-iptables/iptables"
-)
+package connector
 
 const (
 	TableFilter  = "filter"
@@ -24,32 +20,24 @@ const (
 	ChainFabEdge = "FABEDGE"
 )
 
-func EnsureIPTablesRules(cidr string) error {
-	ipt, err := iptables.New()
+func (m *Manager) ensureIPTablesRules(cidr string) error {
+	existed, err := m.ipt.ChainExists(TableFilter, ChainFabEdge)
 	if err != nil {
 		return err
 	}
 
-	// ensure chain exists
-	exists, err := ipt.ChainExists(TableFilter, ChainFabEdge)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		return ipt.NewChain(TableFilter, ChainFabEdge)
+	if !existed {
+		return m.ipt.NewChain(TableFilter, ChainFabEdge)
 	}
 
 	// ensure rules exist
-	if err = ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdge); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdge); err != nil {
 		return err
 	}
-
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdge, "-s", cidr, "-j", "ACCEPT"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdge, "-s", cidr, "-j", "ACCEPT"); err != nil {
 		return err
 	}
-
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdge, "-d", cidr, "-j", "ACCEPT"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdge, "-d", cidr, "-j", "ACCEPT"); err != nil {
 		return err
 	}
 

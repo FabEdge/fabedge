@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/fabedge/fabedge/pkg/tunnel"
@@ -87,6 +88,24 @@ func (m StrongSwanManager) ListConnNames() ([]string, error) {
 	})
 
 	return names, err
+}
+
+func (m StrongSwanManager) IsActive() (bool, error) {
+	var active bool
+	err := m.do(func(session *vici.Session) error {
+		msg, err := session.CommandRequest("stats", vici.NewMessage())
+		if err != nil {
+			return err
+		}
+
+		msg = msg.Get("ikesas").(*vici.Message)
+		total, _ := strconv.Atoi(msg.Get("total").(string))
+		active = total > 0
+
+		return nil
+	})
+
+	return active, err
 }
 
 func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
