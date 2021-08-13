@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package manager
+package connector
 
 import (
 	"github.com/bep/debounce"
 	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/viper"
 	"k8s.io/klog/v2"
 	"time"
 )
@@ -26,7 +25,7 @@ func eventOpIs(ent fsnotify.Event, Op fsnotify.Op) bool {
 	return ent.Op&Op == Op
 }
 
-func onConfigFileChange(fileToWatch string, callback func()) {
+func (m *Manager) onConfigFileChange(fileToWatch string, callback func()) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		klog.Errorf("failed to initialize fsnotify: %s", err)
@@ -44,7 +43,7 @@ func onConfigFileChange(fileToWatch string, callback func()) {
 	}
 
 	// use debounce to avoid too much fsnotify events
-	debounced := debounce.New(viper.GetDuration("debounceDuration"))
+	debounced := debounce.New(m.config.debounceDuration)
 
 	for {
 		select {

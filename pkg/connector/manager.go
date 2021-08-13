@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package manager
+package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/connector/iptables"
-	"github.com/fabedge/fabedge/pkg/connector/route"
-	"github.com/fabedge/fabedge/pkg/connector/tunnel"
+	"github.com/coreos/go-iptables/iptables"
+	"github.com/fabedge/fabedge/pkg/tunnel"
+	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	"github.com/spf13/viper"
 	"k8s.io/klog/v2"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -28,12 +29,17 @@ import (
 
 type Manager struct {
 	config *config
+	tm     tunnel.Manager
+	ipt    *iptables.IPTables
 }
 
 type config struct {
-	interval         time.Duration
+	interval         time.Duration //sync interval
+	debounceDuration time.Duration
 	edgePodCIDR      string
 	tunnelConfigFile string
+	certFile         string
+	viciSocket       string
 }
 
 func NewManager() *Manager {
@@ -41,9 +47,28 @@ func NewManager() *Manager {
 		interval:         viper.GetDuration("syncPeriod"),
 		edgePodCIDR:      viper.GetString("edgePodCIDR"),
 		tunnelConfigFile: viper.GetString("tunnelConfig"),
+		certFile:         viper.GetString("certFile"),
+		viciSocket:       viper.GetString("vicisocket"),
+		debounceDuration: viper.GetDuration("debounceDuration"),
 	}
+
+	tm, err := strongswan.New(
+		strongswan.SocketFile(c.viciSocket),
+		strongswan.StartAction("none"),
+	)
+	if err != nil {
+		klog.Fatal(err)
+	}
+
+	ipt, err := iptables.New()
+	if err != nil {
+		klog.Fatal(err)
+	}
+
 	return &Manager{
 		config: c,
+		tm:     tm,
+		ipt:    ipt,
 	}
 }
 
@@ -59,7 +84,7 @@ func runTasks(interval time.Duration, handler ...func()) {
 
 func (m *Manager) Start() {
 	routeTaskFn := func() {
-		if err := route.SyncRoutes(m.config.edgePodCIDR); err != nil {
+		if err := m.syncRoutes(m.config.edgePodCIDR); err != nil {
 			klog.Errorf("error to sync routes: %s", err)
 		} else {
 			klog.Infof("routes:%s are synced", m.config.edgePodCIDR)
@@ -67,7 +92,7 @@ func (m *Manager) Start() {
 	}
 
 	iptablesTaskFn := func() {
-		if err := iptables.EnsureIPTablesRules(m.config.edgePodCIDR); err != nil {
+		if err := m.ensureIPTablesRules(m.config.edgePodCIDR); err != nil {
 			klog.Errorf("error when to add iptables rules: %s", err)
 		} else {
 			klog.Infof("iptables rules are added")
@@ -75,7 +100,7 @@ func (m *Manager) Start() {
 	}
 
 	tunnelTaskFn := func() {
-		if err := tunnel.SyncConnections(); err != nil {
+		if err := m.syncConnections(); err != nil {
 			klog.Errorf("error when to sync tunnels: %s", err)
 		} else {
 			klog.Infof("tunnels are synced")
@@ -88,7 +113,7 @@ func (m *Manager) Start() {
 	go runTasks(m.config.interval, tasks...)
 
 	// sync tunnels when config file updated by cloud.
-	go onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn)
+	go m.onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn)
 
 	klog.Info("manager started")
 
@@ -101,6 +126,10 @@ func (m *Manager) Start() {
 }
 
 func (m *Manager) gracefulShutdown() {
-	//immediately sync
-	_ = route.SyncRoutes(m.config.edgePodCIDR)
+	_ = delRoutes(m.config.edgePodCIDR)
+
+	cmd := exec.Command("ip", "xfrm", "policy", "flush")
+	_ = cmd.Run()
+	cmd = exec.Command("ip", "xfrm", "state", "flush")
+	_ = cmd.Run()
 }

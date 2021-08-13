@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tunnel
+package connector
 
 import (
 	"fmt"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	"github.com/jjeffery/stringset"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -28,17 +26,14 @@ var (
 	connNames   stringset.Set
 )
 
-func ReadCfgFromFile() error {
-	cfgFile := viper.GetString("tunnelconfig")
-
-	nc, err := netconf.LoadNetworkConf(cfgFile)
+func (m *Manager) readCfgFromFile() error {
+	nc, err := netconf.LoadNetworkConf(m.config.tunnelConfigFile)
 	if err != nil {
 		return err
 	}
 
 	netconf.EnsureNodeSubnets(&nc)
 
-	cert := viper.GetString("certFile")
 	connections = []tunnel.ConnConfig{}
 	connNames = stringset.New()
 
@@ -48,7 +43,7 @@ func ReadCfgFromFile() error {
 			Name: fmt.Sprintf("cloud-%s", peer.Name),
 
 			LocalID:          nc.ID,
-			LocalCerts:       []string{cert},
+			LocalCerts:       []string{m.config.certFile},
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,
 
@@ -64,21 +59,12 @@ func ReadCfgFromFile() error {
 	return nil
 }
 
-func SyncConnections() error {
-	if err := ReadCfgFromFile(); err != nil {
+func (m *Manager) syncConnections() error {
+	if err := m.readCfgFromFile(); err != nil {
 		return err
 	}
 
-	viciSocket := viper.GetString("vicisocket")
-	tm, err := strongswan.New(
-		strongswan.SocketFile(viciSocket),
-		strongswan.StartAction("none"),
-	)
-	if err != nil {
-		return err
-	}
-
-	oldNames, err := tm.ListConnNames()
+	oldNames, err := m.tm.ListConnNames()
 	if err != nil {
 		return err
 	}
@@ -86,7 +72,7 @@ func SyncConnections() error {
 	// remove inactive connections
 	for _, name := range oldNames {
 		if !connNames.Contains(name) {
-			if err = tm.UnloadConn(name); err != nil {
+			if err = m.tm.UnloadConn(name); err != nil {
 				return err
 			}
 		}
@@ -94,28 +80,9 @@ func SyncConnections() error {
 
 	// load active connections
 	for _, c := range connections {
-		if err = tm.LoadConn(c); err != nil {
+		if err = m.tm.LoadConn(c); err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-func UnloadConnections() error {
-	viciSocket := viper.GetString("vicisocket")
-	tm, err := strongswan.New(strongswan.SocketFile(viciSocket))
-	if err != nil {
-		return err
-	}
-
-	allNames, err := tm.ListConnNames()
-	if err != nil {
-		return err
-	}
-
-	for _, name := range allNames {
-		_ = tm.UnloadConn(name)
 	}
 
 	return nil

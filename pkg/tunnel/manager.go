@@ -18,6 +18,7 @@ type Manager interface {
 	ListConnNames() ([]string, error)
 	LoadConn(conn ConnConfig) error
 	UnloadConn(name string) error
+	IsActive() (bool, error)
 }
 
 type ConnConfig struct {

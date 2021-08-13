@@ -6,12 +6,10 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/bep/debounce v1.2.0
 	github.com/coreos/go-iptables v0.6.0
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-logr/logr v0.3.0
 	github.com/jjeffery/stringset v1.0.2
-	github.com/labstack/echo/v4 v4.1.9
-	github.com/labstack/gommon v0.2.9
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/moby/ipvs v1.0.1

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package route
+package connector
 
 import (
 	"github.com/vishvananda/netlink"
@@ -20,41 +20,21 @@ import (
 )
 
 const TypeBlackHole = 6
-const StrongswanTable = 220
 
-func edgeRoutesExist() (bool, error) {
-	routeFilter := &netlink.Route{Table: StrongswanTable}
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
-	if err != nil {
-		return false, err
-	}
-	//since table 220 is dedicated for strongswan, we don't do the preciously comparison.
-	if len(routes) > 0 {
-		return true, nil
-	} else {
-		return false, nil
-	}
-}
-
-// SyncRoutes sync the aggregated blackhole route with the specific ones.
-func SyncRoutes(cidr string) error {
-	exist, err := edgeRoutesExist()
+// syncRoutes propagates one aggregated blackhole route
+func (m *Manager) syncRoutes(cidr string) error {
+	active, err := m.tm.IsActive()
 	if err != nil {
 		return err
+	}
+
+	// I am inactive, nothing to do
+	if !active {
+		return nil
 	}
 
 	dst, err := netlink.ParseIPNet(cidr)
-	if err != nil {
-		return err
-	}
 	route := netlink.Route{Type: TypeBlackHole, Dst: dst}
-
-	// strongswan tunnels are disconnected, to remove the aggregated route
-	if !exist {
-		return netlink.RouteDel(&route)
-	}
-
-	// strongswan tunnels are connected, to add the aggregated route
 	if err = netlink.RouteAdd(&route); err != nil {
 		if !fileExistsError(err) {
 			return err
@@ -62,6 +42,12 @@ func SyncRoutes(cidr string) error {
 	}
 
 	return nil
+}
+
+func delRoutes(cidr string) error {
+	dst, _ := netlink.ParseIPNet(cidr)
+	route := netlink.Route{Type: TypeBlackHole, Dst: dst}
+	return netlink.RouteDel(&route)
 }
 
 func fileExistsError(err error) bool {

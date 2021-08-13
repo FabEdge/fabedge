@@ -16,7 +16,6 @@ package connector
 
 import (
 	"fmt"
-	"github.com/fabedge/fabedge/pkg/connector/manager"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/klog/v2"
@@ -33,7 +32,7 @@ var rootCmd = &cobra.Command{
 	Short: "",
 	Long:  `connector is part of fabedge, which is responsible for the tunnel/iptables/route management in the cloud.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		mgr := manager.NewManager()
+		mgr := NewManager()
 		mgr.Start()
 	},
 }
@@ -56,7 +55,7 @@ func init() {
 // cerFile: X509 cert for connector node
 func validateConfig() error {
 	allMandatoryKeys := []string{"syncPeriod", "edgePodCIDR", "IP", "Subnets",
-		"tunnelConfig", "viciSocket", "certFile", "fabedgeNS"}
+		"nodeSubnets", "tunnelConfig", "viciSocket", "certFile", "fabedgeNS"}
 
 	for _, key := range allMandatoryKeys {
 		if !viper.IsSet(key) {
