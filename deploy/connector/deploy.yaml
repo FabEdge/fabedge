@@ -46,11 +46,12 @@ spec:
           volumeMounts:
             - name: var-run
               mountPath: /var/run/
-            - name: ipsec-d
+            - name: certs
               mountPath: /etc/ipsec.d/
               readOnly: true
             - name: ipsec-secrets
               mountPath: /etc/ipsec.secrets
+              subPath: etc/ipsec.secrets
               readOnly: true
         - name: connector
           securityContext:
@@ -62,7 +63,7 @@ spec:
               mountPath: /var/run/
             - name: connector-config
               mountPath: /etc/fabedge/
-            - name: ipsec-d
+            - name: certs
               mountPath: /etc/ipsec.d/
               readOnly: true
       volumes:
@@ -71,9 +72,19 @@ spec:
         - name: connector-config
           configMap:
             name: connector-config
-        - name: ipsec-d
-          hostPath:
-            path: /etc/fabedge/ipsec/
+        - name: certs
+          secret:
+            items:
+            - key: ca.pem
+              path: cacerts/ca.pem
+            - key: connector_cert.pem
+              path: certs/connector_cert.pem
+            - key: connector_key.pem
+              path: private/connector_key.pem
+            secretName: connector-certs
         - name: ipsec-secrets
-          hostPath:
-            path: /etc/fabedge/ipsec/ipsec.secrets
+          secret:
+            items:
+            - key: ipsec.secrets
+              path: etc/ipsec.secrets
+            secretName: connector-ipsec-secrets
