@@ -1,0 +1,46 @@
+---
+- name: pre-deploy
+  hosts: all
+  become_method: sudo
+  become_user: root
+  become: true
+  any_errors_fatal: true
+  gather_facts: no
+  tasks:
+    - name: Set hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Delegate to update /etc/hosts
+      lineinfile:
+        dest: /etc/hosts
+        regexp: '.*{{ inventory_hostname }}$'
+        line: "{{ ansible_host }} {% if cluster_name is defined %}{{ inventory_hostname }}.{{ cluster_name }}{% endif %} {{ inventory_hostname }}"
+        state: present
+      with_items: "{{ groups['all'] }}"
+      delegate_to: "{{ item }}"
+      when: inventory_hostname not in ("localhost", "127.0.0.1")
+    
+    - name: Update /etc/hosts
+      lineinfile:
+        dest: /etc/hosts
+        regexp: '.*{{ item }}$'
+        line: "{{ hostvars[item]['ansible_host'] }} {% if cluster_name is defined %}{{ item }}.{{ cluster_name }}{% endif %} {{ item }}"
+        state: present
+      with_items:
+        - "{{ groups['all'] }}"
+      when: inventory_hostname not in ("localhost", "127.0.0.1")
+
+    - setup:
+
+    - name: Set SELinux to disabled state
+      selinux:
+        state: disabled
+      when: ansible_distribution in ['CentOS', 'Red Hat Enterprise Linux']
+
+    - name: Disable firewalld
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+      ignore_errors: yes

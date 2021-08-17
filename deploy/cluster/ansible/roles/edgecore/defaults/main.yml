@@ -1,0 +1,27 @@
+---
+edgecore_enabled: true
+edgecore_action: deploy
+edgecore_supported_actions:
+  - deploy
+  - reset
+
+edgecore_edgedNodeIP: "{{ ansible_host }}"
+edgecore_quicServer: "{{ ansible_host }}:10001"
+
+edgecore_server_domain_name: "{{ cluster_primary_ip }}"
+edgecore_edgeHubHttpServer: "https://{{ edgecore_server_domain_name }}:{{ cloudcore_certandreadyz_nodePort  }}"
+edgecore_edgeHubWebSocketServer: "{{ edgecore_server_domain_name }}:{{ cloudcore_cloudhub_nodePort }}"
+edgecore_edgeStreamServer: "{{ edgecore_server_domain_name }}:{{ cloudcore_cloudstream_tunnelPort_nodePort }}"
+
+edgecore_version: v1.5.0
+edgecore_edgedRuntimeType: "{{ container_manager }}"
+edgecore_edgedRuntime_sock: "{% if edgecore_edgedRuntimeType == 'docker' %}/var/run/docker.sock{% endif %}"
+edgecore_containerName: edgecore
+edgecore_edgedHostName: "{{ inventory_hostname }}"
+edgecore_edgedPodSandboxImage_version: 3.1
+edgecore_edgedPodSandboxImage: "kubeedge/pause:{{ edgecore_edgedPodSandboxImage_version }}"
+edgecore_edgeconfig: "/etc/kubeedge/config/edgecore.yaml"
+edgecore_edgecoreImage: "kubeedge/edgecore:{{ edgecore_version }}"
+edgecore_mqttMode: 0
+edgecore_mqttServerExternal: "tcp://127.0.0.1:1883"
+edgecore_config_directory: /etc/kubeedge/config

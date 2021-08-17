@@ -1,0 +1,5 @@
+---
+docker_action: deploy
+docker_supported_actions:
+  - deploy
+  - reset

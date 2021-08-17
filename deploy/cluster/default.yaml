@@ -1,0 +1,33 @@
+---
+cloudcore_enabled: true
+cloudcore_cloudhub_nodePort: 30011
+cloudcore_certandreadyz_nodePort: 30012
+cloudcore_cloudstream_streamPort_nodePort: 30013
+cloudcore_cloudstream_tunnelPort_nodePort: 30014
+
+edgecore_enabled: true
+
+# kubespray start
+kubespray_version: v2.15.0
+kubespray_master_group_name: "kube-master"
+kubespray_node_group_name: "kube-node"
+cluster_name: root-cluster
+apiserver_loadbalancer_domain_name: "vip.edge.io"
+dns_min_replicas: "{% if groups[kubespray_master_group_name] | length > 1 %}2{% else %}1{% endif %}"
+metrics_server_enabled: true
+metrics_server_version: v0.4.2
+deploy_container_engine: false
+populate_inventory_to_hosts_file: false
+
+kube_kubeadm_apiserver_extra_args:
+  feature-gates: "TTLAfterFinished=true"
+kube_kubeadm_controller_extra_args:
+  feature-gates: "TTLAfterFinished=true"
+kube_kubeadm_scheduler_extra_args:
+  feature-gates: "TTLAfterFinished=true"
+# kubespray end
+
+cluster_primary_ip: "{% if keepalived_vip is defined %}{{ keepalived_vip }}{% else %}{{ hostvars[groups[kubespray_master_group_name][0]]['ansible_host'] }}{% endif %}"
+single_master_mode: "{% if groups[kubespray_master_group_name] | length > 1 %}false{% else %}true{% endif %}"
+
+iptables_persistent_enabled: true

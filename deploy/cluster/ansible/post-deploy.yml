@@ -1,0 +1,48 @@
+---
+- name: post-deploy
+  hosts: all
+  become_method: sudo
+  become_user: root
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Fetch kube-config
+      block:
+        - fetch:
+            src: "/usr/local/bin/kubectl"
+            dest: "/usr/local/bin/"
+            flat: yes
+        - file:
+            dest: "/usr/local/bin/kubectl"
+            mode: 0755
+          delegate_to: localhost
+        - fetch:
+            src: "/etc/kubernetes/admin.conf"
+            dest: /tmp/
+            flat: yes
+        - file:
+            path: /root/.kube/
+            state: directory
+          delegate_to: localhost
+        - copy:
+            src: /tmp/admin.conf
+            dest: /root/.kube/config
+            mode: 0700
+          delegate_to: localhost
+        - shell: kubectl config set-cluster {{ cluster_name }} --server https://{{ hostvars[groups[kubespray_master_group_name][0]]['ansible_host'] }}:6443
+          delegate_to: localhost
+      when: inventory_hostname == groups[kubespray_master_group_name][0]
+
+    - import_role:
+        name: kubespray-patch
+      delegate_to: localhost
+      when: inventory_hostname == groups[kubespray_master_group_name][0]
+
+    - name: Set node role
+      shell: kubectl label nodes "{{ item }}" node-role.kubernetes.io/node= --overwrite
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/bin/"
+      with_items: "{{ groups[kubespray_node_group_name] }}"
+      delegate_to: "{{ groups[kubespray_master_group_name][0] }}"
+      when:
+        - inventory_hostname in groups[kubespray_node_group_name]

@@ -1,0 +1,11 @@
+[Unit]
+Description=edgecore.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/edgecore --logtostderr=false --log-file=/var/log/kubeedge/edgecore.log --config {{ edgecore_config_directory }}/edgecore.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

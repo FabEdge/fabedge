@@ -1,0 +1,24 @@
+---
+- import_tasks: repo.yml
+  when: docker_repo_enabled | default(True) | bool
+
+- name: Install docker-ce
+  package:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+
+- name: Create dirictory
+  file:
+    path: /etc/docker/
+    state: directory
+
+- name: Add config
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {"log-opts": {"max-size": "10m", "max-file": "2"},"live-restore": true, "exec-opts": ["native.cgroupdriver=systemd"]}
+  notify: Enable and Restart docker
+
+- meta: flush_handlers

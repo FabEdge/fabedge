@@ -1,0 +1,27 @@
+---
+- name: Prepare directory
+  file:
+    path: "{{ iptables_persistent_config_path | dirname }}"
+    state: directory
+    recurse: yes
+
+- name: Copy config
+  template:
+    src: "{{ iptables_persistent_config_path | basename }}"
+    dest: "{{ iptables_persistent_config_path | dirname }}"
+    mode: 0644
+  notify: Enable and Restart iptables-persistent
+
+- name: Copy script 
+  copy:
+    src: "{{ iptables_persistent_script_path | basename }}"
+    dest: "{{ iptables_persistent_script_path }}"
+    mode: 0755
+  notify: Enable and Restart iptables-persistent
+
+- name: Copy service
+  template:
+    src: iptables-persistent.service
+    dest: /etc/systemd/system/iptables-persistent.service
+    mode: 0644
+  notify: Enable and Restart iptables-persistent
