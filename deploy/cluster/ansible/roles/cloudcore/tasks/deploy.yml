@@ -1,0 +1,9 @@
+---
+- include_tasks: cloudstream_certs.yaml
+
+# iptables -t nat -A OUTPUT -p tcp --dport 10350 -j DNAT --to 10.22.46.253:30013
+
+- name: "Deploy cloudcore"
+  community.kubernetes.k8s:
+    state: present
+    definition: "{{ lookup('template', 'cloudcore.yaml.j2') | from_yaml_all | list }}"

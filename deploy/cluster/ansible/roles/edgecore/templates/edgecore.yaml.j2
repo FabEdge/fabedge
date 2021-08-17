@@ -1,0 +1,104 @@
+# With --defaultconfig flag, users can easily get a default full config file as reference, with all fields (and field descriptions) included and default values set. 
+# Users can modify/create their own configs accordingly as reference. 
+# Because it is a full configuration, it is more suitable for advanced users.
+
+apiVersion: edgecore.config.kubeedge.io/v1alpha1
+database:
+  aliasName: default
+  dataSource: /var/lib/kubeedge/edgecore.db
+  driverName: sqlite3
+kind: EdgeCore
+modules:
+  dbTest:
+    enable: false
+  deviceTwin:
+    enable: true
+  edgeHub:
+    enable: true
+    heartbeat: 15
+    httpServer: {{ edgecore_edgeHubHttpServer }}
+    projectID: e632aba927ea4ac2b575ec1603d56f10
+    quic:
+      handshakeTimeout: 30
+      readDeadline: 15
+      server: {{ edgecore_quicServer }}
+      writeDeadline: 15
+    rotateCertificates: true
+    tlsCaFile: /etc/kubeedge/ca/rootCA.crt
+    tlsCertFile: /etc/kubeedge/certs/server.crt
+    tlsPrivateKeyFile: /etc/kubeedge/certs/server.key
+    token: {{ edgecore_edgeHubToken }}
+    websocket:
+      enable: true
+      handshakeTimeout: 30
+      readDeadline: 15
+      server: {{ edgecore_edgeHubWebSocketServer }}
+      writeDeadline: 15
+  edgeMesh:
+    enable: false
+    lbStrategy: RoundRobin
+    listenInterface: docker0
+    listenPort: 40001
+    subNet: 9.251.0.0/16
+  edgeStream:
+    enable: true
+    handshakeTimeout: 30
+    readDeadline: 15
+    server: {{ edgecore_edgeStreamServer }}
+    tlsTunnelCAFile: /etc/kubeedge/ca/rootCA.crt
+    tlsTunnelCertFile: /etc/kubeedge/certs/server.crt
+    tlsTunnelPrivateKeyFile: /etc/kubeedge/certs/server.key
+    writeDeadline: 15
+  edged:
+    cgroupDriver: systemd
+    cgroupRoot: ""
+    cgroupsPerQOS: true
+    clusterDNS: ""
+    clusterDomain: ""
+    cniBinDir: /opt/cni/bin
+    cniCacheDirs: /var/lib/cni/cache
+    cniConfDir: /etc/cni/net.d
+    concurrentConsumers: 5
+    devicePluginEnabled: false
+    dockerAddress: unix:///var/run/docker.sock
+    edgedMemoryCapacity: {{ ansible_memtotal_mb * 1024 * 1024 }}
+    enable: true
+    enableMetrics: true
+    gpuPluginEnabled: false
+    hostnameOverride: {{ edgecore_edgedHostName }}
+    imageGCHighThreshold: 80
+    imageGCLowThreshold: 40
+    imagePullProgressDeadline: 60
+    maximumDeadContainersPerPod: 1
+    networkPluginMTU: 1500
+    nodeIP: {{ edgecore_edgedNodeIP }}
+    nodeStatusUpdateFrequency: 30
+    podSandboxImage: {{ edgecore_edgedPodSandboxImage }}
+    registerNode: true
+    registerNodeNamespace: default
+    remoteImageEndpoint: unix:///var/run/dockershim.sock
+    remoteRuntimeEndpoint: unix:///var/run/dockershim.sock
+    runtimeRequestTimeout: 2
+    runtimeType: {{ edgecore_edgedRuntimeType }}
+    volumeStatsAggPeriod: 60000000000
+  eventBus:
+    enable: true
+    eventBusTLS:
+      tlsMqttCAFile: /etc/kubeedge/ca/rootCA.crt
+      tlsMqttCertFile: /etc/kubeedge/certs/server.crt
+      tlsMqttPrivateKeyFile: /etc/kubeedge/certs/server.key
+    mqttMode: 0
+    mqttQOS: 0
+    mqttRetain: false
+    mqttServerExternal: tcp://127.0.0.1:1883
+    mqttServerInternal: tcp://127.0.0.1:1884
+    mqttSessionQueueSize: 100
+  metaManager:
+    contextSendGroup: hub
+    contextSendModule: websocket
+    enable: true
+    podStatusSyncInterval: 60
+  serviceBus:
+    enable: false
+
+

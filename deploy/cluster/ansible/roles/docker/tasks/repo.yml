@@ -1,0 +1,33 @@
+---
+- block:
+    - name: Copy gpg
+      copy:
+        src: docker-archive-keyring.gpg
+        dest: /tmp/docker-archive-keyring.gpg
+    
+    - name: Ensure docker-archive-keyring.gpg absent
+      file:
+        path: /usr/share/keyrings/docker-archive-keyring.gpg
+        state: absent
+    
+    - name: Install docker-archive-keyring.gpg
+      shell: gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg /tmp/docker-archive-keyring.gpg
+    
+    - name: Install docker.list
+      template:
+        src: docker.list.j2
+        dest: /etc/apt/sources.list.d/docker.list
+    - name: apt update
+      shell: apt update
+  when:
+    - ansible_distribution in ["Ubuntu"]
+
+- block:
+    - name: Install docker-ce.repo
+      copy:
+        src: docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+    - name: yum makecache
+      shell: yum makecache
+  when:
+    - ansible_distribution in ["CentOS", "RedHat"]

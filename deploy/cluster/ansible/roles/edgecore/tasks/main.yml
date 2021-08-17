@@ -1,0 +1,6 @@
+---
+- fail:
+    msg: "unsupported action: {{ edgecore_action }}"
+  when: edgecore_action not in edgecore_supported_actions
+
+- include_tasks: "{{ edgecore_action }}.yml"

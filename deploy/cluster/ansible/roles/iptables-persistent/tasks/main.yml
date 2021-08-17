@@ -1,0 +1,6 @@
+---
+- fail:
+    msg: "unsupported action: {{ iptables_persistent_action }}"
+  when: iptables_persistent_action not in iptables_persistent_supported_actions
+
+- include_tasks: "{{ iptables_persistent_action }}.yml"

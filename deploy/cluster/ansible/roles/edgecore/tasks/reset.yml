@@ -1,0 +1,40 @@
+---
+- name: Stop and disable edgecore
+  systemd:
+    name: edgecore
+    daemon_reload: yes
+    state: stopped
+    enabled: no
+
+- name: Remove all containers
+  shell: "set -o pipefail && /usr/bin/docker ps -aq | xargs -r docker rm -fv"
+  args:
+    executable: /bin/bash
+  register: remove_all_containers
+  retries: 4
+  until: remove_all_containers.rc == 0
+  delay: 5
+
+- name: Find /var/lib/edged all directories 
+  find:
+    paths: /var/lib/edged
+    recurse: yes
+    file_type: directory
+  register: mount_path
+
+- name: Umount /var/lib/edged
+  mount:
+    path: "{{ item.path }}"
+    state: unmounted
+  with_items:
+    - "{{ mount_path.files }}"
+
+- name: Remove directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "{{ edgecore_config_directory }}"
+    - "/var/lib/kubeedge"
+    - "/var/lib/edged"
+    - "/var/log/kubeedge"
