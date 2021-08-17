@@ -1,0 +1,3 @@
+- playbook: /opt/ansible/pre-deploy.yml
+- playbook: /opt/ansible/container-runtime.yml
+- playbook: /opt/ansible/edgecore.yml

@@ -1,0 +1,10 @@
+---
+- name: Edgecore
+  hosts: edgecore
+  become_method: sudo
+  become_user: root
+  become: true
+  tasks:
+    - import_role:
+        name: edgecore
+      when: edgecore_enabled | bool

@@ -1,0 +1,23 @@
+---
+- name: Prepare directories
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /etc/kubeedge/
+    - /etc/kubernetes/pki/
+
+- name: Fetch certs
+  fetch:
+    src: "{{ item }}"
+    dest: /etc/kubernetes/pki/
+    flat: yes
+  with_items:
+    - /etc/kubernetes/pki/ca.crt
+    - /etc/kubernetes/pki/ca.key
+  delegate_to: "{{ groups[kubespray_master_group_name][0] }}"
+
+- name: Generate certificates
+  script: "certgen.sh stream"
+  environment:
+    CLOUDCOREIPS: "{{ cluster_primary_ip }}"

@@ -1,0 +1,30 @@
+---
+# node-role.kubernetes.io/edge
+- name: Patch calico-node
+  shell: kubectl -n kube-system patch daemonsets calico-node --patch "{{ lookup('template', 'calico-node.patch.j2') }}"
+
+# node-role.kubernetes.io/edge
+- name: Patch kube-proxy
+  shell: kubectl -n kube-system patch daemonsets kube-proxy --patch "{{ lookup('template', 'kube-proxy.patch.j2') }}"
+
+- name: Patch coredns
+  shell: kubectl -n kube-system patch deployments coredns --patch "{{ lookup('template', 'coredns.patch.j2') }}"
+
+- name: Patch metrics-server
+  shell: kubectl -n kube-system patch deployments metrics-server --patch "{{ lookup('template', 'metrics-server.patch.j2') }}"
+  when: metrics_server_enabled | bool
+
+- name: Register calico-kube-controllers
+  k8s_facts:
+    api_version: v1
+    kind: Deployment
+    name: calico-kube-controllers
+    namespace: kube-system
+  register: _calico_kube_controllers
+
+- name: Patch calico-kube-controllers
+  shell: kubectl -n kube-system patch deployments coredns --patch "{{ lookup('template', 'calico-kube-controllers.patch.j2') }}"
+  when: _calico_kube_controllers.resources | length > 0
+
+- name: Disable dns-autoscaler
+  shell: kubectl scale deployment --replicas=0 dns-autoscaler --namespace=kube-system
