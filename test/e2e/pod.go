@@ -16,7 +16,6 @@ package e2e
 
 import (
 	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/fabedge/fabedge/test/e2e/framework"
@@ -31,8 +30,29 @@ var _ = Describe("FabEdge", func() {
 		framework.ExpectNoError(err)
 	})
 
-	// 测试非主机网络pod与pod间通信
-	It("let pods communicate with each other", func() {
+	// 测试非主机网络pod与pod边边通信
+	It("let edge pods communicate with each other [p2p][e2e]", func() {
+		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
+			client.InNamespace(testNamespace),
+			client.MatchingLabels{labelKeyInstance: instanceNetTool},
+		)
+		framework.ExpectNoError(err)
+
+		By("pods communicate with each other")
+		for _, p1 := range edgePods {
+			for _, p2 := range edgePods {
+				if p1.Name == p2.Name {
+					continue
+				}
+
+				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			}
+		}
+	})
+
+	// 测试非主机网络pod与pod云边通信
+	It("let edge pods communicate with cloud pods [p2p][c2e]", func() {
 		cloudPods, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -41,65 +61,63 @@ var _ = Describe("FabEdge", func() {
 
 		By("pods communicate with each other")
 		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-		pods := append(edgePods, cloudPods...)
-
-		for _, p1 := range pods {
-			for _, p2 := range pods {
+		for _, p1 := range edgePods {
+			for _, p2 := range cloudPods {
 				if p1.Name == p2.Name {
 					continue
 				}
 
-				framework.Logf("ping from %s to %s", p1.Name, p2.Name)
-				framework.ExpectNoError(ping(p1, p2.Status.PodIP), "pods should be able to communicate with each other")
+				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
 			}
 		}
 	})
 
-	// 测试边缘pod访问本地服务端点的情况
-	It("let edge pods can access local service endpoint when it exists", func() {
+	// 测试非主机网络Pods与主机网络Pod的边边通信
+	It("let edge pods communicate with edge pods using host network [p2n][e2e]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
 		)
 		framework.ExpectNoError(err)
 
-		_, servicePods, err := framework.ListCloudAndEdgePods(k8sclient,
+		_, hostEdgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: serviceEdgeNginx},
+			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
 		)
 		framework.ExpectNoError(err)
 
-		hostToPod := make(map[string]string)
-		for _, pod := range servicePods {
-			hostToPod[pod.Spec.NodeName] = pod.Name
-		}
-
-		serviceName := serviceEdgeNginx
-		for _, pod := range edgePods {
-			expectedPodName, ok := hostToPod[pod.Spec.NodeName]
-			Expect(ok).To(BeTrue())
-
-			framework.Logf("pod %s visit service %s", pod.Name, serviceName)
-			stdout, _, err := execCurl(pod, serviceName)
-			framework.ExpectNoError(err)
-			Expect(stdout).To(ContainSubstring(expectedPodName))
+		By("pods communicate with each other")
+		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+		for _, p1 := range edgePods {
+			for _, p2 := range hostEdgePods {
+				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			}
 		}
 	})
 
-	// 测试边缘pod访问云端服务端点的情况
-	It("let edge pods can access cloud services", func() {
+	// 测试非主机网络Pods与主机网络Pod的互通
+	It("let edge pods communicate with cloud pods using host network[p2n][c2e]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
 		)
 		framework.ExpectNoError(err)
 
-		serviceName := serviceCloudNginx
-		for _, pod := range edgePods {
-			framework.Logf("pod %s visit service %s", pod.Name, serviceName)
+		hostCloudPods, _, err := framework.ListCloudAndEdgePods(k8sclient,
+			client.InNamespace(testNamespace),
+			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+		)
+		framework.ExpectNoError(err)
 
-			_, _, err := execCurl(pod, serviceName)
-			framework.ExpectNoError(err)
+		By("pods communicate with each other")
+		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+		for _, p1 := range edgePods {
+			for _, p2 := range hostCloudPods {
+				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			}
 		}
 	})
 })
