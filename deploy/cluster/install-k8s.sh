@@ -2,8 +2,8 @@
 set -e
 
 CONTAINER_MANAGER=${CONTAINER_MANAGER:-docker}
-CONTAINER_NAME=deploy
-IMAGE_NAME=deploy:0.1.0
+CONTAINER_NAME=installer
+IMAGE_NAME=fabedge/installer:latest
 EXTRA_VARS="container_manager=${CONTAINER_MANAGER} ${EXTRA_VARS}"
 HOST_VARS=$@
 
@@ -172,9 +172,9 @@ install_ssh_key
 install_tools
 install_container_manager
 
-download_images cloudcore-v1.5.0-x86_64.tar kubespray-v2.15.0-x86_64.tar deploy-0.1.0-x86_64.tar kubeedge-pause-3.1-x86_64.tar k8s-dns-node-cache-1.16.0-x86_64.tar
+download_images cloudcore-v1.5.0-x86_64.tar kubespray-v2.15.0-x86_64.tar kubeedge-pause-3.1-x86_64.tar k8s-dns-node-cache-1.16.0-x86_64.tar
 download_releases calicoctl kubectl-v1.19.7-amd64 cni-plugins-linux-amd64-v0.9.0.tgz kubeadm-v1.19.7-amd64 kubelet-v1.19.7-amd64 edgecore-v1.5.0-x86_64
-load cloudcore-v1.5.0-x86_64.tar kubespray-v2.15.0-x86_64.tar deploy-0.1.0-x86_64.tar kubeedge-pause-3.1-x86_64.tar k8s-dns-node-cache-1.16.0-x86_64.tar
+load cloudcore-v1.5.0-x86_64.tar kubespray-v2.15.0-x86_64.tar kubeedge-pause-3.1-x86_64.tar k8s-dns-node-cache-1.16.0-x86_64.tar
 cp -rf ${releases_directory}/ /tmp/
 run
 cp_ ${images_directory}/kubeedge-pause-3.1-x86_64.tar ${CONTAINER_NAME}:/opt/ansible/roles/edgecore/files/
