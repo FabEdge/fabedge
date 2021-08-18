@@ -16,6 +16,7 @@ package connector
 
 import (
 	"fmt"
+
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/jjeffery/stringset"
@@ -43,6 +44,7 @@ func (m *Manager) readCfgFromFile() error {
 
 			LocalID:          nc.ID,
 			LocalCerts:       []string{m.config.certFile},
+			LocalAddress:     []string{nc.IP},
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,
 
