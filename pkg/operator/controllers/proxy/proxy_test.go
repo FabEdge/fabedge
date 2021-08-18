@@ -676,7 +676,7 @@ var _ = Describe("Proxy", func() {
 
 			By("check edge node2 services and endpoints")
 			node2 := edgeNodeSet["node2"]
-			Expect(len(node2.ServicePortMap)).Should(Equal(2))
+			Expect(len(node2.ServicePortMap)).Should(Equal(0))
 			Expect(len(node2.EndpointMap)).Should(Equal(0))
 
 			Expect(keeper.nodeSet).Should(ContainElement(node2))
