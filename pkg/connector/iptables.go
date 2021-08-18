@@ -19,7 +19,6 @@ import (
 
 	"github.com/fabedge/fabedge/third_party/ipset"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -243,10 +242,5 @@ func (m *Manager) getOldCloudPodCIDRS() (sets.String, error) {
 }
 
 func (m *Manager) SNatIPTablesRulesCleanup() error {
-	if err := m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
-		klog.ErrorS(err, "failed to cleanup iptables SNAT rules", "table", TableNat, "chain", ChainFabEdgePostRouting)
-		return err
-	}
-
-	return nil
+	return m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
 }
