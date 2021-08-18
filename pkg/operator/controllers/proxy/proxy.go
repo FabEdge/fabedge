@@ -211,7 +211,7 @@ func (p *proxy) OnServiceUpdate(ctx context.Context, request reconcile.Request) 
 
 	// if service is updated to a invalid service, we take it as deleted and cleanup related resources
 	if p.shouldSkipService(&service) {
-		log.Info("service has no ClusterIP, skip it", "service", service)
+		log.V(5).Info("service has no ClusterIP, skip it", "service", service)
 
 		p.cleanupService(request.NamespacedName)
 		return Result{}, nil
@@ -416,6 +416,9 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 	for port := range oldES.Ports {
 		_, exists := newES.Ports[port]
 		portRemoved := !exists
+		if portRemoved {
+			p.log.V(4).Info("port is remove", "port", port, "service", serviceKey)
+		}
 
 		servicePortName := ServicePortName{
 			NamespacedName: serviceKey,
@@ -527,6 +530,7 @@ func (p *proxy) removeEndpointFromNode(nodeName string, spn ServicePortName, end
 	eps.Remove(endpoint)
 	if len(eps) == 0 {
 		delete(node.EndpointMap, spn)
+		delete(node.ServicePortMap, spn)
 	}
 
 	p.nodeSet[nodeName] = node
