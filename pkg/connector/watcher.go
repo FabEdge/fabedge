@@ -25,7 +25,7 @@ func eventOpIs(ent fsnotify.Event, Op fsnotify.Op) bool {
 	return ent.Op&Op == Op
 }
 
-func (m *Manager) onConfigFileChange(fileToWatch string, callback func()) {
+func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		klog.Errorf("failed to initialize fsnotify: %s", err)
@@ -55,7 +55,9 @@ func (m *Manager) onConfigFileChange(fileToWatch string, callback func()) {
 			case eventOpIs(event, fsnotify.Write):
 				fallthrough
 			case eventOpIs(event, fsnotify.Rename):
-				debounced(callback)
+				for _, c := range callbacks {
+					debounced(c)
+				}
 			default:
 				// fsnotify monitors the inode, but vi change the inode.
 				// try to add it back, after removed/renamed

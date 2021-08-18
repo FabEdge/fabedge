@@ -16,7 +16,6 @@ package connector
 
 import (
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -94,11 +93,8 @@ func runTasks(interval time.Duration, handler ...func()) {
 
 func (m *Manager) Start() {
 	routeTaskFn := func() {
-		if err := m.syncRoutes(); err != nil {
-			klog.Errorf("error to sync routes: %s", err)
-		} else {
-			klog.Info("routes are synced")
-		}
+		m.syncRoutes()
+		klog.Info("routes are synced")
 	}
 
 	iptablesTaskFn := func() {
@@ -142,7 +138,7 @@ func (m *Manager) Start() {
 	go runTasks(m.config.interval, tasks...)
 
 	// sync tunnels when config file updated by cloud.
-	go m.onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn)
+	go m.onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn, routeTaskFn)
 
 	klog.Info("manager started")
 
@@ -155,12 +151,7 @@ func (m *Manager) Start() {
 }
 
 func (m *Manager) gracefulShutdown() {
-	_ = m.RouteCleanup()
+	m.RouteCleanup()
 
 	_ = m.SNatIPTablesRulesCleanup()
-
-	command := exec.Command("ip", "xfrm", "policy", "flush")
-	_ = command.Run()
-	command = exec.Command("ip", "xfrm", "state", "flush")
-	_ = command.Run()
 }
