@@ -15,16 +15,20 @@
 package connector
 
 import (
-	"github.com/coreos/go-iptables/iptables"
-	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	"github.com/spf13/viper"
-	"k8s.io/klog/v2"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/coreos/go-iptables/iptables"
+	"github.com/spf13/viper"
+	"k8s.io/klog/v2"
+	k8sexec "k8s.io/utils/exec"
+
+	"github.com/fabedge/fabedge/pkg/tunnel"
+	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
+	utilipset "github.com/fabedge/fabedge/third_party/ipset"
 )
 
 type Manager struct {
@@ -32,6 +36,7 @@ type Manager struct {
 	tm          tunnel.Manager
 	ipt         *iptables.IPTables
 	connections []tunnel.ConnConfig
+	ipset       utilipset.Interface
 }
 
 type config struct {
@@ -66,10 +71,14 @@ func NewManager() *Manager {
 		klog.Fatal(err)
 	}
 
+	execer := k8sexec.New()
+	ipset := utilipset.New(execer)
+
 	return &Manager{
 		config: c,
 		tm:     tm,
 		ipt:    ipt,
+		ipset:  ipset,
 	}
 }
 
@@ -93,10 +102,16 @@ func (m *Manager) Start() {
 	}
 
 	iptablesTaskFn := func() {
-		if err := m.ensureIPTablesRules(m.config.edgePodCIDR); err != nil {
-			klog.Errorf("error when to add iptables rules: %s", err)
+		if err := m.ensureForwardIPTablesRules(m.config.edgePodCIDR); err != nil {
+			klog.Errorf("error when to add iptables forward rules: %s", err)
 		} else {
-			klog.Infof("iptables rules are added")
+			klog.Infof("iptables forward rules are added")
+		}
+
+		if err := m.ensureSNatIPTablesRules(); err != nil {
+			klog.Errorf("error when to add iptables SNAT rules: %s", err)
+		} else {
+			klog.Infof("iptables SNAT rules are added")
 		}
 	}
 
@@ -108,7 +123,20 @@ func (m *Manager) Start() {
 		}
 	}
 
-	tasks := []func(){tunnelTaskFn, routeTaskFn, iptablesTaskFn}
+	ipsetTaskFn := func() {
+		if err := m.syncEdgeNodeIPSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeIP, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetEdgeNodeIP)
+		}
+
+		if err := m.syncCloudPodCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudPodCIDR, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetCloudPodCIDR)
+		}
+	}
+	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
 	// repeats regular tasks periodically
 	go runTasks(m.config.interval, tasks...)
@@ -128,6 +156,8 @@ func (m *Manager) Start() {
 
 func (m *Manager) gracefulShutdown() {
 	_ = m.RouteCleanup()
+
+	_ = m.SNatIPTablesRulesCleanup()
 
 	command := exec.Command("ip", "xfrm", "policy", "flush")
 	_ = command.Run()
