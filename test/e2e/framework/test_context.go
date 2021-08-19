@@ -39,6 +39,7 @@ type Context struct {
 	CurlTimeout       int64
 	NetToolImage      string
 	PreserveResources string
+	ShowExecError     bool
 }
 
 var TestContext Context
@@ -60,6 +61,8 @@ func RegisterAndHandleFlags() {
 		"Maxtime for curl to finish. Unit: seconds")
 	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "praqma/network-multitool:latest",
 		"The net-tool image")
+	flag.BoolVar(&TestContext.ShowExecError, "show-exec-error", false,
+		"display error of executing curl or ping")
 
 	flag.Parse()
 	// Turn on verbose by default to get spec names

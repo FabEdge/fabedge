@@ -37,24 +37,30 @@ import (
 )
 
 const (
-	testNamespace         = "fabedge-e2e-test"
-	appNetTool            = "fabedge-net-tool"
-	communityName         = "all-edge-nodes"
-	instanceNetTool       = "net-tool"
+	testNamespace = "fabedge-e2e-test"
+	appNetTool    = "fabedge-net-tool"
+	communityName = "all-edge-nodes"
+
+	instanceNetTool     = "net-tool"
+	instanceHostNetTool = "host-net-tool"
+
 	nodeStatusNotReady    = "node.kubernetes.io/not-ready"
 	nodeStatusUnreachable = "node.kubernetes.io/unreachable"
 	nodeRoleEdge          = "node-role.kubernetes.io/edge"
 
 	labelKeyApp      = "app"
 	labelKeyInstance = "instance"
+	labelKeyNetwork  = "network"
 
 	// add a random label, prevent kubeedge to cache it
 	labelKeyRand = "random"
 )
 
 var (
-	serviceCloudNginx = "cloud-nginx"
-	serviceEdgeNginx  = "edge-nginx"
+	serviceCloudNginx     = "cloud-nginx"
+	serviceEdgeNginx      = "edge-nginx"
+	serviceHostCloudNginx = "host-cloud-nginx"
+	serviceHostEdgeNginx  = "host-edge-nginx"
 
 	// 标记是否有失败的spec
 	hasFailedSpec = false
@@ -65,6 +71,8 @@ func init() {
 	rand.Seed(time.Now().Unix())
 	serviceCloudNginx = getName(serviceCloudNginx)
 	serviceEdgeNginx = getName(serviceEdgeNginx)
+	serviceHostCloudNginx = getName(serviceHostCloudNginx)
+	serviceHostEdgeNginx = getName(serviceHostEdgeNginx)
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -96,8 +104,11 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 
 	prepareNamespace(client, testNamespace)
 	preparePodOnEachNode(client)
+	prepareHostNetworkPodOnEachNode(client)
 	prepareService(client, serviceCloudNginx, testNamespace)
 	prepareService(client, serviceEdgeNginx, testNamespace)
+	prepareService(client, serviceHostCloudNginx, testNamespace)
+	prepareService(client, serviceHostEdgeNginx, testNamespace)
 
 	WaitForAllPodsReady(client)
 
@@ -197,6 +208,26 @@ func preparePodOnEachNode(cli client.Client) {
 	}
 }
 
+func prepareHostNetworkPodOnEachNode(cli client.Client) {
+	var nodes corev1.NodeList
+	framework.ExpectNoError(cli.List(context.TODO(), &nodes))
+
+	for _, node := range nodes.Items {
+		serviceName := serviceHostCloudNginx
+		if _, isEdgeNode := node.Labels[nodeRoleEdge]; isEdgeNode {
+			serviceName = serviceHostEdgeNginx
+		}
+
+		framework.Logf("create hostNetwork nginx pod on node %s", node.Name)
+		pod := newHostNginxPod(node, serviceName)
+		createObject(cli, &pod)
+
+		framework.Logf("create hostNetwork net-tool pod on node %s", node.Name)
+		pod = newHostNetToolPod(node)
+		createObject(cli, &pod)
+	}
+}
+
 func newNginxPod(node corev1.Node, serviceName string) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -209,6 +240,21 @@ func newNginxPod(node corev1.Node, serviceName string) corev1.Pod {
 			},
 		},
 		Spec: podSpec(node.Name),
+	}
+}
+
+func newHostNginxPod(node corev1.Node, serviceName string) corev1.Pod {
+	return corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("host-nginx-%s", node.Name),
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				labelKeyApp:      appNetTool,
+				labelKeyInstance: serviceName,
+				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
+			},
+		},
+		Spec: hostNetworkPodSpec(node.Name),
 	}
 }
 
@@ -227,10 +273,48 @@ func newNetToolPod(node corev1.Node) corev1.Pod {
 	}
 }
 
+func newHostNetToolPod(node corev1.Node) corev1.Pod {
+	// change default port to avoid ports conflict with host service's endpoints
+	spec := hostNetworkPodSpec(node.Name)
+	spec.Containers[0].Env = []corev1.EnvVar{
+		{
+			Name:  "HTTP_PORT",
+			Value: "18080",
+		},
+		{
+			Name:  "HTTPS_PORT",
+			Value: "18083",
+		},
+	}
+	spec.Containers[0].ReadinessProbe.HTTPGet.Port = intstr.FromInt(18080)
+
+	return corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("host-net-tool-%s", node.Name),
+			Namespace: testNamespace,
+			Labels: map[string]string{
+				labelKeyApp:      appNetTool,
+				labelKeyInstance: instanceHostNetTool,
+				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
+			},
+		},
+		Spec: spec,
+	}
+}
+
+func hostNetworkPodSpec(nodeName string) corev1.PodSpec {
+	spec := podSpec(nodeName)
+	spec.HostNetwork = true
+	spec.Containers[0].Ports = nil
+
+	return spec
+}
+
 func podSpec(nodeName string) corev1.PodSpec {
 	return corev1.PodSpec{
 		HostNetwork: false,
 		NodeName:    nodeName,
+		DNSPolicy:   corev1.DNSClusterFirstWithHostNet,
 		// workaround, or it will fail at edgecore
 		AutomountServiceAccountToken: new(bool),
 		Containers: []corev1.Container{
@@ -248,18 +332,7 @@ func podSpec(nodeName string) corev1.PodSpec {
 					Handler: corev1.Handler{
 						HTTPGet: &corev1.HTTPGetAction{
 							Path: "/",
-							Port: intstr.FromString("http"),
-						},
-					},
-					InitialDelaySeconds: 5,
-					TimeoutSeconds:      5,
-					PeriodSeconds:       5,
-				},
-				LivenessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path: "/",
-							Port: intstr.FromString("http"),
+							Port: intstr.FromInt(80),
 						},
 					},
 					InitialDelaySeconds: 5,

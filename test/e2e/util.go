@@ -18,8 +18,12 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"strings"
+	"time"
 
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
@@ -33,9 +37,27 @@ func ping(pod corev1.Pod, ip string) error {
 	return err
 }
 
+func pingBetween(p1, p2 corev1.Pod) error {
+	if err := ping(p1, p2.Status.PodIP); err != nil {
+		return err
+	}
+
+	return ping(p2, p1.Status.PodIP)
+}
+
+func expectCurlResultContains(pod corev1.Pod, url string, substr string) {
+	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
+	err := wait.Poll(time.Second, time.Duration(framework.TestContext.CurlTimeout)*time.Second, func() (bool, error) {
+		stdout, _, _ := execute(pod, []string{"curl", "-sS", "-m", timeout, url})
+		return strings.Contains(stdout, substr), nil
+	})
+
+	Expect(err).ShouldNot(HaveOccurred(), fmt.Sprintf("response of curl %s should contains %s", url, substr))
+}
+
 func execCurl(pod corev1.Pod, url string) (string, string, error) {
 	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
-	return execute(pod, []string{"curl", "-s", "-m", timeout, url})
+	return execute(pod, []string{"curl", "-sS", "-m", timeout, url})
 }
 
 func execute(pod corev1.Pod, cmd []string) (string, string, error) {
@@ -76,6 +98,10 @@ func execute(pod corev1.Pod, cmd []string) (string, string, error) {
 		Stderr: &stderr,
 		Tty:    false,
 	})
+
+	if err != nil && framework.TestContext.ShowExecError {
+		framework.Logf("failed to execute ping. stderr: %s. err: %s", stderr, err)
+	}
 
 	return stdout.String(), stderr.String(), err
 }
