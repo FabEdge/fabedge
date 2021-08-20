@@ -31,6 +31,7 @@ spec:
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - -endpoint-id-format=C=CN, O=StrongSwan, CN={node}
             - -masq-outgoing=true
+            - -enable-proxy=true
             - -v=5
       hostNetwork: true
       serviceAccountName: fabedge-operator
