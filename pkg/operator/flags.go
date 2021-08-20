@@ -37,6 +37,8 @@ var (
 
 	ipvsScheduler string
 	useXfrm       bool
+
+	enableProxy bool
 )
 
 func init() {
@@ -60,4 +62,5 @@ func init() {
 
 	flag.StringVar(&ipvsScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 	flag.BoolVar(&useXfrm, "use-xfrm", false, "let agent use xfrm if edge OS supports")
+	flag.BoolVar(&enableProxy, "enable-proxy", true, "Enable the proxy feature")
 }

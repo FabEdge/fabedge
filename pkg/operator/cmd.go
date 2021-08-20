@@ -116,6 +116,7 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			EdgePodCIDR:     edgePodCIDR,
 			MasqOutgoing:    masqOutgoing,
 			UseXfrm:         useXfrm,
+			EnableProxy:     enableProxy,
 		}
 		if err = agentctl.AddToManager(agentConfig); err != nil {
 			log.Error(err, "failed to add agent controller to manager")
@@ -141,14 +142,16 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			return err
 		}
 
-		if err = proxyctl.AddToManager(proxyctl.Config{
-			Manager:        mgr,
-			AgentNamespace: namespace,
-			CheckInterval:  10 * time.Second,
-			IPVSScheduler:  ipvsScheduler,
-		}); err != nil {
-			log.Error(err, "failed to add proxy controller to manager")
-			return err
+		if enableProxy {
+			if err = proxyctl.AddToManager(proxyctl.Config{
+				Manager:        mgr,
+				AgentNamespace: namespace,
+				CheckInterval:  10 * time.Second,
+				IPVSScheduler:  ipvsScheduler,
+			}); err != nil {
+				log.Error(err, "failed to add proxy controller to manager")
+				return err
+			}
 		}
 
 		return nil

@@ -338,6 +338,7 @@ var _ = Describe("AgentController", func() {
 				edgePodCIDR,
 				"-masq-outgoing=false",
 				"-use-xfrm=false",
+				"-enable-proxy=false",
 			}
 			Expect(pod.Spec.Containers[0].Args).To(Equal(args))
 

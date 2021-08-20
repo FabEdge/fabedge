@@ -71,6 +71,8 @@ type Config struct {
 	XfrmInterfaceID   uint
 
 	CNI CNI
+
+	EnableProxy bool
 }
 
 type Manager struct {
@@ -89,6 +91,7 @@ type Manager struct {
 	xfrmInterfaceID    uint
 	dummyInterfaceName string
 	edgePodCIDR        string
+	enableProxy        bool
 
 	tm  tunnel.Manager
 	ipt *iptables.IPTables
@@ -100,9 +103,11 @@ type Manager struct {
 
 func newManager(cnf Config) (*Manager, error) {
 	kernelHandler := ipvs.NewLinuxKernelHandler()
-	if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
+	canUseProxy, err := ipvs.CanUseIPVSProxier(kernelHandler)
+	if err != nil {
 		return nil, err
 	}
+	cnf.EnableProxy = canUseProxy && cnf.EnableProxy
 
 	supportXfrm, err := ipvs.SupportXfrmInterface(kernelHandler)
 	if err != nil {
@@ -137,6 +142,7 @@ func newManager(cnf Config) (*Manager, error) {
 		xfrmInterfaceID:    cnf.XfrmInterfaceID,
 		dummyInterfaceName: cnf.DummyInterfaceName,
 		edgePodCIDR:        cnf.EdgePodCIDR,
+		enableProxy:        cnf.EnableProxy,
 
 		tm:  tm,
 		ipt: ipt,
@@ -174,9 +180,11 @@ func (m *Manager) start() {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
 		})
 
-		go retryForever(ctx, m.syncLoadBalanceRules, func(n uint, err error) {
-			m.log.Error(err, "failed to sync load balance rules", "retryNum", n)
-		})
+		if m.enableProxy {
+			go retryForever(ctx, m.syncLoadBalanceRules, func(n uint, err error) {
+				m.log.Error(err, "failed to sync load balance rules", "retryNum", n)
+			})
+		}
 	}
 }
 
