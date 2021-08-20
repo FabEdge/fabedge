@@ -309,7 +309,7 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 	}
 
 	if m.masqOutgoing {
-		m.log.V(3).Info("configure outgoing NAT iptables rules", "masqOutgoing", m.masqOutgoing)
+		m.log.V(3).Info("configure outgoing NAT iptables rules")
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil {
 			m.log.Error(err, "failed to get default interface")
@@ -345,7 +345,6 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 			return err
 		}
 	} else {
-		m.log.V(3).Info("remove NAT outgoing iptables rules if it exists", "masqOutgoing", m.masqOutgoing)
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil && strings.Contains(err.Error(), "not found") {
 			if strings.Contains(err.Error(), "not found") {
@@ -451,10 +450,12 @@ func (m *Manager) sync() {
 }
 
 func (m *Manager) ensureInterfacesAndRoutes() error {
-	m.log.V(3).Info("ensure that the dummy interface exists", "dummyInterface", m.dummyInterfaceName)
-	if _, err := m.netLink.EnsureDummyDevice(m.dummyInterfaceName); err != nil {
-		m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", dummyInterfaceName)
-		return err
+	if m.enableProxy {
+		m.log.V(3).Info("ensure that the dummy interface exists")
+		if _, err := m.netLink.EnsureDummyDevice(m.dummyInterfaceName); err != nil {
+			m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", m.dummyInterfaceName)
+			return err
+		}
 	}
 
 	// the kernel has supported xfrm interface since version 4.19+
