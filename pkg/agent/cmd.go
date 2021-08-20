@@ -65,6 +65,8 @@ func Execute() error {
 		XfrmInterfaceName:  xfrmInterfaceName,
 		XfrmInterfaceID:    xfrmInterfaceID,
 
+		EnableProxy: enableProxy,
+
 		CNI: CNI{
 			Version:     cniVersion,
 			ConfDir:     cniConfDir,

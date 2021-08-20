@@ -42,6 +42,8 @@ var (
 	xfrmInterfaceName  string
 	xfrmInterfaceID    uint
 	useXfrm            bool
+
+	enableProxy bool
 )
 
 func init() {
@@ -66,6 +68,8 @@ func init() {
 	flag.BoolVar(&useXfrm, "use-xfrm", false, "use xfrm when OS has this feature")
 	flag.StringVar(&xfrmInterfaceName, "xfrm-interface-name", "ipsec42", "the name of xfrm interface")
 	flag.UintVar(&xfrmInterfaceID, "xfrm-interface-id", 42, "the id of xfrm interface")
+
+	flag.BoolVar(&enableProxy, "enable-proxy", true, "Enable the proxy feature")
 }
 
 func validateFlags() error {

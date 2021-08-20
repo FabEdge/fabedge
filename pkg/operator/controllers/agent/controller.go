@@ -68,6 +68,7 @@ type agentController struct {
 	edgePodCIRD     string
 	masqOutgoing    bool
 	useXfrm         bool
+	enableProxy     bool
 }
 
 type Config struct {
@@ -81,6 +82,7 @@ type Config struct {
 	UseXfrm         bool
 	MasqOutgoing    bool
 	EdgePodCIDR     string
+	EnableProxy     bool
 
 	ConnectorConfig string
 	NewEndpoint     types.NewEndpointFunc
@@ -96,6 +98,7 @@ func AddToManager(cnf Config) error {
 		edgePodCIRD:     cnf.EdgePodCIDR,
 		masqOutgoing:    cnf.MasqOutgoing,
 		useXfrm:         cnf.UseXfrm,
+		enableProxy:     cnf.EnableProxy,
 
 		alloc:       cnf.Allocator,
 		store:       cnf.Store,
@@ -404,6 +407,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						ctl.edgePodCIRD,
 						fmt.Sprintf("-masq-outgoing=%t", ctl.masqOutgoing),
 						fmt.Sprintf("-use-xfrm=%t", ctl.useXfrm),
+						fmt.Sprintf("-enable-proxy=%t", ctl.enableProxy),
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
