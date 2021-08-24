@@ -247,89 +247,6 @@ default-pool   10.231.64.0/18   all()
 fabedge        10.10.0.0/16     all()
 ```
 
-
-
-### 配置边缘节点
-
-1. 修改edgecore配置文件
-
-   ```shell
-   root@edge1:~# vi /etc/kubeedge/config/edgecore.yaml
-   ```
-
-   禁用edgeMesh
-
-   ```yaml
-   edgeMesh:
-     enable: false
-   ```
-
-   启用CNI
-
-   ```yaml
-   edged:
-       enable: true
-       # 默认配置，如无必要，不要修改
-       cniBinDir: /opt/cni/bin
-       cniCacheDirs: /var/lib/cni/cache
-       cniConfDir: /etc/cni/net.d
-       # 这一行默认配置文件是没有的，得自己添加  
-       networkPluginName: cni
-       networkPluginMTU: 1500
-   ```
-
-   配置域名和DNS
-
-   ```yaml
-   edged:
-       clusterDNS: "169.254.25.10"
-       clusterDomain: "root-cluster"
-   ```
-
-   > 可以在云端执行如下操作获取相关信息
-   >
-   > ```shell
-   > root@master:~# kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}"
-   > root-cluster:53 {
-   > ...
-   > bind 169.254.25.10
-   > ...
-   > }
-   > 
-   > root@master:~# grep -rn "cluster-name" /etc/kubernetes/manifests/kube-controller-manager.yaml
-   > 
-   > 20:    - --cluster-name=root-cluster
-   > 
-   > # 本例中，domain为root-cluster,  dns为169.254.25.10
-   > ```
-
-2. 安装CNI插件
-
-   ```shell
-   root@edge1:~# mkdir -p cni /opt/cni/bin /etc/cni/net.d /var/lib/cni/cache
-   root@edge1:~# cd cni
-   root@edge1:~/cni# wget https://github.com/containernetworking/plugins/releases/download/v0.9.1/cni-plugins-linux-amd64-v0.9.1.tgz
-   root@edge1:~/cni# tar xvf cni-plugins-linux-amd64-v0.9.1.tgz
-   root@edge1:~/cni# cp bridge host-local loopback /opt/cni/bin
-   ```
-
-3. 重启edgecore
-
-   ```shell
-   root@edge1:~# systemctl restart edgecore
-   ```
-
-4. 确认边缘节点就绪
-
-   ```shell
-   root@master:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              125m   v1.19.3-kubeedge-v1.1.0
-     master  Ready    connector,master,node   135m   v1.19.7
-   ```
-
-
-
 ### 部署Operator
 
 1. 创建Community CRD
@@ -390,7 +307,75 @@ fabedge        10.10.0.0/16     all()
    root@master:~# kubectl apply -f ~/fabedge/deploy/operator
    ```
 
+### 配置边缘节点
 
+1. 修改edgecore配置文件
+
+   ```shell
+   root@edge1:~# vi /etc/kubeedge/config/edgecore.yaml
+   ```
+
+   禁用edgeMesh
+
+   ```yaml
+   edgeMesh:
+     enable: false
+   ```
+
+   启用CNI
+
+   ```yaml
+   edged:
+       enable: true
+       # 默认配置，如无必要，不要修改
+       cniBinDir: /opt/cni/bin
+       cniCacheDirs: /var/lib/cni/cache
+       cniConfDir: /etc/cni/net.d
+       # 这一行默认配置文件是没有的，得自己添加  
+       networkPluginName: cni
+       networkPluginMTU: 1500
+   ```
+
+   配置域名和DNS
+
+   ```yaml
+   edged:
+       clusterDNS: "169.254.25.10"
+       clusterDomain: "root-cluster"
+   ```
+
+   > 可以在云端执行如下操作获取相关信息
+   >
+   > ```shell
+   > root@master:~# kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}"
+   > root-cluster:53 {
+   > ...
+   > bind 169.254.25.10
+   > ...
+   > }
+   > 
+   > root@master:~# grep -rn "cluster-name" /etc/kubernetes/manifests/kube-controller-manager.yaml
+   > 
+   > 20:    - --cluster-name=root-cluster
+   > 
+   > # 本例中，domain为root-cluster,  dns为169.254.25.10
+   > ```
+
+
+2. 重启edgecore
+
+   ```shell
+   root@edge1:~# systemctl restart edgecore
+   ```
+
+3. 确认边缘节点就绪
+
+   ```shell
+   root@master:~# kubectl get node
+     NAME    STATUS   ROLES                   AGE    VERSION
+     edge1   Ready    agent,edge              125m   v1.19.3-kubeedge-v1.1.0
+     master  Ready    connector,master,node   135m   v1.19.7
+   ```
 
 ### 确认服务正常启动
 

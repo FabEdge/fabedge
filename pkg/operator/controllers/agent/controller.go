@@ -393,6 +393,33 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 					Effect: corev1.TaintEffectNoSchedule,
 				},
 			},
+			InitContainers: []corev1.Container{
+				{
+					Name:            "install-cni",
+					Image:           ctl.agentImage,
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Command: []string{
+						"cp",
+					},
+					Args: []string{
+						"-f",
+						"/usr/local/bin/bridge",
+						"/usr/local/bin/host-local",
+						"/usr/local/bin/loopback",
+						"/opt/cni/bin",
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "cni-bin",
+							MountPath: "/opt/cni/bin",
+						},
+						{
+							Name:      "cni-cache",
+							MountPath: "/var/lib/cni/cache",
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:            "agent",
@@ -423,7 +450,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 							MountPath: "/var/run/",
 						},
 						{
-							Name:      "cni",
+							Name:      "cni-config",
 							MountPath: "/etc/cni",
 						},
 						{
@@ -472,7 +499,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 					},
 				},
 				{
-					Name: "cni",
+					Name: "cni-config",
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: "/etc/cni",
@@ -515,6 +542,24 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: "/etc/fabedge/ipsec/ipsec.secrets",
 							Type: &hostPathFile,
+						},
+					},
+				},
+				{
+					Name: "cni-bin",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/opt/cni/bin",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
+				{
+					Name: "cni-cache",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/var/lib/cni/cache",
+							Type: &hostPathDirectoryOrCreate,
 						},
 					},
 				},
