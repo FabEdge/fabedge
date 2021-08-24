@@ -251,8 +251,9 @@ var _ = Describe("AgentController", func() {
 			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyAlways))
 			Expect(pod.Labels[constants.KeyPodHash]).ShouldNot(BeEmpty())
 
+			Expect(len(pod.Spec.InitContainers)).To(Equal(1))
 			Expect(len(pod.Spec.Containers)).To(Equal(2))
-			Expect(len(pod.Spec.Volumes)).To(Equal(6))
+			Expect(len(pod.Spec.Volumes)).To(Equal(8))
 
 			hostPathDirectory := corev1.HostPathDirectory
 			hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
@@ -267,7 +268,7 @@ var _ = Describe("AgentController", func() {
 					},
 				},
 				{
-					Name: "cni",
+					Name: "cni-config",
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: "/etc/cni",
@@ -313,6 +314,24 @@ var _ = Describe("AgentController", func() {
 						},
 					},
 				},
+				{
+					Name: "cni-bin",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/opt/cni/bin",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
+				{
+					Name: "cni-cache",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/var/lib/cni/cache",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
 			}
 			Expect(pod.Spec.Volumes).To(Equal(volumes))
 
@@ -324,6 +343,38 @@ var _ = Describe("AgentController", func() {
 				Effect: corev1.TaintEffectNoSchedule,
 			}
 			Expect(pod.Spec.Tolerations[0]).To(Equal(tolerations))
+
+			// install-cni initContainer
+			Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni"))
+			Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
+			Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+
+			cpCommand := []string{
+				"cp",
+			}
+			Expect(pod.Spec.InitContainers[0].Command).To(Equal(cpCommand))
+
+			cpCommandArgs := []string{
+				"-f",
+				"/usr/local/bin/bridge",
+				"/usr/local/bin/host-local",
+				"/usr/local/bin/loopback",
+				"/opt/cni/bin",
+			}
+			Expect(pod.Spec.InitContainers[0].Args).To(Equal(cpCommandArgs))
+
+			Expect(len(pod.Spec.InitContainers[0].VolumeMounts)).To(Equal(2))
+			cniVolumeMounts := []corev1.VolumeMount{
+				{
+					Name:      "cni-bin",
+					MountPath: "/opt/cni/bin",
+				},
+				{
+					Name:      "cni-cache",
+					MountPath: "/var/lib/cni/cache",
+				},
+			}
+			Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
 
 			// agent container
 			Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
@@ -356,7 +407,7 @@ var _ = Describe("AgentController", func() {
 					MountPath: "/var/run/",
 				},
 				{
-					Name:      "cni",
+					Name:      "cni-config",
 					MountPath: "/etc/cni",
 				},
 				{
