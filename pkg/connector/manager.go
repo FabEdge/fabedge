@@ -15,7 +15,6 @@
 package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"os"
 	"os/signal"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"k8s.io/klog/v2"
 	k8sexec "k8s.io/utils/exec"
 
+	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	utilipset "github.com/fabedge/fabedge/third_party/ipset"
@@ -119,7 +119,7 @@ func (m *Manager) Start() {
 	}
 
 	iptablesTaskFn := func() {
-		if err := m.ensureForwardIPTablesRules(m.config.edgePodCIDR); err != nil {
+		if err := m.ensureForwardIPTablesRules(); err != nil {
 			klog.Errorf("error when to add iptables forward rules: %s", err)
 		} else {
 			klog.Infof("iptables forward rules are added")
