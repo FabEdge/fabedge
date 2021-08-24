@@ -11,7 +11,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
 - [kubernetes (v1.19.7+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
 - [Kubeedge (v1.5.0+, 至少有一个边缘节点)](https://kubeedge.io/en/docs/)  
 
-也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个新集群
+也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个演示集群
 
 
 
