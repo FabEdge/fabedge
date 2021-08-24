@@ -15,6 +15,7 @@ data:
     # namespace for fabedge
     fabedgeNS: fabedge
     debounceDuration: 5s
+    cniType: calico
   tunnels.yaml: |
     id: C=CN, O=StrongSwan, CN=connector
     name: cloud-connector
