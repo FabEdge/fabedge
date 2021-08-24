@@ -1,5 +1,5 @@
 OUTPUT_DIR := _output
-BINARIES := agent connector operator
+BINARIES := agent connector operator cert
 IMAGES := $(addsuffix -image, $(BINARIES))
 IMAGES := $(IMAGES) strongswan-image installer-image
 
