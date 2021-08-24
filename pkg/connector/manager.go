@@ -15,8 +15,10 @@
 package connector
 
 import (
+	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,6 +38,7 @@ type Manager struct {
 	ipt         *iptables.IPTables
 	connections []tunnel.ConnConfig
 	ipset       utilipset.Interface
+	router      routing.Routing
 }
 
 type config struct {
@@ -45,6 +48,7 @@ type config struct {
 	tunnelConfigFile string
 	certFile         string
 	viciSocket       string
+	cniType          string
 }
 
 func NewManager() *Manager {
@@ -55,6 +59,7 @@ func NewManager() *Manager {
 		certFile:         viper.GetString("certFile"),
 		viciSocket:       viper.GetString("vicisocket"),
 		debounceDuration: viper.GetDuration("debounceDuration"),
+		cniType:          viper.GetString("cniType"),
 	}
 
 	tm, err := strongswan.New(
@@ -73,11 +78,17 @@ func NewManager() *Manager {
 	execer := k8sexec.New()
 	ipset := utilipset.New(execer)
 
+	var router routing.Routing
+	if c.cniType == "" || strings.ToUpper(c.cniType) == "CALICO" {
+		router = routing.NewCalicoRouter()
+	}
+
 	return &Manager{
 		config: c,
 		tm:     tm,
 		ipt:    ipt,
 		ipset:  ipset,
+		router: router,
 	}
 }
 
@@ -93,7 +104,17 @@ func runTasks(interval time.Duration, handler ...func()) {
 
 func (m *Manager) Start() {
 	routeTaskFn := func() {
-		m.syncRoutes()
+		active, err := m.tm.IsActive()
+		if err != nil {
+			klog.Errorf("failed to get tunnel manager status: %s", err)
+			return
+		}
+		err = m.router.SyncRoutes(active, m.connections)
+		if err != nil {
+			klog.Errorf("failed to sync routes: %s", err)
+			return
+		}
+
 		klog.Info("routes are synced")
 	}
 
@@ -151,7 +172,13 @@ func (m *Manager) Start() {
 }
 
 func (m *Manager) gracefulShutdown() {
-	m.RouteCleanup()
+	err := m.router.CleanRoutes(m.connections)
+	if err != nil {
+		klog.Errorf("failed to clean routers: %s", err)
+	}
 
-	_ = m.SNatIPTablesRulesCleanup()
+	err = m.SNatIPTablesRulesCleanup()
+	if err != nil {
+		klog.Errorf("failed to clean iptables: %s", err)
+	}
 }

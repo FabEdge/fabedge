@@ -48,13 +48,12 @@ func init() {
 
 //validateConfig validates the mandatory parameters
 // syncPeriod: interval for period sync tasks
-// edgePodCIDR: cidr used for pods run in edge
 // IP: ip address for connector to terminate tunnels
 // Subnets: subnets behind connector
 // viciSocket: strongswan vici socket file
 // cerFile: X509 cert for connector node
 func validateConfig() error {
-	allMandatoryKeys := []string{"syncPeriod", "edgePodCIDR", "IP", "Subnets",
+	allMandatoryKeys := []string{"syncPeriod", "IP", "Subnets",
 		"nodeSubnets", "tunnelConfig", "viciSocket", "certFile", "fabedgeNS"}
 
 	for _, key := range allMandatoryKeys {
