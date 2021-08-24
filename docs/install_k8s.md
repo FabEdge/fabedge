@@ -4,14 +4,14 @@
 
 - 遵循 [kubeadm的最低要求](https://kubernetes.io/zh/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#before-you-begin) ，Master && Node 最低2C2G，磁盘空间不小于10G；
 
-  > ⚠️注意：尽可能提供干净的系统，避免其他因素引起安装错误。
+  > ⚠️注意：尽可能使用干净的系统，避免其他因素引起安装错误。
 
 ## 支持的操作系统
 
 - **Ubuntu 18.04 （推荐使用）**
 - Ubuntu 20.04
-- CentOS Linux release 7.9 
-- CentOS Linux release 7.8
+- CentOS 7.9 
+- CentOS 7.8
 
 ## 部署k8s集群
 
