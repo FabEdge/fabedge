@@ -32,7 +32,7 @@ const (
 	IPSetCloudPodCIDR       = "FABEDGE-CLOUD-POD-CIDR"
 )
 
-func (m *Manager) ensureForwardIPTablesRules(cidr string) error {
+func (m *Manager) ensureForwardIPTablesRules() error {
 	existed, err := m.ipt.ChainExists(TableFilter, ChainFabEdgeForward)
 	if err != nil {
 		return err
@@ -46,10 +46,10 @@ func (m *Manager) ensureForwardIPTablesRules(cidr string) error {
 	if err = m.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-s", cidr, "-j", "ACCEPT"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-d", cidr, "-j", "ACCEPT"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
