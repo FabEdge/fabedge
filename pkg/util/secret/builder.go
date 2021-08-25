@@ -96,7 +96,7 @@ func (b *TLSSecretBuilder) Build() corev1.Secret {
 			corev1.TLSCertKey:       b.certPEM,
 			corev1.TLSPrivateKeyKey: b.keyPEM,
 			KeyCACert:               b.cacertPEM,
-			KeyIPSecSecretsFile:     []byte(": RSA tls.key\\n"),
+			KeyIPSecSecretsFile:     []byte(": RSA tls.key\n"),
 		},
 	}
 }
