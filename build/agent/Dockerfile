@@ -1,7 +1,7 @@
 FROM golang:1.16.4 as builder
 COPY . /fabedge
 RUN cd /fabedge && make agent CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct && \
-    wget -P /tmp -c https://github.com/containernetworking/plugins/releases/download/v0.9.1/cni-plugins-linux-amd64-v0.9.1.tgz && \
+    wget -P /tmp -c http://116.62.127.76/cni-plugins-linux-amd64-v0.9.1.tgz && \
     tar -xf /tmp/cni-plugins-linux-amd64-v0.9.1.tgz -C /tmp/
 
 FROM alpine:3.11
