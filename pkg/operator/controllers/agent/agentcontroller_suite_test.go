@@ -19,12 +19,11 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var cfg *rest.Config

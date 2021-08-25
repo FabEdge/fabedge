@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
 	"github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var cfg *rest.Config
