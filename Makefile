@@ -16,7 +16,7 @@ LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
-all: clean bin
+all: clean test bin
 
 define HELP_INFO
 # Build
@@ -49,14 +49,25 @@ bin: fmt vet ${BINARIES}
 ${BINARIES}: fmt vet
 	GOOS=linux go build ${LDFLAGS} -o ${OUTPUT_DIR}/fabedge-$@ ./cmd/$@
 
+.PHONY: test
+test:
+ifeq (,$(shell which ginkgo))
+	ginkgo ./pkg/...
+else
+	go test ./pkg/...
+endif
+
 e2e-test:
 	go test -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:
 	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile .
+
 images: ${IMAGES}
+
 clean:
+	go clean -cache -testcache
 	rm -rf ${OUTPUT_DIR}
 
 # Generate manifests e.g. CRD, RBAC etc.

@@ -33,8 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	. "github.com/fabedge/fabedge/internal/util/ginkgoext"
-	testutil "github.com/fabedge/fabedge/internal/util/test"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
@@ -42,7 +40,9 @@ import (
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	"github.com/fabedge/fabedge/pkg/util/test"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
@@ -65,7 +65,7 @@ var _ = Describe("AgentController", func() {
 
 		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
 
-		getNodeName = testutil.GenerateGetNameFunc("edge")
+		getNodeName = test.GenerateGetNameFunc("edge")
 	)
 
 	BeforeEach(func() {
@@ -107,7 +107,7 @@ var _ = Describe("AgentController", func() {
 
 			log: mgr.GetLogger().WithName(controllerName),
 		})
-		reconciler, requests = testutil.WrapReconcile(reconciler)
+		reconciler, requests = test.WrapReconcile(reconciler)
 		c, err := controller.New(
 			controllerName,
 			mgr,
@@ -133,10 +133,10 @@ var _ = Describe("AgentController", func() {
 	AfterEach(func() {
 		cancel()
 
-		Expect(testutil.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(test.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(test.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(test.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(test.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
 	})
 
 	When("a node is created", func() {
@@ -502,7 +502,7 @@ var _ = Describe("AgentController", func() {
 			node := newNode(nodeName, "10.40.20.181", "")
 			Expect(k8sClient.Create(ctx, &node)).Should(Succeed())
 			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-			testutil.DrainChan(requests, timeout)
+			test.DrainChan(requests, timeout)
 
 			var pod corev1.Pod
 			agentPodName := getAgentPodName(nodeName)
@@ -606,7 +606,7 @@ var _ = Describe("AgentController", func() {
 			err := k8sClient.Create(context.Background(), &nodeEdge1)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			testutil.DrainChan(requests, timeout)
+			test.DrainChan(requests, timeout)
 		})
 
 		It("should create agent configmap when it is not created yet", func() {
@@ -721,7 +721,7 @@ var _ = Describe("AgentController", func() {
 			err := k8sClient.Create(context.Background(), &node)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			testutil.DrainChan(requests, 2*time.Second)
+			test.DrainChan(requests, 2*time.Second)
 
 			err = k8sClient.Delete(context.Background(), &node)
 			Expect(err).ShouldNot(HaveOccurred())
