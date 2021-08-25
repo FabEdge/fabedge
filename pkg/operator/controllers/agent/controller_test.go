@@ -90,18 +90,20 @@ var _ = Describe("AgentController", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		reconciler := reconcile.Reconciler(&agentController{
-			namespace:        namespace,
-			agentImage:       agentImage,
-			strongswanImage:  strongswanImage,
-			edgePodCIRD:      edgePodCIDR,
-			certManager:      certManager,
-			certOrganization: certutil.DefaultOrganization,
-			certValidPeriod:  365,
+			Config: Config{
+				Namespace:        namespace,
+				AgentImage:       agentImage,
+				StrongswanImage:  strongswanImage,
+				EdgePodCIDR:      edgePodCIDR,
+				CertManager:      certManager,
+				CertOrganization: certutil.DefaultOrganization,
+				CertValidPeriod:  365,
+				Allocator:        alloc,
+				Store:            store,
+				NewEndpoint:      newEndpoint,
+			},
 
-			client:      mgr.GetClient(),
-			alloc:       alloc,
-			store:       store,
-			newEndpoint: newEndpoint,
+			client: mgr.GetClient(),
 
 			log: mgr.GetLogger().WithName(controllerName),
 		})

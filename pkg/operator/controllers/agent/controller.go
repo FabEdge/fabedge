@@ -59,23 +59,9 @@ type ObjectKey = client.ObjectKey
 var _ reconcile.Reconciler = &agentController{}
 
 type agentController struct {
-	client      client.Client
-	alloc       allocator.Interface
-	store       storepkg.Interface
-	newEndpoint types.NewEndpointFunc
-	log         logr.Logger
-
-	namespace       string
-	agentImage      string
-	strongswanImage string
-	edgePodCIRD     string
-	masqOutgoing    bool
-	useXfrm         bool
-	enableProxy     bool
-
-	certManager      certutil.Manager
-	certOrganization string
-	certValidPeriod  int64
+	Config
+	client client.Client
+	log    logr.Logger
 }
 
 type Config struct {
@@ -103,22 +89,7 @@ func AddToManager(cnf Config) error {
 	mgr := cnf.Manager
 
 	reconciler := &agentController{
-		namespace:       cnf.Namespace,
-		agentImage:      cnf.AgentImage,
-		strongswanImage: cnf.StrongswanImage,
-		edgePodCIRD:     cnf.EdgePodCIDR,
-		masqOutgoing:    cnf.MasqOutgoing,
-		useXfrm:         cnf.UseXfrm,
-		enableProxy:     cnf.EnableProxy,
-
-		alloc:       cnf.Allocator,
-		store:       cnf.Store,
-		newEndpoint: cnf.NewEndpoint,
-
-		certManager:      cnf.CertManager,
-		certValidPeriod:  cnf.CertValidPeriod,
-		certOrganization: cnf.CertOrganization,
-
+		Config: cnf,
 		log:    mgr.GetLogger().WithName(controllerName),
 		client: mgr.GetClient(),
 	}
@@ -159,7 +130,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, ctl.clearAllocatedResourcesForEdgeNode(ctx, request.Name)
 	}
 
-	currentEndpoint := ctl.newEndpoint(node)
+	currentEndpoint := ctl.NewEndpoint(node)
 	if currentEndpoint.IP == "" {
 		log.V(5).Info("This node has no ip, skip reconciling")
 		return reconcile.Result{}, nil
@@ -170,7 +141,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 			return reconcile.Result{}, err
 		}
 	} else {
-		ctl.store.SaveEndpoint(currentEndpoint)
+		ctl.Store.SaveEndpoint(currentEndpoint)
 	}
 
 	if err := ctl.syncAgentConfig(ctx, node); err != nil {
@@ -195,7 +166,7 @@ func (ctl *agentController) isValidSubnets(cidrs []string) bool {
 			return false
 		}
 
-		if !ctl.alloc.Contains(*subnet) {
+		if !ctl.Allocator.Contains(*subnet) {
 			return false
 		}
 	}
@@ -207,7 +178,7 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 	err := ctl.deleteObject(ctx, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getAgentPodName(nodeName),
-			Namespace: ctl.namespace,
+			Namespace: ctl.Namespace,
 		},
 	})
 	if err != nil {
@@ -217,7 +188,7 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 	err = ctl.deleteObject(ctx, &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getAgentConfigMapName(nodeName),
-			Namespace: ctl.namespace,
+			Namespace: ctl.Namespace,
 		},
 	})
 	if err != nil {
@@ -227,7 +198,7 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 	err = ctl.deleteObject(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getCertSecretName(nodeName),
-			Namespace: ctl.namespace,
+			Namespace: ctl.Namespace,
 		},
 	})
 	if err != nil {
@@ -240,11 +211,11 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 func (ctl *agentController) reclaimSubnets(nodeName string) error {
 	log := ctl.log.WithValues("nodeName", nodeName)
 
-	ep, ok := ctl.store.GetEndpoint(nodeName)
+	ep, ok := ctl.Store.GetEndpoint(nodeName)
 	if !ok {
 		return nil
 	}
-	ctl.store.DeleteEndpoint(nodeName)
+	ctl.Store.DeleteEndpoint(nodeName)
 	log.V(5).Info("endpoint is delete from store", "endpoint", ep)
 
 	for _, sn := range ep.Subnets {
@@ -253,7 +224,7 @@ func (ctl *agentController) reclaimSubnets(nodeName string) error {
 			log.Error(err, "invalid subnet, skip reclaiming subnets")
 			continue
 		}
-		ctl.alloc.Reclaim(*subnet)
+		ctl.Allocator.Reclaim(*subnet)
 		log.V(5).Info("subnet is reclaimed", "subnet", subnet)
 	}
 
@@ -264,7 +235,7 @@ func (ctl *agentController) allocateSubnet(ctx context.Context, node corev1.Node
 	log := ctl.log.WithValues("nodeName", node.Name)
 
 	log.V(5).Info("this node need subnet allocation")
-	subnet, err := ctl.alloc.GetFreeSubnetBlock(node.Name)
+	subnet, err := ctl.Allocator.GetFreeSubnetBlock(node.Name)
 	if err != nil {
 		log.Error(err, "failed to allocate subnet for node")
 		return err
@@ -283,23 +254,23 @@ func (ctl *agentController) allocateSubnet(ctx context.Context, node corev1.Node
 	if err != nil {
 		log.Error(err, "failed to record node subnet allocation")
 
-		ctl.alloc.Reclaim(*subnet)
+		ctl.Allocator.Reclaim(*subnet)
 		log.V(5).Info("subnet is reclaimed")
 		return err
 	}
 
-	ctl.store.SaveEndpoint(ctl.newEndpoint(node))
+	ctl.Store.SaveEndpoint(ctl.NewEndpoint(node))
 	return nil
 }
 
 func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Node) error {
 	configName := getAgentConfigMapName(node.Name)
-	log := ctl.log.WithValues("nodeName", node.Name, "configName", configName, "namespace", ctl.namespace)
+	log := ctl.log.WithValues("nodeName", node.Name, "configName", configName, "namespace", ctl.Namespace)
 
 	log.V(5).Info("Sync agent config")
 
 	var agentConfig corev1.ConfigMap
-	err := ctl.client.Get(ctx, ObjectKey{Name: configName, Namespace: ctl.namespace}, &agentConfig)
+	err := ctl.client.Get(ctx, ObjectKey{Name: configName, Namespace: ctl.Namespace}, &agentConfig)
 	if err != nil && !errors.IsNotFound(err) {
 		ctl.log.Error(err, "failed to get agent configmap")
 		return err
@@ -320,7 +291,7 @@ func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Nod
 		configMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configName,
-				Namespace: ctl.namespace,
+				Namespace: ctl.Namespace,
 				Labels: map[string]string{
 					constants.KeyFabedgeAPP: constants.AppAgent,
 					constants.KeyCreatedBy:  constants.AppOperator,
@@ -353,11 +324,11 @@ func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Nod
 func (ctl *agentController) syncCertSecret(ctx context.Context, node corev1.Node) error {
 	secretName := getCertSecretName(node.Name)
 
-	log := ctl.log.WithValues("nodeName", node.Name, "secretName", secretName, "namespace", ctl.namespace)
+	log := ctl.log.WithValues("nodeName", node.Name, "secretName", secretName, "namespace", ctl.Namespace)
 	log.V(5).Info("Sync agent tls secret")
 
 	var secret corev1.Secret
-	err := ctl.client.Get(ctx, ObjectKey{Name: secretName, Namespace: ctl.namespace}, &secret)
+	err := ctl.client.Get(ctx, ObjectKey{Name: secretName, Namespace: ctl.Namespace}, &secret)
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			ctl.log.Error(err, "failed to get secret")
@@ -380,7 +351,7 @@ func (ctl *agentController) syncCertSecret(ctx context.Context, node corev1.Node
 	}
 
 	certPEM := secretutil.GetCert(secret)
-	err = ctl.certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	err = ctl.CertManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
 	if err == nil {
 		log.V(5).Info("cert is verified")
 		return nil
@@ -402,10 +373,10 @@ func (ctl *agentController) syncCertSecret(ctx context.Context, node corev1.Node
 }
 
 func (ctl *agentController) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
-	certDER, keyDER, err := ctl.certManager.SignCert(certutil.Config{
+	certDER, keyDER, err := ctl.CertManager.SignCert(certutil.Config{
 		CommonName:     node.Name,
-		Organization:   []string{ctl.certOrganization},
-		ValidityPeriod: timeutil.Days(ctl.certValidPeriod),
+		Organization:   []string{ctl.CertOrganization},
+		ValidityPeriod: timeutil.Days(ctl.CertValidPeriod),
 		Usages:         certutil.ExtKeyUsagesServerAndClient,
 	})
 	if err != nil {
@@ -414,10 +385,10 @@ func (ctl *agentController) buildCertAndKeySecret(secretName string, node corev1
 
 	return secretutil.TLSSecret().
 		Name(secretName).
-		Namespace(ctl.namespace).
+		Namespace(ctl.Namespace).
 		EncodeCert(certDER).
 		EncodeKey(keyDER).
-		CACertPEM(ctl.certManager.GetCACertPEM()).
+		CACertPEM(ctl.CertManager.GetCACertPEM()).
 		Label(constants.KeyCreatedBy, constants.AppOperator).
 		Label(constants.KeyNode, node.Name).Build(), nil
 }
@@ -425,13 +396,13 @@ func (ctl *agentController) buildCertAndKeySecret(secretName string, node corev1
 func (ctl *agentController) syncAgentPod(ctx context.Context, node *corev1.Node) error {
 	agentPodName := getAgentPodName(node.Name)
 
-	log := ctl.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", ctl.namespace)
+	log := ctl.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", ctl.Namespace)
 
 	var oldPod corev1.Pod
-	err := ctl.client.Get(ctx, ObjectKey{Name: agentPodName, Namespace: ctl.namespace}, &oldPod)
+	err := ctl.client.Get(ctx, ObjectKey{Name: agentPodName, Namespace: ctl.Namespace}, &oldPod)
 	switch {
 	case err == nil:
-		newPod := ctl.buildAgentPod(ctl.namespace, node.Name, agentPodName)
+		newPod := ctl.buildAgentPod(ctl.Namespace, node.Name, agentPodName)
 		if newPod.Labels[constants.KeyPodHash] == oldPod.Labels[constants.KeyPodHash] {
 			return nil
 		}
@@ -446,7 +417,7 @@ func (ctl *agentController) syncAgentPod(ctx context.Context, node *corev1.Node)
 		return err
 	case errors.IsNotFound(err):
 		log.V(5).Info("Agent pod is not found, create it now")
-		newPod := ctl.buildAgentPod(ctl.namespace, node.Name, agentPodName)
+		newPod := ctl.buildAgentPod(ctl.Namespace, node.Name, agentPodName)
 		err = ctl.client.Create(ctx, newPod)
 		if err != nil {
 			log.Error(err, "failed to create agent pod")
@@ -488,7 +459,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 			InitContainers: []corev1.Container{
 				{
 					Name:            "install-cni",
-					Image:           ctl.agentImage,
+					Image:           ctl.AgentImage,
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Command: []string{
 						"cp",
@@ -515,7 +486,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 			Containers: []corev1.Container{
 				{
 					Name:            "agent",
-					Image:           ctl.agentImage,
+					Image:           ctl.AgentImage,
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Args: []string{
 						"-tunnels-conf",
@@ -523,12 +494,12 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						"-services-conf",
 						agentConfigServicesFilepath,
 						"-edge-pod-cidr",
-						ctl.edgePodCIRD,
+						ctl.EdgePodCIDR,
 						"-local-cert",
 						"tls.crt",
-						fmt.Sprintf("-masq-outgoing=%t", ctl.masqOutgoing),
-						fmt.Sprintf("-use-xfrm=%t", ctl.useXfrm),
-						fmt.Sprintf("-enable-proxy=%t", ctl.enableProxy),
+						fmt.Sprintf("-masq-outgoing=%t", ctl.MasqOutgoing),
+						fmt.Sprintf("-use-xfrm=%t", ctl.UseXfrm),
+						fmt.Sprintf("-enable-proxy=%t", ctl.EnableProxy),
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
@@ -561,7 +532,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 				},
 				{
 					Name:            "strongswan",
-					Image:           ctl.strongswanImage,
+					Image:           ctl.StrongswanImage,
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
@@ -692,7 +663,7 @@ func (ctl *agentController) deleteObject(ctx context.Context, obj client.Object)
 		if errors.IsNotFound(err) {
 			err = nil
 		} else {
-			ctl.log.Error(err, "failed to delete object", "objectName", obj.GetName(), "namespace", ctl.namespace)
+			ctl.log.Error(err, "failed to delete object", "objectName", obj.GetName(), "namespace", ctl.Namespace)
 		}
 	}
 	return err
@@ -716,7 +687,7 @@ func (ctl *agentController) getNetworkConfig(ctx context.Context, namespace, cmN
 }
 
 func (ctl *agentController) buildNetworkConf(name string) netconf.NetworkConf {
-	store := ctl.store
+	store := ctl.Store
 	endpoint, _ := store.GetEndpoint(name)
 	peerEndpoints := ctl.getPeers(name)
 
@@ -733,7 +704,7 @@ func (ctl *agentController) buildNetworkConf(name string) netconf.NetworkConf {
 }
 
 func (ctl *agentController) getPeers(name string) []types.Endpoint {
-	store := ctl.store
+	store := ctl.Store
 	nameSet := stringset.New(constants.ConnectorEndpointName)
 
 	for _, community := range store.GetCommunitiesByEndpoint(name) {
