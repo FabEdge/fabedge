@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -40,6 +41,9 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 var _ = Describe("AgentController", func() {
@@ -52,11 +56,12 @@ var _ = Describe("AgentController", func() {
 	)
 
 	var (
-		requests chan reconcile.Request
-		store    storepkg.Interface
-		alloc    allocator.Interface
-		ctx      context.Context
-		cancel   context.CancelFunc
+		requests    chan reconcile.Request
+		store       storepkg.Interface
+		alloc       allocator.Interface
+		ctx         context.Context
+		cancel      context.CancelFunc
+		certManager certutil.Manager
 
 		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
 
@@ -64,9 +69,19 @@ var _ = Describe("AgentController", func() {
 	)
 
 	BeforeEach(func() {
+		ctx, cancel = context.WithCancel(context.Background())
+
 		store = storepkg.NewStore()
 
-		ctx, cancel = context.WithCancel(context.Background())
+		alloc, _ = allocator.New("2.2.0.0/16")
+
+		caCertDER, caKeyDER, _ := certutil.NewSelfSignedCA(certutil.Config{
+			CommonName:     certutil.DefaultCAName,
+			Organization:   []string{certutil.DefaultOrganization},
+			IsCA:           true,
+			ValidityPeriod: timeutil.Days(365),
+		})
+		certManager, _ = certutil.NewManger(caCertDER, caKeyDER)
 
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
@@ -74,13 +89,14 @@ var _ = Describe("AgentController", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		alloc, _ = allocator.New("2.2.0.0/16")
-
 		reconciler := reconcile.Reconciler(&agentController{
-			namespace:       namespace,
-			agentImage:      agentImage,
-			strongswanImage: strongswanImage,
-			edgePodCIRD:     edgePodCIDR,
+			namespace:        namespace,
+			agentImage:       agentImage,
+			strongswanImage:  strongswanImage,
+			edgePodCIRD:      edgePodCIDR,
+			certManager:      certManager,
+			certOrganization: certutil.DefaultOrganization,
+			certValidPeriod:  365,
 
 			client:      mgr.GetClient(),
 			alloc:       alloc,
@@ -114,6 +130,11 @@ var _ = Describe("AgentController", func() {
 
 	AfterEach(func() {
 		cancel()
+
+		Expect(testutil.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
 	})
 
 	When("a node is created", func() {
@@ -254,10 +275,10 @@ var _ = Describe("AgentController", func() {
 			Expect(len(pod.Spec.InitContainers)).To(Equal(1))
 			Expect(len(pod.Spec.Containers)).To(Equal(2))
 			Expect(len(pod.Spec.Volumes)).To(Equal(8))
+			Expect(*pod.Spec.AutomountServiceAccountToken).To(BeFalse())
 
 			hostPathDirectory := corev1.HostPathDirectory
 			hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
-			hostPathFile := corev1.HostPathFile
 			defaultMode := int32(420)
 			edgeTunnelConfigMap := getAgentConfigMapName(nodeName)
 			volumes := []corev1.Volume{
@@ -299,18 +320,38 @@ var _ = Describe("AgentController", func() {
 				{
 					Name: "ipsec-d",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/fabedge/ipsec",
-							Type: &hostPathDirectory,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName:  getCertSecretName(nodeName),
+							DefaultMode: &defaultMode,
+							Items: []corev1.KeyToPath{
+								{
+									Key:  secretutil.KeyCACert,
+									Path: "cacerts/ca.crt",
+								},
+								{
+									Key:  corev1.TLSCertKey,
+									Path: "certs/tls.crt",
+								},
+								{
+									Key:  corev1.TLSPrivateKeyKey,
+									Path: "private/tls.key",
+								},
+							},
 						},
 					},
 				},
 				{
 					Name: "ipsec-secrets",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/fabedge/ipsec/ipsec.secrets",
-							Type: &hostPathFile,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName:  getCertSecretName(nodeName),
+							DefaultMode: &defaultMode,
+							Items: []corev1.KeyToPath{
+								{
+									Key:  secretutil.KeyIPSecSecretsFile,
+									Path: "ipsec.secrets",
+								},
+							},
 						},
 					},
 				},
@@ -387,6 +428,8 @@ var _ = Describe("AgentController", func() {
 				agentConfigServicesFilepath,
 				"-edge-pod-cidr",
 				edgePodCIDR,
+				"-local-cert",
+				"tls.crt",
 				"-masq-outgoing=false",
 				"-use-xfrm=false",
 				"-enable-proxy=false",
@@ -443,6 +486,7 @@ var _ = Describe("AgentController", func() {
 				{
 					Name:      "ipsec-secrets",
 					MountPath: "/etc/ipsec.secrets",
+					SubPath:   "ipsec.secrets",
 					ReadOnly:  true,
 				},
 			}
@@ -456,6 +500,7 @@ var _ = Describe("AgentController", func() {
 			node := newNode(nodeName, "10.40.20.181", "")
 			Expect(k8sClient.Create(ctx, &node)).Should(Succeed())
 			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+			testutil.DrainChan(requests, timeout)
 
 			var pod corev1.Pod
 			agentPodName := getAgentPodName(nodeName)
@@ -472,6 +517,51 @@ var _ = Describe("AgentController", func() {
 			pod = corev1.Pod{}
 			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())
 			Expect(pod.DeletionTimestamp).ShouldNot(BeNil())
+		})
+
+		It("should generate a cert and private key for this node's agent", func() {
+			nodeName := getNodeName()
+			ctx := context.TODO()
+
+			By("creating a new node")
+			node := newNode(nodeName, "10.40.20.181", "")
+			Expect(k8sClient.Create(ctx, &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+
+			var secret corev1.Secret
+			secretName := getCertSecretName(nodeName)
+			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+
+			By("By check TLS secret")
+			cacertPEM, certPem := secretutil.GetCACert(secret), secretutil.GetCert(secret)
+			Expect(certManager.VerifyCertInPEM(certPem, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+			Expect(cacertPEM).Should(Equal(certManager.GetCACertPEM()))
+
+			By("Changing TLS secret with expired cert")
+			certDER, keyDER, _ := certManager.SignCert(certutil.Config{
+				CommonName:     node.Name,
+				ValidityPeriod: 2 * time.Second,
+			})
+			secret.Data[corev1.TLSCertKey] = certutil.EncodeCertPEM(certDER)
+			secret.Data[corev1.TLSPrivateKeyKey] = certutil.EncodePrivateKeyPEM(keyDER)
+			Expect(k8sClient.Update(ctx, &secret)).Should(Succeed())
+
+			time.Sleep(2 * time.Second)
+
+			By("Triggering node reconciling")
+			Expect(k8sClient.Get(ctx, ObjectKey{Name: node.Name}, &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+			node.ResourceVersion = ""
+			node.Annotations = map[string]string{"something": "different"}
+			Expect(k8sClient.Update(ctx, &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+
+			By("Checking if TLS secret updated")
+			secret = corev1.Secret{}
+			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+			cacertPEM, certPem = secretutil.GetCACert(secret), secretutil.GetCert(secret)
+			Expect(certManager.VerifyCertInPEM(certPem, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+			Expect(cacertPEM).Should(Equal(certManager.GetCACertPEM()))
 		})
 	})
 
@@ -661,6 +751,14 @@ var _ = Describe("AgentController", func() {
 			configName := getAgentConfigMapName(nodeName)
 
 			err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: configName}, &corev1.ConfigMap{})
+			Expect(err).Should(HaveOccurred())
+			Expect(errors.IsNotFound(err)).Should(BeTrue())
+		})
+
+		It("should delete agent's TLS secret", func() {
+			secretName := getCertSecretName(nodeName)
+
+			err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: secretName}, &corev1.Secret{})
 			Expect(err).Should(HaveOccurred())
 			Expect(errors.IsNotFound(err)).Should(BeTrue())
 		})

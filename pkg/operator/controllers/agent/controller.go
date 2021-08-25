@@ -41,6 +41,9 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 const (
@@ -69,6 +72,10 @@ type agentController struct {
 	masqOutgoing    bool
 	useXfrm         bool
 	enableProxy     bool
+
+	certManager      certutil.Manager
+	certOrganization string
+	certValidPeriod  int64
 }
 
 type Config struct {
@@ -86,6 +93,10 @@ type Config struct {
 
 	ConnectorConfig string
 	NewEndpoint     types.NewEndpointFunc
+
+	CertManager      certutil.Manager
+	CertOrganization string
+	CertValidPeriod  int64
 }
 
 func AddToManager(cnf Config) error {
@@ -103,6 +114,10 @@ func AddToManager(cnf Config) error {
 		alloc:       cnf.Allocator,
 		store:       cnf.Store,
 		newEndpoint: cnf.NewEndpoint,
+
+		certManager:      cnf.CertManager,
+		certValidPeriod:  cnf.CertValidPeriod,
+		certOrganization: cnf.CertOrganization,
 
 		log:    mgr.GetLogger().WithName(controllerName),
 		client: mgr.GetClient(),
@@ -162,6 +177,10 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, err
 	}
 
+	if err := ctl.syncCertSecret(ctx, node); err != nil {
+		return reconcile.Result{}, err
+	}
+
 	if err := ctl.syncAgentPod(ctx, &node); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -185,11 +204,33 @@ func (ctl *agentController) isValidSubnets(cidrs []string) bool {
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
-	if err := ctl.deleteAgentPodIfNeeded(ctx, nodeName); err != nil {
+	err := ctl.deleteObject(ctx, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getAgentPodName(nodeName),
+			Namespace: ctl.namespace,
+		},
+	})
+	if err != nil {
 		return err
 	}
 
-	if err := ctl.deleteAgentConfigIfNeeded(ctx, nodeName); err != nil {
+	err = ctl.deleteObject(ctx, &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getAgentConfigMapName(nodeName),
+			Namespace: ctl.namespace,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	err = ctl.deleteObject(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getCertSecretName(nodeName),
+			Namespace: ctl.namespace,
+		},
+	})
+	if err != nil {
 		return err
 	}
 
@@ -217,27 +258,6 @@ func (ctl *agentController) reclaimSubnets(nodeName string) error {
 	}
 
 	return nil
-}
-
-func (ctl *agentController) deleteAgentPodIfNeeded(ctx context.Context, nodeName string) error {
-	agentPodName := getAgentPodName(nodeName)
-	key := ObjectKey{
-		Name:      agentPodName,
-		Namespace: ctl.namespace,
-	}
-
-	var pod corev1.Pod
-	if err := ctl.client.Get(ctx, key, &pod); err != nil {
-		return err
-	}
-
-	ctl.log.V(5).Info("Agent pod is found, delete it now", "nodeName", nodeName, "podName", agentPodName, "namespace", ctl.namespace)
-
-	err := ctl.client.Delete(ctx, &pod)
-	if err != nil {
-		ctl.log.Error(err, "failed to delete agent pod")
-	}
-	return err
 }
 
 func (ctl *agentController) allocateSubnet(ctx context.Context, node corev1.Node) error {
@@ -330,6 +350,78 @@ func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Nod
 	return err
 }
 
+func (ctl *agentController) syncCertSecret(ctx context.Context, node corev1.Node) error {
+	secretName := getCertSecretName(node.Name)
+
+	log := ctl.log.WithValues("nodeName", node.Name, "secretName", secretName, "namespace", ctl.namespace)
+	log.V(5).Info("Sync agent tls secret")
+
+	var secret corev1.Secret
+	err := ctl.client.Get(ctx, ObjectKey{Name: secretName, Namespace: ctl.namespace}, &secret)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			ctl.log.Error(err, "failed to get secret")
+			return err
+		}
+
+		log.V(5).Info("TLS secret for agent is not found, generate it now")
+		secret, err = ctl.buildCertAndKeySecret(secretName, node)
+		if err != nil {
+			log.Error(err, "failed to create cert and key for agent")
+			return err
+		}
+
+		err = ctl.client.Create(ctx, &secret)
+		if err != nil {
+			log.Error(err, "failed to create secret")
+		}
+
+		return err
+	}
+
+	certPEM := secretutil.GetCert(secret)
+	err = ctl.certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	if err == nil {
+		log.V(5).Info("cert is verified")
+		return nil
+	}
+
+	log.Error(err, "failed to verify cert, need to regenerate a cert to agent")
+	secret, err = ctl.buildCertAndKeySecret(secretName, node)
+	if err != nil {
+		log.Error(err, "failed to recreate cert and key for agent")
+		return err
+	}
+
+	err = ctl.client.Update(ctx, &secret)
+	if err != nil {
+		log.Error(err, "failed to save secret")
+	}
+
+	return err
+}
+
+func (ctl *agentController) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
+	certDER, keyDER, err := ctl.certManager.SignCert(certutil.Config{
+		CommonName:     node.Name,
+		Organization:   []string{ctl.certOrganization},
+		ValidityPeriod: timeutil.Days(ctl.certValidPeriod),
+		Usages:         certutil.ExtKeyUsagesServerAndClient,
+	})
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+
+	return secretutil.TLSSecret().
+		Name(secretName).
+		Namespace(ctl.namespace).
+		EncodeCert(certDER).
+		EncodeKey(keyDER).
+		CACertPEM(ctl.certManager.GetCACertPEM()).
+		Label(constants.KeyCreatedBy, constants.AppOperator).
+		Label(constants.KeyNode, node.Name).Build(), nil
+}
+
 func (ctl *agentController) syncAgentPod(ctx context.Context, node *corev1.Node) error {
 	agentPodName := getAgentPodName(node.Name)
 
@@ -369,10 +461,9 @@ func (ctl *agentController) syncAgentPod(ctx context.Context, node *corev1.Node)
 func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *corev1.Pod {
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
-	hostPathFile := corev1.HostPathFile
 	privileged := true
 	defaultMode := int32(420)
-	agentConfigName := getAgentConfigMapName(nodeName)
+	automountServiceAccountToken := false
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -384,9 +475,10 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 			},
 		},
 		Spec: corev1.PodSpec{
-			NodeName:      nodeName,
-			HostNetwork:   true,
-			RestartPolicy: corev1.RestartPolicyAlways,
+			AutomountServiceAccountToken: &automountServiceAccountToken,
+			NodeName:                     nodeName,
+			HostNetwork:                  true,
+			RestartPolicy:                corev1.RestartPolicyAlways,
 			Tolerations: []corev1.Toleration{
 				{
 					Key:    "node-role.kubernetes.io/edge",
@@ -432,6 +524,8 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						agentConfigServicesFilepath,
 						"-edge-pod-cidr",
 						ctl.edgePodCIRD,
+						"-local-cert",
+						"tls.crt",
 						fmt.Sprintf("-masq-outgoing=%t", ctl.masqOutgoing),
 						fmt.Sprintf("-use-xfrm=%t", ctl.useXfrm),
 						fmt.Sprintf("-enable-proxy=%t", ctl.enableProxy),
@@ -486,6 +580,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						{
 							Name:      "ipsec-secrets",
 							MountPath: "/etc/ipsec.secrets",
+							SubPath:   "ipsec.secrets",
 							ReadOnly:  true,
 						},
 					},
@@ -521,7 +616,7 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: agentConfigName,
+								Name: getAgentConfigMapName(nodeName),
 							},
 							DefaultMode: &defaultMode,
 						},
@@ -530,18 +625,38 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 				{
 					Name: "ipsec-d",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/fabedge/ipsec",
-							Type: &hostPathDirectory,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName:  getCertSecretName(nodeName),
+							DefaultMode: &defaultMode,
+							Items: []corev1.KeyToPath{
+								{
+									Key:  secretutil.KeyCACert,
+									Path: "cacerts/ca.crt",
+								},
+								{
+									Key:  corev1.TLSCertKey,
+									Path: "certs/tls.crt",
+								},
+								{
+									Key:  corev1.TLSPrivateKeyKey,
+									Path: "private/tls.key",
+								},
+							},
 						},
 					},
 				},
 				{
 					Name: "ipsec-secrets",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/fabedge/ipsec/ipsec.secrets",
-							Type: &hostPathFile,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName:  getCertSecretName(nodeName),
+							DefaultMode: &defaultMode,
+							Items: []corev1.KeyToPath{
+								{
+									Key:  secretutil.KeyIPSecSecretsFile,
+									Path: "ipsec.secrets",
+								},
+							},
 						},
 					},
 				},
@@ -571,32 +686,15 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 	return pod
 }
 
-func (ctl *agentController) deleteAgentConfigIfNeeded(ctx context.Context, nodeName string) error {
-	configName := getAgentConfigMapName(nodeName)
-
-	log := ctl.log.WithValues("nodeName", nodeName, "configName", configName, "namespace", ctl.namespace)
-
-	var cm corev1.ConfigMap
-	if err := ctl.client.Get(ctx, ObjectKey{Name: configName, Namespace: ctl.namespace}, &cm); err != nil {
-		if errors.IsNotFound(err) {
-			return nil
-		}
-
-		log.Error(err, "failed to get configmap")
-		return err
-	}
-
-	log.V(5).Info("Agent configmap is found, delete it now")
-	err := ctl.client.Delete(ctx, &cm)
-
+func (ctl *agentController) deleteObject(ctx context.Context, obj client.Object) error {
+	err := ctl.client.Delete(ctx, obj)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = nil
 		} else {
-			log.Error(err, "failed to delete agent configmap")
+			ctl.log.Error(err, "failed to delete object", "objectName", obj.GetName(), "namespace", ctl.namespace)
 		}
 	}
-
 	return err
 }
 
@@ -652,6 +750,10 @@ func getAgentConfigMapName(nodeName string) string {
 
 func getAgentPodName(nodeName string) string {
 	return fmt.Sprintf("fabedge-agent-%s", nodeName)
+}
+
+func getCertSecretName(nodeName string) string {
+	return fmt.Sprintf("fabedge-agent-tls-%s", nodeName)
 }
 
 // ComputeHash returns a hash value calculated from pod spec

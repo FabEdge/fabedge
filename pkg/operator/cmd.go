@@ -42,6 +42,8 @@ import (
 	proxyctl "github.com/fabedge/fabedge/pkg/operator/controllers/proxy"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
 var log = klogr.New().WithName("agent")
@@ -104,6 +106,12 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			return err
 		}
 
+		certManager, err := createCertManager(mgr.GetClient())
+		if err != nil {
+			log.Error(err, "failed to create cert manager")
+			return err
+		}
+
 		agentConfig := agentctl.Config{
 			Manager:     mgr,
 			Allocator:   alloc,
@@ -117,6 +125,10 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			MasqOutgoing:    masqOutgoing,
 			UseXfrm:         useXfrm,
 			EnableProxy:     enableProxy,
+
+			CertManager:      certManager,
+			CertOrganization: certOrganization,
+			CertValidPeriod:  certValidPeriod,
 		}
 		if err = agentctl.AddToManager(agentConfig); err != nil {
 			log.Error(err, "failed to add agent controller to manager")
@@ -234,4 +246,29 @@ func getConnectorEndpoint(cli client.Client, namespace string, cmName string) (e
 		Subnets:     conf.Subnets,
 		NodeSubnets: conf.NodeSubnets,
 	}, nil
+}
+
+func createCertManager(cli client.Client) (certutil.Manager, error) {
+	var secret corev1.Secret
+	err := cli.Get(context.Background(), client.ObjectKey{
+		Name:      caSecretName,
+		Namespace: namespace,
+	}, &secret)
+
+	if err != nil {
+		return nil, err
+	}
+	certPEM, keyPEM := secretutil.GetCA(secret)
+
+	certDER, err := certutil.DecodePEM(certPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	keyDER, err := certutil.DecodePEM(keyPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	return certutil.NewManger(certDER, keyDER)
 }
