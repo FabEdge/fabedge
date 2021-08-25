@@ -100,7 +100,7 @@ func execute(pod corev1.Pod, cmd []string) (string, string, error) {
 	})
 
 	if err != nil && framework.TestContext.ShowExecError {
-		framework.Logf("failed to execute ping. stderr: %s. err: %s", stderr, err)
+		framework.Logf("failed to execute cmd: %s. stderr: %s. err: %s", strings.Join(cmd, " "), stderr, err)
 	}
 
 	return stdout.String(), stderr.String(), err

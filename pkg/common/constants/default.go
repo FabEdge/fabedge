@@ -19,6 +19,7 @@ const (
 	KeyFabedgeAPP = "fabedge.io/app"
 	KeyCreatedBy  = "fabedge.io/created-by"
 	KeyPodHash    = "fabedge.io/pod-spec-hash"
+	KeyNode       = "fabedge.io/node"
 	AppAgent      = "fabedge-agent"
 	AppOperator   = "fabedge-operator"
 

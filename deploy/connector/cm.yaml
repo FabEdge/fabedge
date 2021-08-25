@@ -6,7 +6,7 @@ metadata:
 data:
   connector.yaml: |
     tunnelConfig: /etc/fabedge/tunnels.yaml
-    certFile: /etc/ipsec.d/certs/connector_cert.pem
+    certFile: /etc/ipsec.d/certs/tls.crt
     viciSocket: /var/run/charon.vici
     # period to sync tunnel/route/iptables
     syncPeriod: 5m
@@ -17,7 +17,7 @@ data:
     debounceDuration: 5s
     cniType: calico
   tunnels.yaml: |
-    id: C=CN, O=StrongSwan, CN=connector
+    id: C=CN, O=fabedge.io, CN=cloud-connector
     name: cloud-connector
     ip: 10.20.8.169
     subnets:

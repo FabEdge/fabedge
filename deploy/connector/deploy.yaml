@@ -51,6 +51,7 @@ spec:
               readOnly: true
             - name: ipsec-secrets
               mountPath: /etc/ipsec.secrets
+              subPath: ipsec.secrets
               readOnly: true
         - name: connector
           securityContext:
@@ -72,8 +73,20 @@ spec:
           configMap:
             name: connector-config
         - name: ipsec-d
-          hostPath:
-            path: /etc/fabedge/ipsec/
+          secret:
+            items:
+              - key: ca.crt
+                path: cacerts/ca.crt
+              - key: tls.crt
+                path: certs/tls.crt
+              - key: tls.key
+                path: private/tls.key
+              - key: ipsec.secrets
+                path: ipsec.secrets
+            secretName: cloud-connector
         - name: ipsec-secrets
-          hostPath:
-            path: /etc/fabedge/ipsec/ipsec.secrets
+          secret:
+            items:
+              - key: ipsec.secrets
+                path: ipsec.secrets
+            secretName: cloud-connector
