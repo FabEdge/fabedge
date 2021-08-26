@@ -320,7 +320,14 @@ func (m *Manager) syncCloudNodeCIDRSet() error {
 func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 	cidrs := sets.NewString()
 	for _, c := range m.connections {
-		cidrs.Insert(c.LocalNodeSubnets...)
+		for _, subnet := range c.LocalNodeSubnets {
+			// translate the IP address to CIDR is needed
+			// because FABEDGE-CLOUD-NODE-CIDR ipset type is hash:net
+			if _, _, err := net.ParseCIDR(subnet); err != nil {
+				subnet = strings.Join([]string{subnet, "32"}, "/")
+			}
+			cidrs.Insert(subnet)
+		}
 	}
 	return cidrs
 }
