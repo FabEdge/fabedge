@@ -81,8 +81,6 @@ spec:
                 path: certs/tls.crt
               - key: tls.key
                 path: private/tls.key
-              - key: ipsec.secrets
-                path: ipsec.secrets
             secretName: cloud-connector
         - name: ipsec-secrets
           secret:
