@@ -130,6 +130,12 @@ func (m *Manager) Start() {
 		} else {
 			klog.Infof("iptables SNAT rules are added")
 		}
+
+		if err := m.ensureInputIPTablesRules(); err != nil {
+			klog.Errorf("error when to add iptables input rules: %s", err)
+		} else {
+			klog.Infof("iptables input rules are added")
+		}
 	}
 
 	tunnelTaskFn := func() {
@@ -151,6 +157,12 @@ func (m *Manager) Start() {
 			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudPodCIDR, err)
 		} else {
 			klog.Infof("ipset %s are synced", IPSetCloudPodCIDR)
+		}
+
+		if err := m.syncCloudNodeCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudNodeCIDR, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetCloudNodeCIDR)
 		}
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
