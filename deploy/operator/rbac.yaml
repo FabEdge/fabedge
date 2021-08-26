@@ -29,8 +29,9 @@ rules:
   - apiGroups:
       - ""
     resources:
-      - configmaps
       - pods
+      - configmaps
+      - secrets
     verbs:
       - get
       - list
