@@ -7,7 +7,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"github.com/fabedge/fabedge/pkg/common/about"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -17,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
+	"github.com/fabedge/fabedge/pkg/common/about"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
@@ -85,7 +85,7 @@ fabedge-cert gen edge --save-to-file --save-to-secret=false
 
 			commonName := args[0]
 			usages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
-			cfg := certOptions.AsConfig(commonName, true, usages)
+			cfg := certOptions.AsConfig(commonName, false, usages)
 
 			certDER, keyDER, err := certutil.NewCertFromCA2(caDER, caKeyDER, cfg)
 			if err != nil {
