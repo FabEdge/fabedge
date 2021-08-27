@@ -39,13 +39,13 @@ import (
 )
 
 const (
-	ChainFabEdge     = "FABEDGE"
-	ChainForward     = "FORWARD"
-	ChainPostRouting = "POSTROUTING"
-	ChainMasquerade  = "MASQUERADE"
-	ChainNatOutgoing = "fabedge-nat-outgoing"
-	TableFilter      = "filter"
-	TableNat         = "nat"
+	TableFilter             = "filter"
+	TableNat                = "nat"
+	ChainForward            = "FORWARD"
+	ChainPostRouting        = "POSTROUTING"
+	ChainMasquerade         = "MASQUERADE"
+	ChainFabEdgeForward     = "FABEDGE-FORWARD"
+	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 )
 
 type CNI struct {
@@ -269,13 +269,13 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 }
 
 func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
-	if err := m.ensureChain(TableFilter, ChainFabEdge); err != nil {
-		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdge)
+	if err := m.ensureChain(TableFilter, ChainFabEdgeForward); err != nil {
+		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdgeForward)
 		return err
 	}
 
 	ensureRule := m.ipt.AppendUnique
-	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdge); err != nil {
+	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
 		m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
 		return err
 	}
@@ -283,13 +283,13 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 	// subnets won't change most of time, and is append-only, so for now we don't need
 	// to handle removing old subnet
 	for _, subnet := range conf.Subnets {
-		if err := ensureRule(TableFilter, ChainFabEdge, "-s", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdge, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
+		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
 			return err
 		}
 
-		if err := ensureRule(TableFilter, ChainFabEdge, "-d", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdge, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
+		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
 			return err
 		}
 
@@ -303,8 +303,8 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 
 // outbound NAT from pods to outside of the cluster
 func (m *Manager) configureOutboundRules(subnet string) error {
-	if err := m.ensureChain(TableNat, ChainNatOutgoing); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainNatOutgoing)
+	if err := m.ensureChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
+		m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
 		return err
 	}
 
@@ -317,8 +317,8 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		ensureRule := m.ipt.AppendUnique
-		if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, m.edgePodCIDR))
+		if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, m.edgePodCIDR))
 			return err
 		}
 
@@ -329,19 +329,19 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		for _, connSubnet := range connectorSubnets {
-			if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
-				m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
+			if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+				m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
 				return err
 			}
 		}
 
-		if err = ensureRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
+		if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
 			return err
 		}
 
-		if err = ensureRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainNatOutgoing))
+		if err = ensureRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
 			return err
 		}
 	} else {
@@ -355,18 +355,18 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		deleteRule := m.ipt.DeleteIfExists
-		if err = deleteRule(TableNat, ChainPostRouting, "-j", ChainNatOutgoing); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainNatOutgoing))
+		if err = deleteRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
 			return err
 		}
 
-		if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
+		if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
 			return err
 		}
 
-		if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-d %s -J RETURN", m.edgePodCIDR))
+		if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-d %s -J RETURN", m.edgePodCIDR))
 			return err
 		}
 
@@ -377,8 +377,8 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		for _, connSubnet := range connectorSubnets {
-			if err = deleteRule(TableNat, ChainNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
-				m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
+			if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
+				m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
 				return err
 			}
 		}
