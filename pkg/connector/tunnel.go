@@ -60,6 +60,14 @@ func (m *Manager) readCfgFromFile() error {
 	return nil
 }
 
+// remote local and remote address to support IPSec NAT_T
+func removeLocalAndRemoteAddress(conn tunnel.ConnConfig) tunnel.ConnConfig {
+	c := conn
+	c.LocalAddress = nil
+	c.RemoteAddress = nil
+	return c
+}
+
 func (m *Manager) syncConnections() error {
 	if err := m.readCfgFromFile(); err != nil {
 		return err
@@ -81,7 +89,7 @@ func (m *Manager) syncConnections() error {
 
 	// load active connections
 	for _, c := range m.connections {
-		if err = m.tm.LoadConn(c); err != nil {
+		if err = m.tm.LoadConn(removeLocalAndRemoteAddress(c)); err != nil {
 			return err
 		}
 	}
