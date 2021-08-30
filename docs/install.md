@@ -186,7 +186,7 @@ fabedge        10.10.0.0/16     all()
              imagePullPolicy: IfNotPresent
              args:
                - -namespace=fabedge
-               - -edge-network-cidr=10.10.0.0/16     # edge pod使用的网络
+               - -edge-pod-cidr=10.10.0.0/16   # edge pod使用的网络, 和上面为calico分配的cidr保持一致
                - -agent-image=fabedge/agent     
                - -strongswan-image=fabedge/strongswan  
                - -connector-config=connector-config
