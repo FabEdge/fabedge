@@ -59,53 +59,19 @@ root@master:~# git clone https://github.com/FabEdge/fabedge.git
 
 ### 为[strongswan](https://www.strongswan.org/)生成证书
 
-1. 为**每个边缘节**点生成证书， 以edge1为例，
+在控制节点上执行以下指令
 
-   ```shell
-   root@master:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              47m    v1.19.3-kubeedge-v1.1.0
-     master  Ready    master,node             57m    v1.19.7
-   
-   # 云端执行，生成证书
-   root@master:~# docker run --rm -v /ipsec.d:/ipsec.d fabedge/strongswan:latest /genCert.sh edge1  
-   
-   # 登录边缘节点，在边缘节点edge1上创建目录
-   root@edge1:~# mkdir -p /etc/fabedge/ipsec 
-   root@edge1:~# cd /etc/fabedge/ipsec 
-   root@edge1:/etc/fabedge/ipsec# mkdir -p cacerts certs private 
-   
-   # 将生成的证书copy到边缘节点, 
-   # 注意证书名字: edge1_cert -> edgecert.pem, edge1.ipsec.secrets -> ipsec.secrets
-   # “edgecert.pem”，“ipsec.secrets” 是固定名字，不能改变
-   root@master:~# scp /ipsec.d/cacerts/ca.pem          <user>@edge1:/etc/fabedge/ipsec/cacerts/ca.pem
-   root@master:~# scp /ipsec.d/certs/edge1_cert.pem    <user>@edge1:/etc/fabedge/ipsec/certs/edgecert.pem
-   root@master:~# scp /ipsec.d/private/edge1_key.pem   <user>@edge1:/etc/fabedge/ipsec/private/edge1_key.pem
-   root@master:~# scp /ipsec.d/edge1.ipsec.secrets     <user>@edge1:/etc/fabedge/ipsec/ipsec.secrets
-   ```
+```shell
+# 确认本节点能够访问K8S API
+root@master:~# kubectl get no
+  NAME    STATUS   ROLES                   AGE    VERSION
+  edge1   Ready    agent,edge              107m   v1.19.3    
+  master  Ready    master,node             117m   v1.19.7 
 
-2. 为connector服务生成证书，并拷贝到运行connector服务的节点上， 以master为例，
-
-   ```shell
-   root@master:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              62m    v1.19.3-kubeedge-v1.1.0     
-     master  Ready    master,node             72m    v1.19.7    
-   
-   # 在master上执行, 生成证书
-   root@master:~# docker run --rm -v /ipsec.d:/ipsec.d fabedge/strongswan:latest /genCert.sh connector  
-   
-   # 在master上执行，创建目录
-   root@master:~# mkdir -p /etc/fabedge/ipsec 
-   root@master:~# cd /etc/fabedge/ipsec 
-   root@master:/etc/fabedge/ipsec# mkdir -p cacerts certs private 
-   
-   # 在master上执行，copy证书
-   root@master:~# cp /ipsec.d/cacerts/ca.pem                /etc/fabedge/ipsec/cacerts/ca.pem
-   root@master:~# cp /ipsec.d/certs/connector_cert.pem     /etc/fabedge/ipsec/certs/connector_cert.pem
-   root@master:~# cp /ipsec.d/private/connector_key.pem   /etc/fabedge/ipsec/private/connector_key.pem
-   root@master:~# cp /ipsec.d/connector.ipsec.secrets    /etc/fabedge/ipsec/ipsec.secrets
-   ```
+root@master:~# wget http://xxxx/fabedge-cert  # TODO
+root@master:~# fabedge-cert gen ca  # 生成CA密钥
+root@master:~# fabedge-cert gen edge --name=cloud-connector    # 为connector生成证书密钥
+```
 
 
 
@@ -126,93 +92,26 @@ root@master:~# kubectl create ns fabedge
    ```shell
    root@master:~# kubectl get node
      NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              107m   v1.19.3-kubeedge-v1.1.0     
+     edge1   Ready    agent,edge              107m   v1.19.3    
      master  Ready    master,node             117m   v1.19.7     
    
    root@master:~# kubectl label no master node-role.kubernetes.io/connector=
    
    root@master:~# kubectl get node
      NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              108m   v1.19.3-kubeedge-v1.1.0     
+     edge1   Ready    agent,edge              108m   v1.19.3-kubeedge    
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
 
-2. 修改connector的配置
-
-   按实际环境修改edgePodCIDR, ip, sbunets属性
-
-   ```shell
-   root@master:~# vi ~/fabedge/deploy/connector/cm.yaml
-   ```
-
-   ```yaml
-   data:
-     connector.yaml: |
-       tunnelConfig: /etc/fabedge/tunnels.yaml
-       certFile: /etc/ipsec.d/certs/connector_cert.pem    
-       viciSocket: /var/run/charon.vici
-       # period to sync tunnel/route/rules regularly
-       syncPeriod: 5m
-       edgePodCIDR: 10.10.0.0/16
-       # namespace for fabedge resources
-       fabedgeNS: fabedge
-       debounceDuration: 5s
-     tunnels.yaml: |
-       # connector identity in certificate 
-       id: C=CN, O=StrongSwan, CN=connector
-       # connector name
-       name: cloud-connector
-       ip: 10.22.45.30       # ip address of node, which runs connector   
-       subnets:
-       - 10.233.0.0/17       # CIDR used by pod & service in the cloud cluster
-       nodeSubnets:
-       - 10.22.45.30/32      # IP address of all cloud cluster
-       - 10.22.45.31/32
-       - 10.22.45.32/32
-   ```
-
-   > ⚠️**注意：**
-   >
-   > **CIDR：**无类别域间路由（Classless Inter-Domain Routing、CIDR）是一个用于给用户分配IP地址以及在互联网上有效地路由IP数据包的对IP地址进行归类的方法。
-   >
-   > **edgePodCIDR**：选择一个大的网段，每个边缘节点会从中分配一个小段，每个边缘pod会从这个小段分配一个IP地址，不能和云端pod或service的网段冲突。
-   >
-   > **ip**：运行connector服务的节点的IP地址，确保边缘节点能ping通这个ip。
-   >
-   > ```shell
-   > root@edge1:~ # ping 10.22.45.30
-   > ```
-   >
-   > **subnets**: 需要包含service clusterIP CIDR 和 pod clusterIP CIDR
-   >
-   > 比如，service clusterIP CIDR 是 10.233.0.0/18，podClusterIPCIDR = 10.233.64.0/18 那么subnets是10.233.0.0/17
-   >
-   > 获取**service clusterIP CIDR**和**pod clusterIP CIDR**的方法如下：
-   >
-   > ```shell
-   > # service clusterIP CIDR
-   > root@master:~# grep -rn "service-cluster-ip-range" /etc/kubernetes/manifests
-   > # pod clusterIP CIDR
-   > root@master:~# calicoctl.sh get ipPool
-   > ```
-   >
-   > **nodeSubnets：**需要添加所有的云端节点的ip地址
-
-3. 为connector创建configmap
-
-```shell
-root@master:~# kubectl apply -f ~/fabedge/deploy/connector/cm.yaml
-```
-
-4. 部署connector
+2. 部署connector
 
 ```shell
 root@master:~# kubectl apply -f ~/fabedge/deploy/connector/deploy.yaml
 ```
 
-5. 修改calico配置
+3. 修改calico配置
 
-cidr为前面分配的edgePodCIDR，disabled为true
+cidr是一个大的网段，每个边缘节点会从中分配一个小段，每个边缘pod会从这个小段分配一个IP地址，不能和云端pod或service的网段冲突
 
 ```shell
 root@master:~# vi ~/fabedge/deploy/connector/ippool.yaml
@@ -230,7 +129,7 @@ spec:
   disabled: true
 ```
 
-6. 创建calico pool
+4. 创建calico pool
 
 ```shell
 # 不同环境，calico的命令可能会不同
@@ -299,7 +198,7 @@ fabedge        10.10.0.0/16     all()
 
    >⚠️**注意：**
    >
-   >**edge-network-cidr**为【部署Connector】中“修改connector的配置”分配的**edgePodCIDR**
+   >**edge-network-cidr**为上面为calico分配cidr。
 
 3. 创建Operator
 

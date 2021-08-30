@@ -16,6 +16,7 @@ package connector
 
 import (
 	"fmt"
+	"k8s.io/klog/v2"
 
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
@@ -72,6 +73,8 @@ func (m *Manager) syncConnections() error {
 	if err := m.readCfgFromFile(); err != nil {
 		return err
 	}
+
+	klog.V(5).Infof("current connections:%+v", m.connections)
 
 	oldNames, err := m.tm.ListConnNames()
 	if err != nil {

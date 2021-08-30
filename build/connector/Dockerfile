@@ -10,4 +10,4 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/re
 
 COPY --from=builder /fabedge/_output/fabedge-connector /usr/local/bin/connector
 
-CMD ["/usr/local/bin/connector"]
+ENTRYPOINT ["/usr/local/bin/connector"]

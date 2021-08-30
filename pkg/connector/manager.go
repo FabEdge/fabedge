@@ -15,6 +15,7 @@
 package connector
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/about"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/spf13/viper"
 	"k8s.io/klog/v2"
 	k8sexec "k8s.io/utils/exec"
 
@@ -44,7 +44,6 @@ type Manager struct {
 type config struct {
 	interval         time.Duration //sync interval
 	debounceDuration time.Duration
-	edgePodCIDR      string
 	tunnelConfigFile string
 	certFile         string
 	viciSocket       string
@@ -53,13 +52,12 @@ type config struct {
 
 func NewManager() *Manager {
 	c := &config{
-		interval:         viper.GetDuration("syncPeriod"),
-		edgePodCIDR:      viper.GetString("edgePodCIDR"),
-		tunnelConfigFile: viper.GetString("tunnelConfig"),
-		certFile:         viper.GetString("certFile"),
-		viciSocket:       viper.GetString("vicisocket"),
-		debounceDuration: viper.GetDuration("debounceDuration"),
-		cniType:          viper.GetString("cniType"),
+		interval:         syncPeriod,
+		tunnelConfigFile: tunnelConfig,
+		certFile:         certFile,
+		viciSocket:       viciSocket,
+		debounceDuration: debounceDuration,
+		cniType:          cniType,
 	}
 
 	tm, err := strongswan.New(
@@ -79,7 +77,7 @@ func NewManager() *Manager {
 	ipset := utilipset.New(execer)
 
 	var router routing.Routing
-	if c.cniType == "" || strings.ToUpper(c.cniType) == "CALICO" {
+	if strings.ToUpper(c.cniType) == "CALICO" {
 		router = routing.NewCalicoRouter()
 	}
 
@@ -170,17 +168,19 @@ func (m *Manager) Start() {
 	// repeats regular tasks periodically
 	go runTasks(m.config.interval, tasks...)
 
-	// sync tunnels when config file updated by cloud.
-	go m.onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn, routeTaskFn)
+	// sync ALL when config file changed
+	go m.onConfigFileChange(m.config.tunnelConfigFile, tasks...)
 
+	about.DisplayVersion()
 	klog.Info("manager started")
+	klog.V(5).Infof("current config:%+v", m.config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 	m.gracefulShutdown()
-	klog.Info("manager stopped")
+	klog.Info("connector stopped")
 }
 
 func (m *Manager) gracefulShutdown() {

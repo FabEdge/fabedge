@@ -100,7 +100,7 @@ func delAllEdgeRoutesFromMainTable(devName string) error {
 	// after the interface is deleted, all routes via which are cleaned automatically.
 	err := netlink.LinkDel(link)
 	if err != nil && invalidArgument(err) {
-		return fmt.Errorf("link:%s does not exist", devName)
+		return fmt.Errorf("%s does not exist", devName)
 	} else {
 		return err
 	}
