@@ -17,6 +17,7 @@ package agent
 import (
 	"context"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/jjeffery/stringset"
@@ -41,8 +42,9 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
-	"github.com/fabedge/fabedge/pkg/util/test"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
@@ -62,10 +64,11 @@ var _ = Describe("AgentController", func() {
 		ctx         context.Context
 		cancel      context.CancelFunc
 		certManager certutil.Manager
+		newNode     = newNodePodCIDRSinAnnotations
 
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
+		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 
-		getNodeName = test.GenerateGetNameFunc("edge")
+		getNodeName = testutil.GenerateGetNameFunc("edge")
 	)
 
 	BeforeEach(func() {
@@ -102,12 +105,18 @@ var _ = Describe("AgentController", func() {
 				Store:            store,
 				NewEndpoint:      newEndpoint,
 			},
+			podCIDRsHandler: &allocatablePodCIDRsHandler{
+				store:       store,
+				allocator:   alloc,
+				newEndpoint: newEndpoint,
+				log:         mgr.GetLogger().WithName(controllerName),
+				client:      k8sClient,
+			},
 
 			client: mgr.GetClient(),
-
-			log: mgr.GetLogger().WithName(controllerName),
+			log:    mgr.GetLogger().WithName(controllerName),
 		})
-		reconciler, requests = test.WrapReconcile(reconciler)
+		reconciler, requests = testutil.WrapReconcile(reconciler)
 		c, err := controller.New(
 			controllerName,
 			mgr,
@@ -133,10 +142,10 @@ var _ = Describe("AgentController", func() {
 	AfterEach(func() {
 		cancel()
 
-		Expect(test.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(test.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(test.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(test.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
 	})
 
 	When("a node is created", func() {
@@ -148,106 +157,12 @@ var _ = Describe("AgentController", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// create event
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
 
 			node = corev1.Node{}
 			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
-		})
-
-		It("should allocate a subnet to a edge node if this node has no subnet", func() {
-			nodeName := getNodeName()
-			node := newNode(nodeName, "10.40.20.181", "")
-
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			// create event
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			// update event
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			// should not receive any request
-			Eventually(requests, timeout).ShouldNot(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
-
-			ep, ok := store.GetEndpoint(nodeName)
-			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
-		})
-
-		It("should allocate a subnet to a edge node if this node's subnet is invalid", func() {
-			nodeName := getNodeName()
-
-			node := newNode(nodeName, "10.40.20.181", "2.2.2.257/26")
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
-
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-
-		It("should reallocate a subnet to a edge node if this node's subnet is out of expected range", func() {
-			nodeName := getNodeName()
-
-			node := newNode(nodeName, "10.40.20.181", "2.3.2.1/26")
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
-
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-
-		It("should reallocate a subnet to a edge node if this node's subnet is not match to record in store", func() {
-			nodeName := getNodeName()
-			store.SaveEndpoint(types.Endpoint{
-				Name:    nodeName,
-				IP:      "",
-				Subnets: []string{"2.2.2.2/26"},
-			})
-			node := newNode(nodeName, "10.40.20.181", "2.2.2.1/26")
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
-
-			err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
-
-			_, _, err = net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).ShouldNot(HaveOccurred())
 		})
 
 		It("should create a agent pod to a edge node if this node's agent pod is not found", func() {
@@ -258,9 +173,7 @@ var _ = Describe("AgentController", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// create event
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
 
 			var pod corev1.Pod
 			agentPodName := getAgentPodName(nodeName)
@@ -502,7 +415,7 @@ var _ = Describe("AgentController", func() {
 			node := newNode(nodeName, "10.40.20.181", "")
 			Expect(k8sClient.Create(ctx, &node)).Should(Succeed())
 			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-			test.DrainChan(requests, timeout)
+			testutil.DrainChan(requests, timeout)
 
 			var pod corev1.Pod
 			agentPodName := getAgentPodName(nodeName)
@@ -606,7 +519,7 @@ var _ = Describe("AgentController", func() {
 			err := k8sClient.Create(context.Background(), &nodeEdge1)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			test.DrainChan(requests, timeout)
+			testutil.DrainChan(requests, timeout)
 		})
 
 		It("should create agent configmap when it is not created yet", func() {
@@ -718,17 +631,11 @@ var _ = Describe("AgentController", func() {
 			}
 
 			store.SaveEndpoint(newEndpoint(node))
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
+			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
+			testutil.DrainChan(requests, 2*time.Second)
 
-			test.DrainChan(requests, 2*time.Second)
-
-			err = k8sClient.Delete(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			Eventually(requests, timeout).Should(Receive(Equal(reconcile.Request{
-				NamespacedName: ObjectKey{Name: nodeName},
-			})))
+			Expect(k8sClient.Delete(context.Background(), &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
 		})
 
 		It("should delete agent pod", func() {
@@ -736,12 +643,10 @@ var _ = Describe("AgentController", func() {
 
 			var pod corev1.Pod
 			err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
-			Expect(err).ShouldNot(HaveOccurred())
-
-			Expect(pod.DeletionTimestamp).ShouldNot(BeNil())
+			Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
 		})
 
-		It("should reclaim subnets allocated to this node", func() {
+		It("should execute podCIDRsHandler.Undo method", func() {
 			_, ok := store.GetEndpoint(nodeName)
 			Expect(ok).To(BeFalse())
 
@@ -767,12 +672,24 @@ var _ = Describe("AgentController", func() {
 	})
 })
 
-func newNode(name, ip, subnets string) corev1.Node {
+func newNodePodCIDRSinAnnotations(name, ip, subnets string) corev1.Node {
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
 				"node-role.kubernetes.io/edge": "",
+			},
+		},
+		Spec: corev1.NodeSpec{
+			PodCIDR:  "2.2.2.2/26",
+			PodCIDRs: []string{"2.2.2.2/26"},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: ip,
+				},
 			},
 		},
 	}
@@ -783,16 +700,28 @@ func newNode(name, ip, subnets string) corev1.Node {
 		}
 	}
 
-	if ip != "" {
-		node.Status = corev1.NodeStatus{
+	return node
+}
+
+func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
+	return corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				"node-role.kubernetes.io/edge": "",
+			},
+		},
+		Spec: corev1.NodeSpec{
+			PodCIDR:  subnets,
+			PodCIDRs: strings.Split(subnets, ","),
+		},
+		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
 				{
 					Type:    corev1.NodeInternalIP,
-					Address: "10.40.20.181",
+					Address: ip,
 				},
 			},
-		}
+		},
 	}
-
-	return node
 }

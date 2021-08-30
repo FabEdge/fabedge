@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
-	"net"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-logr/logr"
@@ -42,6 +41,7 @@ import (
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
@@ -60,8 +60,9 @@ var _ reconcile.Reconciler = &agentController{}
 
 type agentController struct {
 	Config
-	client client.Client
-	log    logr.Logger
+	podCIDRsHandler podCIDRsHandler
+	client          client.Client
+	log             logr.Logger
 }
 
 type Config struct {
@@ -83,15 +84,37 @@ type Config struct {
 	CertManager      certutil.Manager
 	CertOrganization string
 	CertValidPeriod  int64
+
+	AllocatePodCIDR bool
 }
 
 func AddToManager(cnf Config) error {
 	mgr := cnf.Manager
 
+	log := mgr.GetLogger().WithName(controllerName)
+	cli := mgr.GetClient()
+
+	var pch podCIDRsHandler
+	if cnf.AllocatePodCIDR {
+		pch = &allocatablePodCIDRsHandler{
+			store:       cnf.Store,
+			allocator:   cnf.Allocator,
+			newEndpoint: cnf.NewEndpoint,
+			client:      cli,
+			log:         log.WithName("podCIDRsHandler"),
+		}
+	} else {
+		pch = &rawPodCIDRsHandler{
+			store:       cnf.Store,
+			newEndpoint: cnf.NewEndpoint,
+		}
+	}
+
 	reconciler := &agentController{
-		Config: cnf,
-		log:    mgr.GetLogger().WithName(controllerName),
-		client: mgr.GetClient(),
+		Config:          cnf,
+		log:             log,
+		client:          cli,
+		podCIDRsHandler: pch,
 	}
 	c, err := controller.New(
 		controllerName,
@@ -115,6 +138,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 	var node corev1.Node
 
 	log := ctl.log.WithValues("key", request)
+
 	if err := ctl.client.Get(ctx, request.NamespacedName, &node); err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("edge node is deleted, clear resources allocated to this node")
@@ -130,18 +154,14 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, ctl.clearAllocatedResourcesForEdgeNode(ctx, request.Name)
 	}
 
-	currentEndpoint := ctl.NewEndpoint(node)
-	if currentEndpoint.IP == "" {
-		log.V(5).Info("This node has no ip, skip reconciling")
+	if ctl.shouldSkip(node) {
+		log.V(5).Info("This node has no ip or pod cidrs, skip reconciling")
 		return reconcile.Result{}, nil
 	}
 
-	if !ctl.isValidSubnets(currentEndpoint.Subnets) {
-		if err := ctl.allocateSubnet(ctx, node); err != nil {
-			return reconcile.Result{}, err
-		}
-	} else {
-		ctl.Store.SaveEndpoint(currentEndpoint)
+	// todo: move other steps to handlers
+	if err := ctl.podCIDRsHandler.Do(ctx, node); err != nil {
+		return reconcile.Result{}, err
 	}
 
 	if err := ctl.syncAgentConfig(ctx, node); err != nil {
@@ -159,19 +179,11 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 	return reconcile.Result{}, nil
 }
 
-func (ctl *agentController) isValidSubnets(cidrs []string) bool {
-	for _, cidr := range cidrs {
-		_, subnet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return false
-		}
+func (ctl *agentController) shouldSkip(node corev1.Node) bool {
+	ip := nodeutil.GetIP(node)
+	cidrs := nodeutil.GetPodCIDRs(node)
 
-		if !ctl.Allocator.Contains(*subnet) {
-			return false
-		}
-	}
-
-	return true
+	return len(ip) == 0 || len(cidrs) == 0
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
@@ -205,62 +217,7 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 		return err
 	}
 
-	return ctl.reclaimSubnets(nodeName)
-}
-
-func (ctl *agentController) reclaimSubnets(nodeName string) error {
-	log := ctl.log.WithValues("nodeName", nodeName)
-
-	ep, ok := ctl.Store.GetEndpoint(nodeName)
-	if !ok {
-		return nil
-	}
-	ctl.Store.DeleteEndpoint(nodeName)
-	log.V(5).Info("endpoint is delete from store", "endpoint", ep)
-
-	for _, sn := range ep.Subnets {
-		_, subnet, err := net.ParseCIDR(sn)
-		if err != nil {
-			log.Error(err, "invalid subnet, skip reclaiming subnets")
-			continue
-		}
-		ctl.Allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed", "subnet", subnet)
-	}
-
-	return nil
-}
-
-func (ctl *agentController) allocateSubnet(ctx context.Context, node corev1.Node) error {
-	log := ctl.log.WithValues("nodeName", node.Name)
-
-	log.V(5).Info("this node need subnet allocation")
-	subnet, err := ctl.Allocator.GetFreeSubnetBlock(node.Name)
-	if err != nil {
-		log.Error(err, "failed to allocate subnet for node")
-		return err
-	}
-
-	log = log.WithValues("subnet", subnet.String())
-	log.V(5).Info("an subnet is allocated to node")
-
-	if node.Annotations == nil {
-		node.Annotations = map[string]string{}
-	}
-	// for now, we just supply one subnet allocation
-	node.Annotations[constants.KeyPodSubnets] = subnet.String()
-
-	err = ctl.client.Update(ctx, &node)
-	if err != nil {
-		log.Error(err, "failed to record node subnet allocation")
-
-		ctl.Allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed")
-		return err
-	}
-
-	ctl.Store.SaveEndpoint(ctl.NewEndpoint(node))
-	return nil
+	return ctl.podCIDRsHandler.Undo(ctx, nodeName)
 }
 
 func (ctl *agentController) syncAgentConfig(ctx context.Context, node corev1.Node) error {

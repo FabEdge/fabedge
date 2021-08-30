@@ -43,6 +43,7 @@ import (
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
@@ -98,7 +99,12 @@ func startManager() error {
 // have to be done after leader election is finished, otherwise their data may be out of date
 func initializeControllers(mgr manager.Manager) manager.Runnable {
 	return manager.RunnableFunc(func(ctx context.Context) error {
-		newEndpoint := types.GenerateNewEndpointFunc(endpointIDFormat)
+		var newEndpoint types.NewEndpointFunc
+		if allocatePodCIDR {
+			newEndpoint = types.GenerateNewEndpointFunc(endpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
+		} else {
+			newEndpoint = types.GenerateNewEndpointFunc(endpointIDFormat, nodeutil.GetPodCIDRs)
+		}
 
 		alloc, store, err := initAllocatorAndStore(mgr.GetClient(), newEndpoint)
 		if err != nil {
@@ -121,6 +127,7 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			Namespace:       namespace,
 			AgentImage:      agentImage,
 			StrongswanImage: strongswanImage,
+			AllocatePodCIDR: allocatePodCIDR,
 			EdgePodCIDR:     edgePodCIDR,
 			MasqOutgoing:    masqOutgoing,
 			UseXfrm:         useXfrm,

@@ -14,13 +14,17 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
-type podCIDRHandler interface {
+// podCIDRsHandler extracts nodeName, nodeIP and podCIDRs from a node and use
+// these to build an endpoint then store it. When a node is deleted, Undo should
+// be executed to undo whatever Do method did.
+type podCIDRsHandler interface {
 	Do(ctx context.Context, node corev1.Node) error
 	Undo(ctx context.Context, nodeName string) error
 }
 
-var _ podCIDRHandler = &allocatablePodCIDRHandler{}
-type allocatablePodCIDRHandler struct {
+var _ podCIDRsHandler = &allocatablePodCIDRsHandler{}
+
+type allocatablePodCIDRsHandler struct {
 	client      client.Client
 	allocator   allocator.Interface
 	store       storepkg.Interface
@@ -28,7 +32,7 @@ type allocatablePodCIDRHandler struct {
 	log         logr.Logger
 }
 
-func (handler *allocatablePodCIDRHandler) Do(ctx context.Context, node corev1.Node) error {
+func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
 	currentEndpoint := handler.newEndpoint(node)
 
 	if !handler.isValidSubnets(currentEndpoint.Subnets) {
@@ -42,7 +46,11 @@ func (handler *allocatablePodCIDRHandler) Do(ctx context.Context, node corev1.No
 	return nil
 }
 
-func (handler *allocatablePodCIDRHandler) isValidSubnets(cidrs []string) bool {
+func (handler *allocatablePodCIDRsHandler) isValidSubnets(cidrs []string) bool {
+	if len(cidrs) == 0 {
+		return false
+	}
+
 	for _, cidr := range cidrs {
 		_, subnet, err := net.ParseCIDR(cidr)
 		if err != nil {
@@ -57,7 +65,7 @@ func (handler *allocatablePodCIDRHandler) isValidSubnets(cidrs []string) bool {
 	return true
 }
 
-func (handler *allocatablePodCIDRHandler) allocateSubnet(ctx context.Context, node corev1.Node) error {
+func (handler *allocatablePodCIDRsHandler) allocateSubnet(ctx context.Context, node corev1.Node) error {
 	log := handler.log.WithValues("nodeName", node.Name)
 
 	log.V(5).Info("this node need subnet allocation")
@@ -89,13 +97,14 @@ func (handler *allocatablePodCIDRHandler) allocateSubnet(ctx context.Context, no
 	return nil
 }
 
-func (handler *allocatablePodCIDRHandler)  Undo(ctx context.Context, nodeName string) error {
+func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName string) error {
 	log := handler.log.WithValues("nodeName", nodeName)
 
 	ep, ok := handler.store.GetEndpoint(nodeName)
 	if !ok {
 		return nil
 	}
+
 	handler.store.DeleteEndpoint(nodeName)
 	log.V(5).Info("endpoint is delete from store", "endpoint", ep)
 
@@ -112,22 +121,19 @@ func (handler *allocatablePodCIDRHandler)  Undo(ctx context.Context, nodeName st
 	return nil
 }
 
+var _ podCIDRsHandler = &rawPodCIDRsHandler{}
 
-var _ podCIDRHandler = &rawPodCIDRHandler{}
-type rawPodCIDRHandler struct {
-	client      client.Client
-	allocator   allocator.Interface
+type rawPodCIDRsHandler struct {
 	store       storepkg.Interface
 	newEndpoint types.NewEndpointFunc
-	log         logr.Logger
 }
 
-func (handler *rawPodCIDRHandler) Do(ctx context.Context, node corev1.Node) error {
+func (handler *rawPodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
 	endpoint := handler.newEndpoint(node)
 	handler.store.SaveEndpoint(endpoint)
 	return nil
 }
 
-func (handler *rawPodCIDRHandler) Undo(ctx context.Context, nodeName string) error {
+func (handler *rawPodCIDRsHandler) Undo(ctx context.Context, nodeName string) error {
 	return nil
 }

@@ -23,8 +23,9 @@ import (
 var (
 	version bool
 
-	namespace   string
-	edgePodCIDR string
+	namespace       string
+	edgePodCIDR     string
+	allocatePodCIDR bool
 
 	connectorConfig             string
 	connectorConfigSyncInterval int64
@@ -51,6 +52,7 @@ func init() {
 	flag.BoolVar(&version, "version", false, "display version info")
 
 	flag.StringVar(&namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
+	flag.BoolVar(&allocatePodCIDR, "allocate-pod-cidr", true, "Determine whether allocate podCIDRs to edge node")
 	flag.StringVar(&edgePodCIDR, "edge-pod-cidr", "2.2.0.0/16", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node")
 
 	flag.StringVar(&connectorConfig, "connector-config", "cloud-tunnels-config", "the name of configmap for fabedge-connector")
