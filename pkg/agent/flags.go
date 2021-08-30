@@ -36,7 +36,6 @@ var (
 	cniBridgeName  string
 
 	masqOutgoing bool
-	edgePodCIDR  string
 
 	dummyInterfaceName string
 	xfrmInterfaceName  string
@@ -62,7 +61,6 @@ func init() {
 	flag.StringVar(&cniBridgeName, "cni-bridge-name", "br-fabedge", "the name of bridge")
 
 	flag.BoolVar(&masqOutgoing, "masq-outgoing", true, "Configure faberge networking to perform outbound NAT for connections from pods to outside of the cluster")
-	flag.StringVar(&edgePodCIDR, "edge-pod-cidr", "2.0.0.0/8", "CIDR of the edge pod")
 
 	flag.StringVar(&dummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "the name of dummy interface")
 	flag.BoolVar(&useXfrm, "use-xfrm", false, "use xfrm when OS has this feature")

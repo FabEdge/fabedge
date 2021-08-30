@@ -57,7 +57,6 @@ func Execute() error {
 		TunnelsConfPath:  tunnelsConfPath,
 		ServicesConfPath: servicesConfPath,
 
-		EdgePodCIDR:  edgePodCIDR,
 		MasqOutgoing: masqOutgoing,
 
 		DummyInterfaceName: dummyInterfaceName,

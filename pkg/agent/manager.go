@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"path/filepath"
-	"strings"
 	"time"
 
 	debpkg "github.com/bep/debounce"
@@ -35,6 +35,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
+	"github.com/fabedge/fabedge/pkg/util/ipset"
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
@@ -46,6 +47,7 @@ const (
 	ChainMasquerade         = "MASQUERADE"
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
+	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
 )
 
 type CNI struct {
@@ -64,7 +66,6 @@ type Config struct {
 	MasqOutgoing     bool
 
 	DummyInterfaceName string
-	EdgePodCIDR        string
 
 	UseXfrm           bool
 	XfrmInterfaceName string
@@ -85,12 +86,12 @@ type Manager struct {
 
 	netLink            ipvs.NetLinkHandle
 	ipvs               ipvs.Interface
+	ipset              ipset.Interface
 	masqOutgoing       bool
 	useXfrm            bool
 	xfrmInterfaceName  string
 	xfrmInterfaceID    uint
 	dummyInterfaceName string
-	edgePodCIDR        string
 	enableProxy        bool
 
 	tm  tunnel.Manager
@@ -141,7 +142,6 @@ func newManager(cnf Config) (*Manager, error) {
 		xfrmInterfaceName:  cnf.XfrmInterfaceName,
 		xfrmInterfaceID:    cnf.XfrmInterfaceID,
 		dummyInterfaceName: cnf.DummyInterfaceName,
-		edgePodCIDR:        cnf.EdgePodCIDR,
 		enableProxy:        cnf.EnableProxy,
 
 		tm:  tm,
@@ -153,6 +153,7 @@ func newManager(cnf Config) (*Manager, error) {
 
 		netLink: ipvs.NewNetLinkHandle(false),
 		ipvs:    ipvs.New(exec.New()),
+		ipset:   ipset.New(),
 	}
 
 	return m, nil
@@ -175,6 +176,12 @@ func (m *Manager) start() {
 		ctx, cancel := context.WithCancel(context.Background())
 		// this make `go vet` shut up
 		lastCancel = cancel
+
+		if m.masqOutgoing {
+			go retryForever(ctx, m.syncIPSetEdgePeerCIDR, func(n uint, err error) {
+				m.log.Error(err, "failed to sync ipset EDGE-PEER-CIDR", "retryNum", n)
+			})
+		}
 
 		go retryForever(ctx, m.mainNetwork, func(n uint, err error) {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
@@ -317,22 +324,9 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		}
 
 		ensureRule := m.ipt.AppendUnique
-		if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, m.edgePodCIDR))
+		if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", IPSetFabEdgePeerCIDR, "dst", "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, IPSetFabEdgePeerCIDR))
 			return err
-		}
-
-		connectorSubnets, err := m.getConnectorSubnets()
-		if err != nil {
-			m.log.Error(err, "failed to gt connector subnets")
-			return err
-		}
-
-		for _, connSubnet := range connectorSubnets {
-			if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
-				m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
-				return err
-			}
 		}
 
 		if err = ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
@@ -345,42 +339,9 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 			return err
 		}
 	} else {
-		iFace, err := m.netLink.GetDefaultIFace()
-		if err != nil && strings.Contains(err.Error(), "not found") {
-			if strings.Contains(err.Error(), "not found") {
-				m.log.V(3).Info("default iFace was not found, skip deleting the NAT outgoing iptables rules")
-				err = nil
-			}
+		if err := m.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to deletes all rules in the specified table/chain ", "table", TableNat, "chain", ChainPostRouting)
 			return err
-		}
-
-		deleteRule := m.ipt.DeleteIfExists
-		if err = deleteRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
-			return err
-		}
-
-		if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-o", iFace, "-j", ChainMasquerade); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -o %s -j %s", subnet, iFace, ChainMasquerade))
-			return err
-		}
-
-		if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", m.edgePodCIDR, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-d %s -J RETURN", m.edgePodCIDR))
-			return err
-		}
-
-		connectorSubnets, err := m.getConnectorSubnets()
-		if err != nil {
-			m.log.Error(err, "failed to get connector subnets")
-			return err
-		}
-
-		for _, connSubnet := range connectorSubnets {
-			if err = deleteRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", connSubnet, "-j", "RETURN"); err != nil {
-				m.log.Error(err, "failed to delete rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, connSubnet))
-				return err
-			}
 		}
 	}
 
@@ -468,11 +429,14 @@ func (m *Manager) ensureInterfacesAndRoutes() error {
 			return err
 		}
 
-		log.Info("add a route to edge node", "edgePodCIDR", m.edgePodCIDR)
-		if err := m.netLink.EnsureRouteAdd(m.edgePodCIDR, m.xfrmInterfaceName); err != nil {
-			m.log.Error(err, "failed to add route", "xfrmInterface", m.xfrmInterfaceName, "podCIDR", m.edgePodCIDR)
-			return err
-		}
+		// TODO: add routes to cloud-node, cloud-pod, agent-node and agent-pod
+		// The xfrm feature is temporarily unavailable because the routing information is missing
+
+		//log.Info("add a route to edge node", "edgePodCIDR", m.edgePodCIDR)
+		//if err := m.netLink.EnsureRouteAdd(m.edgePodCIDR, m.xfrmInterfaceName); err != nil {
+		//	m.log.Error(err, "failed to add route", "xfrmInterface", m.xfrmInterfaceName, "podCIDR", m.edgePodCIDR)
+		//	return err
+		//}
 
 		connectorSubnets, err := m.getConnectorSubnets()
 		if err != nil {
@@ -651,4 +615,51 @@ func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServe
 	}
 
 	return nil
+}
+
+func (m *Manager) syncIPSetEdgePeerCIDR() error {
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDR, ipset.HashNet)
+	if err != nil {
+		return err
+	}
+
+	allEdgePeerCIDRs, err := m.getAllEdgePeerCIDRs()
+	if err != nil {
+		return err
+	}
+
+	oldEdgePeerCIDRs, err := m.getOldEdgePeerCIDRs()
+	if err != nil {
+		return err
+	}
+
+	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgePeerCIDRs, oldEdgePeerCIDRs)
+}
+
+func (m *Manager) getAllEdgePeerCIDRs() (sets.String, error) {
+	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cidrSet := sets.String{}
+	for _, p := range conf.Peers {
+		for _, nodeSubnet := range p.NodeSubnets {
+			if _, _, err := net.ParseCIDR(nodeSubnet); err != nil {
+				s := m.ipset.ConvertIPToCIDR(nodeSubnet)
+				cidrSet.Insert(s)
+			}
+		}
+
+		ip := m.ipset.ConvertIPToCIDR(p.IP)
+		cidrSet.Insert(ip)
+
+		cidrSet.Insert(p.Subnets...)
+	}
+
+	return cidrSet, nil
+}
+
+func (m *Manager) getOldEdgePeerCIDRs() (sets.String, error) {
+	return m.ipset.ListEntries(IPSetFabEdgePeerCIDR, ipset.HashNet)
 }
