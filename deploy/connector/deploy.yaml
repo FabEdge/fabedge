@@ -33,6 +33,7 @@ spec:
       containers:
         - name: strongswan
           image: fabedge/strongswan
+          imagePullPolicy: IfNotPresent
           readinessProbe:
             exec:
               command:
@@ -58,6 +59,15 @@ spec:
             capabilities:
               add: ["NET_ADMIN"]
           image: fabedge/connector
+          imagePullPolicy: IfNotPresent
+          args:
+            - -tunnel-config=/etc/fabedge/tunnels.yaml
+            - -cert-file=/etc/ipsec.d/certs/tls.crt
+            - -vici-socket=/var/run/charon.vici
+            - -cni-type=CALICO
+            - -sync-period=1m
+            - -debounce-duration=5s
+            - -v=5
           volumeMounts:
             - name: var-run
               mountPath: /var/run/
