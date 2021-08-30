@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"fmt"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/vishvananda/netlink"
 	"net"
@@ -15,6 +16,22 @@ const (
 type Routing interface {
 	SyncRoutes(active bool, connections []tunnel.ConnConfig) error
 	CleanRoutes(connections []tunnel.ConnConfig) error
+}
+
+func GetRouter(cni string) (Routing, error) {
+	var router Routing
+	var err error
+
+	switch strings.ToUpper(cni) {
+	case "CALICO":
+		router = NewCalicoRouter()
+	case "FLANNEL":
+		router = NewFlannelRouter()
+	default:
+		err = fmt.Errorf("cni:%s is not implemented", cni)
+	}
+
+	return router, err
 }
 
 func IsInConns(dst *net.IPNet, connections []tunnel.ConnConfig) (bool, error) {

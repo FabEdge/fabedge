@@ -18,7 +18,6 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/about"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -76,14 +75,9 @@ func NewManager() *Manager {
 	execer := k8sexec.New()
 	ipset := utilipset.New(execer)
 
-	var router routing.Routing
-	switch cni := strings.ToUpper(c.cniType); cni {
-	case "CALICO":
-		router = routing.NewCalicoRouter()
-	case "FLANNEL":
-		router = routing.NewFlannelRouter()
-	default:
-		klog.Fatalf("cni:%s is not implemented", cni)
+	router, err := routing.GetRouter(cniType)
+	if err != nil {
+		klog.Fatalf("%s", err)
 	}
 
 	return &Manager{
