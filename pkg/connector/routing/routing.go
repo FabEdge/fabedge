@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	TableStrongswan = 220
+	dummyInfName    = "fabedge-dummy0"
+)
+
 type Routing interface {
 	SyncRoutes(active bool, connections []tunnel.ConnConfig) error
 	CleanRoutes(connections []tunnel.ConnConfig) error

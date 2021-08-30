@@ -77,8 +77,13 @@ func NewManager() *Manager {
 	ipset := utilipset.New(execer)
 
 	var router routing.Routing
-	if strings.ToUpper(c.cniType) == "CALICO" {
+	switch cni := strings.ToUpper(c.cniType); cni {
+	case "CALICO":
 		router = routing.NewCalicoRouter()
+	case "FLANNEL":
+		router = routing.NewFlannelRouter()
+	default:
+		klog.Fatalf("cni:%s is not implemented", cni)
 	}
 
 	return &Manager{
