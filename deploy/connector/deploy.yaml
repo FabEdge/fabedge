@@ -64,7 +64,7 @@ spec:
             - -tunnel-config=/etc/fabedge/tunnels.yaml
             - -cert-file=/etc/ipsec.d/certs/tls.crt
             - -vici-socket=/var/run/charon.vici
-            - -cni-type=CALICO
+            - -cni-type=calico
             - -sync-period=1m
             - -debounce-duration=5s
             - -v=5

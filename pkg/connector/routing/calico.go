@@ -20,11 +20,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-const (
-	TableStrongswan = 220
-	dummyInfName    = "fabedge-dummy0"
-)
-
 type CalicoRouter struct {
 }
 
