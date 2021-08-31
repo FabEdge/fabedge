@@ -493,8 +493,6 @@ func (ctl *agentController) buildAgentPod(namespace, nodeName, podName string) *
 						agentConfigTunnelsFilepath,
 						"-services-conf",
 						agentConfigServicesFilepath,
-						"-edge-pod-cidr",
-						ctl.EdgePodCIDR,
 						"-local-cert",
 						"tls.crt",
 						fmt.Sprintf("-masq-outgoing=%t", ctl.MasqOutgoing),

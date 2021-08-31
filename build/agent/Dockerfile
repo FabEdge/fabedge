@@ -9,5 +9,6 @@ COPY --from=builder /fabedge/_output/fabedge-agent /tmp/bridge /tmp/host-local /
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk add iptables && \
     apk add ipvsadm && \
+    apk add ipset && \
     rm -rf /var/cache/apk/*
 ENTRYPOINT ["/usr/local/bin/fabedge-agent"]
