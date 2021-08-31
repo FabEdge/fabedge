@@ -14,15 +14,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
-// podCIDRsHandler extracts nodeName, nodeIP and podCIDRs from a node and use
-// these to build an endpoint then store it. When a node is deleted, Undo should
-// be executed to undo whatever Do method did.
-type podCIDRsHandler interface {
-	Do(ctx context.Context, node corev1.Node) error
-	Undo(ctx context.Context, nodeName string) error
-}
-
-var _ podCIDRsHandler = &allocatablePodCIDRsHandler{}
+var _ Handler = &allocatablePodCIDRsHandler{}
 
 type allocatablePodCIDRsHandler struct {
 	client      client.Client
@@ -121,7 +113,7 @@ func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName st
 	return nil
 }
 
-var _ podCIDRsHandler = &rawPodCIDRsHandler{}
+var _ Handler = &rawPodCIDRsHandler{}
 
 type rawPodCIDRsHandler struct {
 	store       storepkg.Interface

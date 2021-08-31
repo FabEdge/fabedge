@@ -56,9 +56,9 @@ type authConf struct {
 type childSAConf struct {
 	LocalTS     []string `vici:"local_ts"`
 	RemoteTS    []string `vici:"remote_ts"`
-	StartAction string   `vici:"start_action"` //none,trap,start
-	CloseAction string   `vici:"close_action"` //none,clear,hold,restart
-	DpdAction   string   `vici:"dpd_action,omitempty"` //none,clear,hold,restart 
+	StartAction string   `vici:"start_action"`         //none,trap,start
+	CloseAction string   `vici:"close_action"`         //none,clear,hold,restart
+	DpdAction   string   `vici:"dpd_action,omitempty"` //none,clear,hold,restart
 }
 
 func New(opts ...option) (*StrongSwanManager, error) {
@@ -136,19 +136,19 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 			fmt.Sprintf("%s-n2p", cnf.Name): {
 				LocalTS:     cnf.LocalNodeSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 			fmt.Sprintf("%s-p2n", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 		},
 	}

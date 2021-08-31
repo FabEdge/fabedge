@@ -18,9 +18,8 @@ import (
 
 var _ = Describe("allocatablePodCIDRsHandler", func() {
 	var (
-		handler     *allocatablePodCIDRsHandler
-		newNode     = newNodePodCIDRSinAnnotations
-		getNodeName = testutil.GenerateGetNameFunc("edge")
+		handler *allocatablePodCIDRsHandler
+		newNode = newNodePodCIDRsInAnnotations
 	)
 
 	BeforeEach(func() {
@@ -32,7 +31,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			allocator:   alloc,
 			newEndpoint: types.GenerateNewEndpointFunc("C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRsFromAnnotation),
 			client:      k8sClient,
-			log:         klogr.New().WithName("agent"),
+			log:         klogr.New().WithName("podCIDRsHandler"),
 		}
 	})
 

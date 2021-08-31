@@ -28,6 +28,7 @@ import (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var getNodeName = testutil.GenerateGetNameFunc("edge")
 
 // envtest provide a api server which has some differences from real environments,
 // read https://book.kubebuilder.io/reference/envtest.html#testing-considerations

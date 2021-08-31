@@ -128,7 +128,6 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			AgentImage:      agentImage,
 			StrongswanImage: strongswanImage,
 			AllocatePodCIDR: allocatePodCIDR,
-			EdgePodCIDR:     edgePodCIDR,
 			MasqOutgoing:    masqOutgoing,
 			UseXfrm:         useXfrm,
 			EnableProxy:     enableProxy,
