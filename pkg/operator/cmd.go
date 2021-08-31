@@ -49,6 +49,9 @@ import (
 
 var log = klogr.New().WithName("agent")
 
+type recordSubnetFunc func(ipNet net.IPNet)
+func defaultRecordSubnet(ipNet net.IPNet) {}
+
 func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
 }
@@ -109,13 +112,21 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		}
 
 		var newEndpoint types.NewEndpointFunc
+		var alloc allocator.Interface
+		var recordSubnet recordSubnetFunc
 		if allocatePodCIDR {
 			newEndpoint = types.GenerateNewEndpointFunc(endpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
+			alloc, err = allocator.New(edgePodCIDR)
+			if err != nil {
+				return err
+			}
+			recordSubnet = alloc.Record
 		} else {
 			newEndpoint = types.GenerateNewEndpointFunc(endpointIDFormat, nodeutil.GetPodCIDRs)
+			recordSubnet = defaultRecordSubnet
 		}
 
-		alloc, store, err := initAllocatorAndStore(mgr.GetClient(), newEndpoint)
+		store, err := initStore(mgr.GetClient(), newEndpoint, recordSubnet)
 		if err != nil {
 			log.Error(err, "failed to initialize allocator and store")
 			return err
@@ -187,23 +198,18 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 	})
 }
 
-func initAllocatorAndStore(cli client.Client, newEndpoint types.NewEndpointFunc) (allocator.Interface, storepkg.Interface, error) {
+func initStore(cli client.Client, newEndpoint types.NewEndpointFunc, recordSubnet recordSubnetFunc) (storepkg.Interface, error) {
 	store := storepkg.NewStore()
 
-	alloc, err := allocator.New(edgePodCIDR)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	var nodes corev1.NodeList
-	err = cli.List(context.Background(), &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
+	err := cli.List(context.Background(), &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var communities apis.CommunityList
 	if err = cli.List(context.Background(), &communities); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	for _, community := range communities.Items {
 		store.SaveCommunity(types.Community{
@@ -225,13 +231,13 @@ func initAllocatorAndStore(cli client.Client, newEndpoint types.NewEndpointFunc)
 				log.Error(err, "failed to parse subnet of node", "nodeName", node.Name, "node", node)
 				continue
 			}
-			alloc.Record(*subnet)
+			recordSubnet(*subnet)
 		}
 
 		store.SaveEndpoint(ep)
 	}
 
-	return alloc, store, err
+	return store, err
 }
 
 func getConnectorEndpoint(cli client.Client, namespace string, cmName string) (ep types.Endpoint, err error) {
