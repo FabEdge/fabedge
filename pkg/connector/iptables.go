@@ -15,13 +15,11 @@
 package connector
 
 import (
-	"fmt"
 	"net"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/fabedge/fabedge/third_party/ipset"
+	"github.com/fabedge/fabedge/pkg/util/ipset"
 )
 
 const (
@@ -139,7 +137,7 @@ func (m *Manager) ensureInputIPTablesRules() error {
 }
 
 func (m *Manager) syncEdgeNodeIPSet() error {
-	ipsetObj, err := m.ensureIPSet(IPSetEdgeNodeIP, ipset.HashIP)
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeIP, ipset.HashIP)
 	if err != nil {
 		return err
 	}
@@ -147,36 +145,11 @@ func (m *Manager) syncEdgeNodeIPSet() error {
 	allEdgeNodeIPs := m.getAllEdgeNodeIPs()
 
 	oldEdgeNodeIPs, err := m.getOldEdgeNodeIPs()
-
 	if err != nil {
 		return err
 	}
 
-	needAddEdgeNodeIPs := allEdgeNodeIPs.Difference(oldEdgeNodeIPs)
-	for ip := range needAddEdgeNodeIPs {
-		if err := m.addIPSetEntry(ipsetObj, ip, ipset.HashIP); err != nil {
-			return err
-		}
-	}
-
-	needDelEdgeNodeIPs := oldEdgeNodeIPs.Difference(allEdgeNodeIPs)
-	for ip := range needDelEdgeNodeIPs {
-		if err := m.delIPSetEntry(ipsetObj, ip, ipset.HashIP); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (m *Manager) ensureIPSet(setName string, setType ipset.Type) (*ipset.IPSet, error) {
-	set := &ipset.IPSet{
-		Name:    setName,
-		SetType: setType,
-	}
-	if err := m.ipset.CreateSet(set, true); err != nil {
-		return nil, err
-	}
-	return set, nil
+	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeIPs, oldEdgeNodeIPs, ipset.HashIP)
 }
 
 func (m *Manager) getAllEdgeNodeIPs() sets.String {
@@ -188,55 +161,11 @@ func (m *Manager) getAllEdgeNodeIPs() sets.String {
 }
 
 func (m *Manager) getOldEdgeNodeIPs() (sets.String, error) {
-	ips := sets.NewString()
-	entries, err := m.ipset.ListEntries(IPSetEdgeNodeIP)
-	if err != nil {
-		return nil, err
-	}
-	ips.Insert(entries...)
-	return ips, nil
-}
-
-func (m *Manager) addIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error {
-	entry := &ipset.Entry{
-		SetType: setType,
-	}
-
-	switch setType {
-	case ipset.HashIP:
-		entry.IP = ip
-	case ipset.HashNet:
-		entry.Net = ip
-	}
-
-	if !entry.Validate(set) {
-		return fmt.Errorf("failed to validate ipset entry, ipset: %v, entry: %v", set, entry)
-	}
-
-	return m.ipset.AddEntry(entry.String(), set, true)
-}
-
-func (m *Manager) delIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error {
-	entry := &ipset.Entry{
-		SetType: setType,
-	}
-
-	switch setType {
-	case ipset.HashIP:
-		entry.IP = ip
-	case ipset.HashNet:
-		entry.Net = ip
-	}
-
-	if !entry.Validate(set) {
-		return fmt.Errorf("failed to validate ipset entry, ipset: %v, entry: %v", set, entry)
-	}
-
-	return m.ipset.DelEntry(entry.String(), set.Name)
+	return m.ipset.ListEntries(IPSetEdgeNodeIP, ipset.HashIP)
 }
 
 func (m *Manager) syncCloudPodCIDRSet() error {
-	ipsetObj, err := m.ensureIPSet(IPSetCloudPodCIDR, ipset.HashNet)
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetCloudPodCIDR, ipset.HashNet)
 	if err != nil {
 		return err
 	}
@@ -244,25 +173,11 @@ func (m *Manager) syncCloudPodCIDRSet() error {
 	allCloudPodCIDRs := m.getAllCloudPodCIDRs()
 
 	oldCloudPodCIDRs, err := m.getOldCloudPodCIDRs()
-
 	if err != nil {
 		return err
 	}
 
-	needAddCloudPodCIDRs := allCloudPodCIDRs.Difference(oldCloudPodCIDRs)
-	for cidr := range needAddCloudPodCIDRs {
-		if err := m.addIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
-			return err
-		}
-	}
-
-	needDelCloudPodCIDRs := oldCloudPodCIDRs.Difference(allCloudPodCIDRs)
-	for cidr := range needDelCloudPodCIDRs {
-		if err := m.delIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
-			return err
-		}
-	}
-	return nil
+	return m.ipset.SyncIPSetEntries(ipsetObj, allCloudPodCIDRs, oldCloudPodCIDRs, ipset.HashNet)
 }
 
 func (m *Manager) getAllCloudPodCIDRs() sets.String {
@@ -274,21 +189,15 @@ func (m *Manager) getAllCloudPodCIDRs() sets.String {
 }
 
 func (m *Manager) getOldCloudPodCIDRs() (sets.String, error) {
-	cidrs := sets.NewString()
-	entries, err := m.ipset.ListEntries(IPSetCloudPodCIDR)
-	if err != nil {
-		return nil, err
-	}
-	cidrs.Insert(entries...)
-	return cidrs, nil
+	return m.ipset.ListEntries(IPSetCloudPodCIDR, ipset.HashNet)
 }
 
-func (m *Manager) SNatIPTablesRulesCleanup() error {
+func (m *Manager) CleanSNatIPTablesRules() error {
 	return m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
 }
 
 func (m *Manager) syncCloudNodeCIDRSet() error {
-	ipsetObj, err := m.ensureIPSet(IPSetCloudNodeCIDR, ipset.HashNet)
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetCloudNodeCIDR, ipset.HashNet)
 	if err != nil {
 		return err
 	}
@@ -296,25 +205,11 @@ func (m *Manager) syncCloudNodeCIDRSet() error {
 	allCloudNodeCIDRs := m.getAllCloudNodeCIDRs()
 
 	oldCloudNodeCIDRs, err := m.getOldCloudNodeCIDRs()
-
 	if err != nil {
 		return err
 	}
 
-	needAddCloudNodeCIDRs := allCloudNodeCIDRs.Difference(oldCloudNodeCIDRs)
-	for cidr := range needAddCloudNodeCIDRs {
-		if err := m.addIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
-			return err
-		}
-	}
-
-	needDelCloudNodeCIDRs := oldCloudNodeCIDRs.Difference(allCloudNodeCIDRs)
-	for cidr := range needDelCloudNodeCIDRs {
-		if err := m.delIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
-			return err
-		}
-	}
-	return nil
+	return m.ipset.SyncIPSetEntries(ipsetObj, allCloudNodeCIDRs, oldCloudNodeCIDRs, ipset.HashNet)
 }
 
 func (m *Manager) getAllCloudNodeCIDRs() sets.String {
@@ -324,7 +219,7 @@ func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 			// translate the IP address to CIDR is needed
 			// because FABEDGE-CLOUD-NODE-CIDR ipset type is hash:net
 			if _, _, err := net.ParseCIDR(subnet); err != nil {
-				subnet = strings.Join([]string{subnet, "32"}, "/")
+				subnet = m.ipset.ConvertIPToCIDR(subnet)
 			}
 			cidrs.Insert(subnet)
 		}
@@ -333,18 +228,5 @@ func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 }
 
 func (m *Manager) getOldCloudNodeCIDRs() (sets.String, error) {
-	cidrs := sets.NewString()
-	entries, err := m.ipset.ListEntries(IPSetCloudNodeCIDR)
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range entries {
-		// translate the IP address to CIDR is needed
-		// because hash:net ipset saves 10.20.8.4/32 to 10.20.8.4
-		if _, _, err := net.ParseCIDR(entry); err != nil {
-			entry = strings.Join([]string{entry, "32"}, "/")
-		}
-		cidrs.Insert(entry)
-	}
-	return cidrs, nil
+	return m.ipset.ListEntries(IPSetCloudNodeCIDR, ipset.HashNet)
 }

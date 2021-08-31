@@ -15,7 +15,6 @@
 package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/common/about"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,12 +22,12 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	"k8s.io/klog/v2"
-	k8sexec "k8s.io/utils/exec"
 
+	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	utilipset "github.com/fabedge/fabedge/third_party/ipset"
+	"github.com/fabedge/fabedge/pkg/util/ipset"
 )
 
 type Manager struct {
@@ -36,7 +35,7 @@ type Manager struct {
 	tm          tunnel.Manager
 	ipt         *iptables.IPTables
 	connections []tunnel.ConnConfig
-	ipset       utilipset.Interface
+	ipset       ipset.Interface
 	router      routing.Routing
 }
 
@@ -72,9 +71,6 @@ func NewManager() *Manager {
 		klog.Fatal(err)
 	}
 
-	execer := k8sexec.New()
-	ipset := utilipset.New(execer)
-
 	router, err := routing.GetRouter(cniType)
 	if err != nil {
 		klog.Fatalf("%s", err)
@@ -84,7 +80,7 @@ func NewManager() *Manager {
 		config: c,
 		tm:     tm,
 		ipt:    ipt,
-		ipset:  ipset,
+		ipset:  ipset.New(),
 		router: router,
 	}
 }
@@ -188,7 +184,7 @@ func (m *Manager) gracefulShutdown() {
 		klog.Errorf("failed to clean routers: %s", err)
 	}
 
-	err = m.SNatIPTablesRulesCleanup()
+	err = m.CleanSNatIPTablesRules()
 	if err != nil {
 		klog.Errorf("failed to clean iptables: %s", err)
 	}

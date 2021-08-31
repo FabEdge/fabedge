@@ -21,7 +21,7 @@ type Interface interface {
 	AddIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
 	DelIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
 	ListEntries(setName string, setType ipset.Type) (sets.String, error)
-	SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String) error
+	SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String, setType ipset.Type) error
 	ConvertIPToCIDR(ip string) string
 }
 
@@ -108,17 +108,17 @@ func (e *execer) ListEntries(setName string, setType ipset.Type) (sets.String, e
 	return entrySet, nil
 }
 
-func (e *execer) SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String) error {
-	needAddEdgePeerCIDRs := allIPSetEntrySet.Difference(oldIPSetEntrySet)
-	for cidr := range needAddEdgePeerCIDRs {
-		if err := e.AddIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
+func (e *execer) SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String, setType ipset.Type) error {
+	needAddEntries := allIPSetEntrySet.Difference(oldIPSetEntrySet)
+	for entry := range needAddEntries {
+		if err := e.AddIPSetEntry(ipsetObj, entry, setType); err != nil {
 			return err
 		}
 	}
 
-	needDelEdgePeerCIDRs := oldIPSetEntrySet.Difference(allIPSetEntrySet)
-	for cidr := range needDelEdgePeerCIDRs {
-		if err := e.DelIPSetEntry(ipsetObj, cidr, ipset.HashNet); err != nil {
+	needDelEntries := oldIPSetEntrySet.Difference(allIPSetEntrySet)
+	for entry := range needDelEntries {
+		if err := e.DelIPSetEntry(ipsetObj, entry, setType); err != nil {
 			return err
 		}
 	}

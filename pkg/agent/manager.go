@@ -633,7 +633,7 @@ func (m *Manager) syncIPSetEdgePeerCIDR() error {
 		return err
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgePeerCIDRs, oldEdgePeerCIDRs)
+	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgePeerCIDRs, oldEdgePeerCIDRs, ipset.HashNet)
 }
 
 func (m *Manager) getAllEdgePeerCIDRs() (sets.String, error) {
