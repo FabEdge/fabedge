@@ -63,18 +63,11 @@ var _ = Describe("Controller", func() {
 			IP:      "10.20.40.182",
 			Subnets: []string{"2.2.0.65/26"},
 		}
-		connectorEndpoint = types.Endpoint{
-			ID:          constants.ConnectorEndpointName,
-			Name:        constants.ConnectorEndpointName,
-			IP:          "10.20.40.182",
-			Subnets:     []string{"2.2.0.65/26"},
-			NodeSubnets: []string{"10.20.40.0/24"},
-		}
+		connectorEndpoint = getConnectorEndpoint()
 
 		store = storepkg.NewStore()
 		store.SaveEndpoint(edge1Endpoint)
 		store.SaveEndpoint(edge2Endpoint)
-		store.SaveEndpoint(connectorEndpoint)
 
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
@@ -82,8 +75,9 @@ var _ = Describe("Controller", func() {
 		})
 		Expect(err).ShouldNot(HaveOccurred())
 		err = AddToManager(Config{
-			Manager: mgr,
-			Store:   store,
+			Manager:              mgr,
+			Store:                store,
+			GetConnectorEndpoint: getConnectorEndpoint,
 
 			ConnectorConfigName: connectorConfigName,
 			Namespace:           namespace,
@@ -141,3 +135,13 @@ var _ = Describe("Controller", func() {
 		Expect(conf.Peers).NotTo(ContainElement(edge2Endpoint.ConvertToTunnelEndpoint()))
 	})
 })
+
+func getConnectorEndpoint() types.Endpoint {
+	return types.Endpoint{
+		ID:          "C=CN, O=StrongSwan, CN=cloud-connector",
+		Name:        "cloud-connector",
+		IP:          "192.168.1.1",
+		Subnets:     []string{"2.2.1.1/26"},
+		NodeSubnets: []string{"192.168.1.0/24"},
+	}
+}

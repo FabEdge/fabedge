@@ -99,6 +99,15 @@ func startManager() error {
 // have to be done after leader election is finished, otherwise their data may be out of date
 func initializeControllers(mgr manager.Manager) manager.Runnable {
 	return manager.RunnableFunc(func(ctx context.Context) error {
+		connectorEndpoint, err := getConnectorEndpoint(mgr.GetClient(), namespace, connectorConfig)
+		if err != nil {
+			return err
+		}
+
+		getConnectorEndpoint := func() types.Endpoint {
+			return connectorEndpoint
+		}
+
 		var newEndpoint types.NewEndpointFunc
 		if allocatePodCIDR {
 			newEndpoint = types.GenerateNewEndpointFunc(endpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
@@ -119,10 +128,11 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		}
 
 		agentConfig := agentctl.Config{
-			Manager:     mgr,
-			Allocator:   alloc,
-			Store:       store,
-			NewEndpoint: newEndpoint,
+			Manager:              mgr,
+			Allocator:            alloc,
+			Store:                store,
+			NewEndpoint:          newEndpoint,
+			GetConnectorEndpoint: getConnectorEndpoint,
 
 			Namespace:       namespace,
 			AgentImage:      agentImage,
@@ -150,11 +160,12 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		}
 
 		if err = connectorctl.AddToManager(connectorctl.Config{
-			Manager:             mgr,
-			Store:               store,
-			Namespace:           namespace,
-			ConnectorConfigName: connectorConfig,
-			Interval:            time.Duration(connectorConfigSyncInterval) * time.Second,
+			Manager:              mgr,
+			Store:                store,
+			GetConnectorEndpoint: getConnectorEndpoint,
+			Namespace:            namespace,
+			ConnectorConfigName:  connectorConfig,
+			Interval:             time.Duration(connectorConfigSyncInterval) * time.Second,
 		}); err != nil {
 			log.Error(err, "failed to add communities controller to manager")
 			return err
@@ -177,12 +188,12 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 }
 
 func initAllocatorAndStore(cli client.Client, newEndpoint types.NewEndpointFunc) (allocator.Interface, storepkg.Interface, error) {
+	store := storepkg.NewStore()
+
 	alloc, err := allocator.New(edgePodCIDR)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	store := storepkg.NewStore()
 
 	var nodes corev1.NodeList
 	err = cli.List(context.Background(), &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
@@ -191,7 +202,7 @@ func initAllocatorAndStore(cli client.Client, newEndpoint types.NewEndpointFunc)
 	}
 
 	var communities apis.CommunityList
-	if err := cli.List(context.Background(), &communities); err != nil {
+	if err = cli.List(context.Background(), &communities); err != nil {
 		return nil, nil, err
 	}
 	for _, community := range communities.Items {
@@ -200,12 +211,6 @@ func initAllocatorAndStore(cli client.Client, newEndpoint types.NewEndpointFunc)
 			Members: stringset.New(community.Spec.Members...),
 		})
 	}
-
-	connectorEndpoint, err := getConnectorEndpoint(cli, namespace, connectorConfig)
-	if err != nil {
-		return nil, nil, err
-	}
-	store.SaveEndpoint(connectorEndpoint)
 
 	for _, node := range nodes.Items {
 		ep := newEndpoint(node)

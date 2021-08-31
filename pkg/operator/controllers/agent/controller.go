@@ -69,13 +69,15 @@ type Config struct {
 	MasqOutgoing    bool
 	EnableProxy     bool
 
-	NewEndpoint types.NewEndpointFunc
+	GetConnectorEndpoint types.EndpointGetter
+	NewEndpoint          types.NewEndpointFunc
 
 	CertManager      certutil.Manager
 	CertOrganization string
 	CertValidPeriod  int64
 
 	AllocatePodCIDR bool
+	EdgePodCIDR     string
 }
 
 func AddToManager(cnf Config) error {
@@ -125,10 +127,11 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	}
 
 	handlers = append(handlers, &configHandler{
-		namespace: cnf.Namespace,
-		client:    cli,
-		store:     cnf.Store,
-		log:       log.WithName("configHandler"),
+		namespace:            cnf.Namespace,
+		client:               cli,
+		store:                cnf.Store,
+		getConnectorEndpoint: cnf.GetConnectorEndpoint,
+		log:                  log.WithName("configHandler"),
 	})
 
 	handlers = append(handlers, &certHandler{

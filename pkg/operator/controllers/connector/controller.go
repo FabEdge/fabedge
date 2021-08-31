@@ -29,6 +29,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
 const (
@@ -40,18 +41,21 @@ type controller struct {
 	interval     time.Duration
 	configMapKey client.ObjectKey
 
-	store  storepkg.Interface
-	client client.Client
-	log    logr.Logger
+	store                storepkg.Interface
+	getConnectorEndpoint types.EndpointGetter
+	client               client.Client
+	log                  logr.Logger
 }
 
 type Config struct {
-	Store   storepkg.Interface
-	Manager manager.Manager
-
 	Namespace           string
 	ConnectorConfigName string
 	Interval            time.Duration
+
+	Store                storepkg.Interface
+	GetConnectorEndpoint types.EndpointGetter
+
+	Manager manager.Manager
 }
 
 func AddToManager(cnf Config) error {
@@ -61,9 +65,10 @@ func AddToManager(cnf Config) error {
 		configMapKey: client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
 		interval:     cnf.Interval,
 
-		store:  cnf.Store,
-		log:    mgr.GetLogger().WithName(controllerName),
-		client: mgr.GetClient(),
+		getConnectorEndpoint: cnf.GetConnectorEndpoint,
+		store:                cnf.Store,
+		log:                  mgr.GetLogger().WithName(controllerName),
+		client:               mgr.GetClient(),
 	}
 
 	return mgr.Add(manager.RunnableFunc(ctl.Start))
@@ -88,10 +93,10 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	ctx, cancel := context.WithTimeout(context.Background(), ctl.interval)
 	defer cancel()
 
-	connectorEndpoint, _ := ctl.store.GetEndpoint(constants.ConnectorEndpointName)
+	connectorEndpoint := ctl.getConnectorEndpoint()
 	conf := netconf.NetworkConf{
 		TunnelEndpoint: connectorEndpoint.ConvertToTunnelEndpoint(),
-		Peers:          ctl.getConnectorPeers(),
+		Peers:          ctl.getPeers(),
 	}
 
 	confBytes, err := yaml.Marshal(conf)
@@ -99,7 +104,7 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 		log.Error(err, "failed to marshal connector tunnels conf")
 		return
 	}
-	log.WithValues("netconf", conf)
+
 	configData := string(confBytes)
 
 	var cm corev1.ConfigMap
@@ -139,9 +144,8 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	}
 }
 
-func (ctl *controller) getConnectorPeers() []netconf.TunnelEndpoint {
+func (ctl *controller) getPeers() []netconf.TunnelEndpoint {
 	nameSet := ctl.store.GetAllEndpointNames()
-	nameSet.Remove(constants.ConnectorEndpointName)
 	endpoints := ctl.store.GetEndpoints(nameSet.Values()...)
 
 	peers := make([]netconf.TunnelEndpoint, 0, len(endpoints))

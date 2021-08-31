@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2/klogr"
 
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -38,20 +37,15 @@ var _ = Describe("ConfigHandler", func() {
 	BeforeEach(func() {
 		store = storepkg.NewStore()
 		handler = &configHandler{
-			namespace: namespace,
-			client:    k8sClient,
-			store:     store,
-			log:       klogr.New().WithName("configHandler"),
+			namespace:            namespace,
+			client:               k8sClient,
+			store:                store,
+			getConnectorEndpoint: getConnectorEndpoint,
+			log:                  klogr.New().WithName("configHandler"),
 		}
 
 		nodeName := getNodeName()
-		connectorEndpoint = types.Endpoint{
-			ID:          "C=CN, O=StrongSwan, CN=connector",
-			Name:        constants.ConnectorEndpointName,
-			IP:          "192.168.1.1",
-			Subnets:     []string{"2.2.1.1/26"},
-			NodeSubnets: []string{"192.168.1.0/24"},
-		}
+		connectorEndpoint = getConnectorEndpoint()
 		edge2Endpoint = types.Endpoint{
 			ID:      "C=CN, O=StrongSwan, CN=edge2",
 			Name:    "edge2",
@@ -66,7 +60,6 @@ var _ = Describe("ConfigHandler", func() {
 		agentConfigName = getAgentConfigMapName(nodeName)
 		node = newNode(nodeName, "10.40.20.181", "2.2.1.128/26")
 
-		store.SaveEndpoint(connectorEndpoint)
 		store.SaveEndpoint(edge2Endpoint)
 		store.SaveEndpoint(newEndpoint(node))
 		store.SaveCommunity(testCommunity)
@@ -146,3 +139,13 @@ var _ = Describe("ConfigHandler", func() {
 		Expect(errors.IsNotFound(err)).Should(BeTrue())
 	})
 })
+
+func getConnectorEndpoint() types.Endpoint {
+	return types.Endpoint{
+		ID:          "C=CN, O=StrongSwan, CN=cloud-connector",
+		Name:        "cloud-connector",
+		IP:          "192.168.1.1",
+		Subnets:     []string{"2.2.1.1/26"},
+		NodeSubnets: []string{"192.168.1.0/24"},
+	}
+}

@@ -21,10 +21,11 @@ import (
 var _ Handler = &configHandler{}
 
 type configHandler struct {
-	namespace string
-	client    client.Client
-	store     storepkg.Interface
-	log       logr.Logger
+	namespace            string
+	store                storepkg.Interface
+	getConnectorEndpoint types.EndpointGetter
+	client               client.Client
+	log                  logr.Logger
 }
 
 func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
@@ -104,14 +105,19 @@ func (handler *configHandler) buildNetworkConf(name string) netconf.NetworkConf 
 
 func (handler *configHandler) getPeers(name string) []types.Endpoint {
 	store := handler.store
-	nameSet := stringset.New(constants.ConnectorEndpointName)
+	nameSet := stringset.New()
 
 	for _, community := range store.GetCommunitiesByEndpoint(name) {
 		nameSet.Add(community.Members.Values()...)
 	}
 	nameSet.Remove(name)
 
-	return store.GetEndpoints(nameSet.Values()...)
+	endpoints := make([]types.Endpoint, 0, len(nameSet)+1)
+	// always put connector endpoint first
+	endpoints = append(endpoints, handler.getConnectorEndpoint())
+	endpoints = append(endpoints, store.GetEndpoints(nameSet.Values()...)...)
+
+	return endpoints
 }
 
 func (handler *configHandler) Undo(ctx context.Context, nodeName string) error {

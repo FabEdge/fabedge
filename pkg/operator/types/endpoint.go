@@ -26,6 +26,7 @@ import (
 
 type NewEndpointFunc func(node corev1.Node) Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
+type EndpointGetter func() Endpoint
 
 type Endpoint struct {
 	ID          string

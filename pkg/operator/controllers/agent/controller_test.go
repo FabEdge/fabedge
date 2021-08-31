@@ -88,14 +88,15 @@ var _ = Describe("AgentController", func() {
 
 			AllocatePodCIDR: true,
 
-			AgentImage:       agentImage,
-			StrongswanImage:  strongswanImage,
-			CertManager:      certManager,
-			CertOrganization: certutil.DefaultOrganization,
-			CertValidPeriod:  365,
-			Allocator:        alloc,
-			Store:            store,
-			NewEndpoint:      newEndpoint,
+			AgentImage:           agentImage,
+			StrongswanImage:      strongswanImage,
+			CertManager:          certManager,
+			CertOrganization:     certutil.DefaultOrganization,
+			CertValidPeriod:      365,
+			Allocator:            alloc,
+			Store:                store,
+			NewEndpoint:          newEndpoint,
+			GetConnectorEndpoint: getConnectorEndpoint,
 		}
 
 		reconciler := reconcile.Reconciler(&agentController{
