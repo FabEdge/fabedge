@@ -9,7 +9,7 @@ FabEdge is an open source edge networking solution based on kubernetes and kubee
 
 Fabedge supports weak network environments, such as 4/5G, WiFi，LoRa, etc., and supports dynamic IP addresses of edge nodes, which is suitable for scenarios such as the Internet of Things and the Internet of Vehicles.
 # Features
-* **Kubernetes Native Support**: Fully compatible with Kubernetes API, without any modification, applications can communicate with each others seamlessly no mater in cloud or edge.  
+* **Kubernetes Native**: Fully compatible with Kubernetes API, without any modification, applications can communicate with each others seamlessly no mater in cloud or edge.  
 
 * **Edge Container Network Management**：Management of the subnets allocation and  ip address assignment for edge containers.  
 
@@ -21,7 +21,7 @@ Fabedge supports weak network environments, such as 4/5G, WiFi，LoRa, etc., and
 # Advantages
 * **Standard**: fully compatible with k8s api, support any k8s cluster, plug and plan.  
 
-* **Secure**: all communication over secure IPSEC tunnel using certificate.  
+* **Secure**: all communication over secure IPSec tunnel using certificate.  
 
 * **Easy to use**: designed using operator pattern , minimized ongoing operation effort.  
 # How it works
