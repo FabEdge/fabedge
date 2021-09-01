@@ -43,8 +43,9 @@ rules:
   - apiGroups:
       - ""
     resources:
-      - configmaps/status
       - pods/status
+      - configmaps/status
+      - secrets/status
     verbs:
       - get
       - update

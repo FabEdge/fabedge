@@ -31,7 +31,6 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/exec"
 
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
@@ -481,10 +480,9 @@ func (m *Manager) getConnectorSubnets() ([]string, error) {
 		return nil, err
 	}
 
-	for _, p := range conf.Peers {
-		if p.Name == constants.ConnectorEndpointName {
-			return p.Subnets, nil
-		}
+	// the first peer always be connector endpoint
+	if len(conf.Peers) > 0 {
+		return conf.Peers[0].Subnets, nil
 	}
 
 	return nil, nil

@@ -211,7 +211,7 @@ func (p *proxy) OnServiceUpdate(ctx context.Context, request reconcile.Request) 
 
 	// if service is updated to a invalid service, we take it as deleted and cleanup related resources
 	if p.shouldSkipService(&service) {
-		log.V(5).Info("service has no ClusterIP, skip it", "service", service)
+		log.V(5).Info("service has no ClusterIP, skip it")
 
 		p.cleanupService(request.NamespacedName)
 		return Result{}, nil
@@ -352,7 +352,7 @@ func (p *proxy) OnEndpointSliceUpdate(ctx context.Context, request reconcile.Req
 	}
 
 	if p.shouldSkipService(&service) {
-		log.Info("service has no ClusterIP, skip it", "service", service)
+		log.V(5).Info("service has no ClusterIP, skip it")
 		p.cleanupService(serviceKey)
 		return Result{}, nil
 	}

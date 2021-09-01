@@ -23,6 +23,7 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 var _ = Describe("Endpoint", func() {
@@ -67,7 +68,7 @@ var _ = Describe("Endpoint", func() {
 })
 
 var _ = Describe("GenerateNewEndpointFunc", func() {
-	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
+	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",

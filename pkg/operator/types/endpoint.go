@@ -21,11 +21,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 )
 
 type NewEndpointFunc func(node corev1.Node) Endpoint
+type PodCIDRsGetter func(node corev1.Node) []string
+type EndpointGetter func() Endpoint
 
 type Endpoint struct {
 	ID          string
@@ -72,7 +73,7 @@ func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
 	}
 }
 
-func GenerateNewEndpointFunc(idFormat string) NewEndpointFunc {
+func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
 	return func(node corev1.Node) Endpoint {
 		var ip string
 		for _, addr := range node.Status.Addresses {
@@ -81,21 +82,20 @@ func GenerateNewEndpointFunc(idFormat string) NewEndpointFunc {
 			}
 		}
 
-		annotations := node.Annotations
-		if annotations == nil {
-			annotations = map[string]string{}
-		}
-
 		var id = ""
 		if node.Name != "" {
-			id = strings.ReplaceAll(idFormat, "{node}", node.Name)
+			id = GetID(idFormat, node.Name)
 		}
 
 		return Endpoint{
 			ID:      id,
 			Name:    node.Name,
 			IP:      ip,
-			Subnets: strings.Split(annotations[constants.KeyPodSubnets], ","),
+			Subnets: getPodCIDRs(node),
 		}
 	}
+}
+
+func GetID(format, nodeName string) string {
+	return strings.ReplaceAll(format, "{node}", nodeName)
 }

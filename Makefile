@@ -51,7 +51,7 @@ ${BINARIES}: fmt vet
 
 .PHONY: test
 test:
-ifeq (,$(shell which ginkgo))
+ifneq (,$(shell which ginkgo))
 	ginkgo ./pkg/...
 else
 	go test ./pkg/...

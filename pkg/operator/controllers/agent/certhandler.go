@@ -1,0 +1,124 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
+)
+
+var _ Handler = &certHandler{}
+
+type certHandler struct {
+	namespace string
+
+	certManager      certutil.Manager
+	certOrganization string
+	certValidPeriod  int64
+
+	client client.Client
+	log    logr.Logger
+}
+
+func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
+	secretName := getCertSecretName(node.Name)
+
+	log := handler.log.WithValues("nodeName", node.Name, "secretName", secretName, "namespace", handler.namespace)
+	log.V(5).Info("Sync agent tls secret")
+
+	var secret corev1.Secret
+	err := handler.client.Get(ctx, ObjectKey{Name: secretName, Namespace: handler.namespace}, &secret)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			handler.log.Error(err, "failed to get secret")
+			return err
+		}
+
+		log.V(5).Info("TLS secret for agent is not found, generate it now")
+		secret, err = handler.buildCertAndKeySecret(secretName, node)
+		if err != nil {
+			log.Error(err, "failed to create cert and key for agent")
+			return err
+		}
+
+		err = handler.client.Create(ctx, &secret)
+		if err != nil {
+			log.Error(err, "failed to create secret")
+		}
+
+		return err
+	}
+
+	certPEM := secretutil.GetCert(secret)
+	err = handler.certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	if err == nil {
+		log.V(5).Info("cert is verified")
+		return nil
+	}
+
+	log.Error(err, "failed to verify cert, need to regenerate a cert to agent")
+	secret, err = handler.buildCertAndKeySecret(secretName, node)
+	if err != nil {
+		log.Error(err, "failed to recreate cert and key for agent")
+		return err
+	}
+
+	err = handler.client.Update(ctx, &secret)
+	if err != nil {
+		log.Error(err, "failed to save secret")
+	}
+
+	return err
+}
+
+func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
+	certDER, keyDER, err := handler.certManager.SignCert(certutil.Config{
+		CommonName:     node.Name,
+		Organization:   []string{handler.certOrganization},
+		ValidityPeriod: timeutil.Days(handler.certValidPeriod),
+		Usages:         certutil.ExtKeyUsagesServerAndClient,
+	})
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+
+	return secretutil.TLSSecret().
+		Name(secretName).
+		Namespace(handler.namespace).
+		EncodeCert(certDER).
+		EncodeKey(keyDER).
+		CACertPEM(handler.certManager.GetCACertPEM()).
+		Label(constants.KeyCreatedBy, constants.AppOperator).
+		Label(constants.KeyNode, node.Name).Build(), nil
+}
+
+func (handler *certHandler) Undo(ctx context.Context, nodeName string) error {
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getCertSecretName(nodeName),
+			Namespace: handler.namespace,
+		},
+	}
+	err := handler.client.Delete(ctx, &secret)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			err = nil
+		} else {
+			handler.log.Error(err, "failed to delete secret", "name", secret.Name, "namespace", secret.Namespace)
+		}
+	}
+	return err
+}
+
+func getCertSecretName(nodeName string) string {
+	return fmt.Sprintf("fabedge-agent-tls-%s", nodeName)
+}
