@@ -38,3 +38,13 @@ func GetPodCIDRsFromAnnotation(node corev1.Node) []string {
 
 	return strings.Split(annotations[constants.KeyPodSubnets], ",")
 }
+
+func IsEdgeNode(node corev1.Node) bool {
+	labels := node.GetLabels()
+	if labels == nil {
+		return false
+	}
+
+	_, ok := labels["node-role.kubernetes.io/edge"]
+	return ok
+}

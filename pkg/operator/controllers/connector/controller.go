@@ -16,67 +16,128 @@ package connector
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/jjeffery/stringset"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controllerpkg "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
+	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 const (
-	controllerName = "connector-config-controller"
+	controllerName = "connector-controller"
 )
 
-// controller only controls connector tunnels configmap
-type controller struct {
-	interval     time.Duration
-	configMapKey client.ObjectKey
-
-	store                storepkg.Interface
-	getConnectorEndpoint types.EndpointGetter
-	client               client.Client
-	log                  logr.Logger
+type Node struct {
+	Name     string
+	IP       string
+	PodCIDRs []string
 }
 
 type Config struct {
-	Namespace           string
+	ConnectorID         string
+	ConnectorName       string
+	ConnectorIP         string
 	ConnectorConfigName string
+	ProvidedSubnets     []string
+	CollectPodCIDRs     bool
+	Namespace           string
 	Interval            time.Duration
 
-	Store                storepkg.Interface
-	GetConnectorEndpoint types.EndpointGetter
-
+	Store   storepkg.Interface
 	Manager manager.Manager
 }
 
-func AddToManager(cnf Config) error {
+// controller generate tunnels config for connector and
+// provide connector endpoint info for others
+type controller struct {
+	configMapKey client.ObjectKey
+	interval     time.Duration
+
+	connectorID     string
+	connectorName   string
+	connectorIP     string
+	providedSubnets []string
+	collectPodCIDRs bool
+
+	store  storepkg.Interface
+	client client.Client
+	log    logr.Logger
+
+	nodeNameSet       stringset.Set
+	nodeCache         map[string]Node
+	connectorEndpoint types.Endpoint
+	mux               sync.RWMutex
+}
+
+func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	mgr := cnf.Manager
 
 	ctl := &controller{
-		configMapKey: client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
-		interval:     cnf.Interval,
+		configMapKey:    client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
+		interval:        cnf.Interval,
+		connectorID:     cnf.ConnectorID,
+		connectorName:   cnf.ConnectorName,
+		connectorIP:     cnf.ConnectorIP,
+		providedSubnets: cnf.ProvidedSubnets,
+		collectPodCIDRs: cnf.CollectPodCIDRs,
 
-		getConnectorEndpoint: cnf.GetConnectorEndpoint,
-		store:                cnf.Store,
-		log:                  mgr.GetLogger().WithName(controllerName),
-		client:               mgr.GetClient(),
+		store:  cnf.Store,
+		log:    mgr.GetLogger().WithName(controllerName),
+		client: mgr.GetClient(),
+
+		nodeNameSet: stringset.New(),
+		nodeCache:   make(map[string]Node),
 	}
 
-	return mgr.Add(manager.RunnableFunc(ctl.Start))
+	err := ctl.initializeConnectorEndpoint()
+	if err != nil {
+		return nil, err
+	}
+
+	err = mgr.Add(manager.RunnableFunc(ctl.SyncConnectorConfig))
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := controllerpkg.New(
+		controllerName,
+		mgr,
+		controllerpkg.Options{
+			Reconciler: reconcile.Func(ctl.onNodeRequest),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return ctl.getConnectorEndpoint, c.Watch(
+		&source.Kind{Type: &corev1.Node{}},
+		&handler.EnqueueRequestForObject{},
+		predicates.NonEdgeNodePredicate(),
+	)
 }
 
-func (ctl *controller) Start(ctx context.Context) error {
+func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
 	tick := time.NewTicker(ctl.interval)
 
+	ctl.updateConfigMapIfNeeded()
 	for {
 		select {
 		case <-tick.C:
@@ -154,4 +215,117 @@ func (ctl *controller) getPeers() []netconf.TunnelEndpoint {
 	}
 
 	return peers
+}
+
+func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	log := ctl.log.WithValues("request", request)
+
+	var node corev1.Node
+	if err := ctl.client.Get(ctx, request.NamespacedName, &node); err != nil {
+		if errors.IsNotFound(err) {
+			ctl.removeNode(request.Name)
+			return reconcile.Result{}, nil
+		}
+
+		log.Error(err, "failed to get node")
+		return reconcile.Result{}, err
+	}
+
+	if node.DeletionTimestamp != nil {
+		ctl.removeNode(request.Name)
+		return reconcile.Result{}, nil
+	}
+
+	ctl.addNode(node, true)
+
+	return reconcile.Result{}, nil
+}
+
+func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
+	ip, podCIDRs := nodeutil.GetIP(node), nodeutil.GetPodCIDRs(node)
+	if len(ip) == 0 || len(podCIDRs) == 0 {
+		ctl.log.V(5).Info("this node has no IP or PodCIDRs, skip adding it", "nodeName", node.Name)
+		return
+	}
+
+	if !ctl.collectPodCIDRs {
+		podCIDRs = nil
+	}
+
+	ctl.mux.Lock()
+	defer ctl.mux.Unlock()
+	if ctl.nodeNameSet.Contains(node.Name) {
+		return
+	}
+
+	ctl.nodeNameSet.Add(node.Name)
+	ctl.nodeCache[node.Name] = Node{
+		Name:     node.Name,
+		IP:       ip,
+		PodCIDRs: podCIDRs,
+	}
+
+	if rebuild {
+		ctl.rebuildConnectorEndpoint()
+	}
+}
+
+func (ctl *controller) removeNode(nodeName string) {
+	ctl.mux.Lock()
+	defer ctl.mux.Unlock()
+
+	ctl.nodeNameSet.Remove(nodeName)
+	delete(ctl.nodeCache, nodeName)
+
+	ctl.rebuildConnectorEndpoint()
+}
+
+func (ctl *controller) initializeConnectorEndpoint() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var nodes corev1.NodeList
+	err := ctl.client.List(ctx, &nodes)
+	if err != nil {
+		return err
+	}
+
+	for _, node := range nodes.Items {
+		if nodeutil.IsEdgeNode(node) {
+			continue
+		}
+		ctl.addNode(node, false)
+	}
+
+	ctl.rebuildConnectorEndpoint()
+
+	return nil
+}
+
+func (ctl *controller) rebuildConnectorEndpoint() {
+	subnets := make([]string, 0, len(ctl.providedSubnets)+len(ctl.nodeCache))
+	nodeSubnets := make([]string, 0, len(ctl.nodeCache))
+
+	subnets = append(subnets, ctl.providedSubnets...)
+	for _, nodeName := range ctl.nodeNameSet.Values() {
+		node := ctl.nodeCache[nodeName]
+
+		subnets = append(subnets, node.PodCIDRs...)
+		nodeSubnets = append(nodeSubnets, node.IP)
+	}
+
+	ctl.connectorEndpoint = types.Endpoint{
+		ID:          ctl.connectorID,
+		Name:        ctl.connectorName,
+		IP:          ctl.connectorIP,
+		Subnets:     subnets,
+		NodeSubnets: nodeSubnets,
+	}
+}
+
+func (ctl *controller) getConnectorEndpoint() types.Endpoint {
+	ctl.mux.RLock()
+	defer ctl.mux.RUnlock()
+
+	return ctl.connectorEndpoint
 }

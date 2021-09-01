@@ -29,6 +29,8 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var getNodeName = testutil.GenerateGetNameFunc("node")
+var getEdgeName = testutil.GenerateGetNameFunc("edge-node")
 
 func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)

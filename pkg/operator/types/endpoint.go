@@ -84,7 +84,7 @@ func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEnd
 
 		var id = ""
 		if node.Name != "" {
-			id = strings.ReplaceAll(idFormat, "{node}", node.Name)
+			id = GetID(idFormat, node.Name)
 		}
 
 		return Endpoint{
@@ -94,4 +94,8 @@ func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEnd
 			Subnets: getPodCIDRs(node),
 		}
 	}
+}
+
+func GetID(format, nodeName string) string {
+	return strings.ReplaceAll(format, "{node}", nodeName)
 }

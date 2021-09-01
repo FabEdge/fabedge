@@ -24,5 +24,4 @@ const (
 	AppOperator   = "fabedge-operator"
 
 	ConnectorConfigFileName = "tunnels.yaml"
-	ConnectorEndpointName   = "cloud-connector"
 )

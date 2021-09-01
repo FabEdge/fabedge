@@ -18,10 +18,10 @@ import (
 	"context"
 	"flag"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/jjeffery/stringset"
-	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
@@ -32,8 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
-	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
@@ -45,11 +43,13 @@ import (
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 var log = klogr.New().WithName("agent")
 
 type recordSubnetFunc func(ipNet net.IPNet)
+
 func defaultRecordSubnet(ipNet net.IPNet) {}
 
 func init() {
@@ -66,6 +66,10 @@ func Execute() error {
 	if version {
 		about.DisplayVersion()
 		return nil
+	}
+
+	if err := validateFlags(); err != nil {
+		log.Error(err, "invalid arguments found")
 	}
 
 	return startManager()
@@ -97,20 +101,12 @@ func startManager() error {
 	return mgr.Start(signals.SetupSignalHandler())
 }
 
-// this add controllers which are related to tunnels management to manager.
+// initializeControllers adds controllers which are related to tunnels management to manager.
 // we have to put controller registry logic in a Runnable because allocator and store initialization
 // have to be done after leader election is finished, otherwise their data may be out of date
 func initializeControllers(mgr manager.Manager) manager.Runnable {
 	return manager.RunnableFunc(func(ctx context.Context) error {
-		connectorEndpoint, err := getConnectorEndpoint(mgr.GetClient(), namespace, connectorConfig)
-		if err != nil {
-			return err
-		}
-
-		getConnectorEndpoint := func() types.Endpoint {
-			return connectorEndpoint
-		}
-
+		var err error
 		var newEndpoint types.NewEndpointFunc
 		var alloc allocator.Interface
 		var recordSubnet recordSubnetFunc
@@ -135,6 +131,23 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		certManager, err := createCertManager(mgr.GetClient())
 		if err != nil {
 			log.Error(err, "failed to create cert manager")
+			return err
+		}
+
+		getConnectorEndpoint, err := connectorctl.AddToManager(connectorctl.Config{
+			Manager:             mgr,
+			Store:               store,
+			Namespace:           namespace,
+			ConnectorConfigName: connectorConfig,
+			ConnectorID:         types.GetID(endpointIDFormat, connectorName),
+			ConnectorName:       connectorName,
+			ConnectorIP:         connectorIP,
+			ProvidedSubnets:     strings.Split(connectorSubnets, ","),
+			CollectPodCIDRs:     !allocatePodCIDR,
+			Interval:            timeutil.Seconds(connectorConfigSyncInterval),
+		})
+		if err != nil {
+			log.Error(err, "failed to add communities controller to manager")
 			return err
 		}
 
@@ -165,18 +178,6 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		if err = cmmctl.AddToManager(cmmctl.Config{
 			Manager: mgr,
 			Store:   store,
-		}); err != nil {
-			log.Error(err, "failed to add communities controller to manager")
-			return err
-		}
-
-		if err = connectorctl.AddToManager(connectorctl.Config{
-			Manager:              mgr,
-			Store:                store,
-			GetConnectorEndpoint: getConnectorEndpoint,
-			Namespace:            namespace,
-			ConnectorConfigName:  connectorConfig,
-			Interval:             time.Duration(connectorConfigSyncInterval) * time.Second,
 		}); err != nil {
 			log.Error(err, "failed to add communities controller to manager")
 			return err
@@ -238,31 +239,6 @@ func initStore(cli client.Client, newEndpoint types.NewEndpointFunc, recordSubne
 	}
 
 	return store, err
-}
-
-func getConnectorEndpoint(cli client.Client, namespace string, cmName string) (ep types.Endpoint, err error) {
-	var cm corev1.ConfigMap
-	err = cli.Get(context.Background(), client.ObjectKey{
-		Name:      cmName,
-		Namespace: namespace,
-	}, &cm)
-	if err != nil {
-		return
-	}
-
-	conf := netconf.NetworkConf{}
-	data := cm.Data[constants.ConnectorConfigFileName]
-	if err = yaml.Unmarshal([]byte(data), &conf); err != nil {
-		return
-	}
-
-	return types.Endpoint{
-		ID:          conf.ID,
-		IP:          conf.IP,
-		Name:        conf.Name,
-		Subnets:     conf.Subnets,
-		NodeSubnets: conf.NodeSubnets,
-	}, nil
 }
 
 func createCertManager(cli client.Client) (certutil.Manager, error) {

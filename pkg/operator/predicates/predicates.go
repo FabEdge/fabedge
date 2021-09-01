@@ -30,3 +30,15 @@ func EdgeNodePredicate() predicate.Predicate {
 		return ok
 	})
 }
+
+func NonEdgeNodePredicate() predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		labels := obj.GetLabels()
+		if labels == nil {
+			return true
+		}
+
+		_, ok := labels["node-role.kubernetes.io/edge"]
+		return !ok
+	})
+}

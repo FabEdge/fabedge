@@ -121,14 +121,6 @@ var _ = Describe("AgentController", func() {
 		)
 		Expect(err).ShouldNot(HaveOccurred())
 
-		store.SaveEndpoint(types.Endpoint{
-			ID:          "C=CN, O=StrongSwan, CN=connector",
-			Name:        constants.ConnectorEndpointName,
-			IP:          "192.168.1.1",
-			Subnets:     []string{"2.2.1.1/26"},
-			NodeSubnets: []string{"192.168.1.0/24"},
-		})
-
 		go func() {
 			defer GinkgoRecover()
 			Expect(mgr.Start(ctx)).NotTo(HaveOccurred())
