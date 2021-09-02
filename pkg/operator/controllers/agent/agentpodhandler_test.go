@@ -180,7 +180,7 @@ var _ = Describe("AgentPodHandler", func() {
 
 		cpCommandArgs := []string{
 			"-c",
-			"find /etc/cni/net.d/ -type f ! -name fabedge.conf -exec rm {} \\; && cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin",
+			installCNIScript,
 		}
 		Expect(pod.Spec.InitContainers[0].Args).To(Equal(cpCommandArgs))
 
