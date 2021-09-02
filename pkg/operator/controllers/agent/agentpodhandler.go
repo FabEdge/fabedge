@@ -105,7 +105,8 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					},
 					Args: []string{
 						"-c",
-						"find /etc/cni/net.d/ -type f ! -name fabedge.conf -exec rm {} \\; && cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin",
+						`find /etc/cni/net.d/ -type f -not -name fabedge.conf -exec rm {} \;
+						cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin`,
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
