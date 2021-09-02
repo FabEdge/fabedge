@@ -75,7 +75,7 @@ var _ = Describe("AgentPodHandler", func() {
 				Name: "cni-config",
 				VolumeSource: corev1.VolumeSource{
 					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/etc/cni",
+						Path: "/etc/cni/net.d",
 						Type: &hostPathDirectoryOrCreate,
 					},
 				},
@@ -174,20 +174,17 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 
 		cpCommand := []string{
-			"cp",
+			"/bin/sh",
 		}
 		Expect(pod.Spec.InitContainers[0].Command).To(Equal(cpCommand))
 
 		cpCommandArgs := []string{
-			"-f",
-			"/usr/local/bin/bridge",
-			"/usr/local/bin/host-local",
-			"/usr/local/bin/loopback",
-			"/opt/cni/bin",
+			"-c",
+			"find /etc/cni/net.d/ -type f ! -name fabedge.conf -exec rm {} \\; && cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin",
 		}
 		Expect(pod.Spec.InitContainers[0].Args).To(Equal(cpCommandArgs))
 
-		Expect(len(pod.Spec.InitContainers[0].VolumeMounts)).To(Equal(2))
+		Expect(len(pod.Spec.InitContainers[0].VolumeMounts)).To(Equal(3))
 		cniVolumeMounts := []corev1.VolumeMount{
 			{
 				Name:      "cni-bin",
@@ -196,6 +193,10 @@ var _ = Describe("AgentPodHandler", func() {
 			{
 				Name:      "cni-cache",
 				MountPath: "/var/lib/cni/cache",
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
 			},
 		}
 		Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
@@ -232,7 +233,7 @@ var _ = Describe("AgentPodHandler", func() {
 			},
 			{
 				Name:      "cni-config",
-				MountPath: "/etc/cni",
+				MountPath: "/etc/cni/net.d",
 			},
 			{
 				Name:      "lib-modules",

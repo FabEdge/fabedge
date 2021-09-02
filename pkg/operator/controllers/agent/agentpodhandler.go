@@ -101,14 +101,11 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Image:           handler.agentImage,
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					Command: []string{
-						"cp",
+						"/bin/sh",
 					},
 					Args: []string{
-						"-f",
-						"/usr/local/bin/bridge",
-						"/usr/local/bin/host-local",
-						"/usr/local/bin/loopback",
-						"/opt/cni/bin",
+						"-c",
+						"find /etc/cni/net.d/ -type f ! -name fabedge.conf -exec rm {} \\; && cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin",
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
@@ -118,6 +115,10 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						{
 							Name:      "cni-cache",
 							MountPath: "/var/lib/cni/cache",
+						},
+						{
+							Name:      "cni-config",
+							MountPath: "/etc/cni/net.d",
 						},
 					},
 				},
@@ -153,7 +154,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						},
 						{
 							Name:      "cni-config",
-							MountPath: "/etc/cni",
+							MountPath: "/etc/cni/net.d",
 						},
 						{
 							Name:      "lib-modules",
@@ -205,7 +206,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name: "cni-config",
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/cni",
+							Path: "/etc/cni/net.d",
 							Type: &hostPathDirectoryOrCreate,
 						},
 					},
