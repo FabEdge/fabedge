@@ -70,6 +70,7 @@ func Execute() error {
 
 	if err := validateFlags(); err != nil {
 		log.Error(err, "invalid arguments found")
+		return err
 	}
 
 	return startManager()
