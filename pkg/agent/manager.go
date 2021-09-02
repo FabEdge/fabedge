@@ -177,8 +177,8 @@ func (m *Manager) start() {
 		lastCancel = cancel
 
 		if m.masqOutgoing {
-			go retryForever(ctx, m.syncIPSetEdgePeerCIDR, func(n uint, err error) {
-				m.log.Error(err, "failed to sync ipset EDGE-PEER-CIDR", "retryNum", n)
+			go retryForever(ctx, m.syncIPSetPeerCIDR, func(n uint, err error) {
+				m.log.Error(err, "failed to sync ipset FABEDGE-PEER-CIDR", "retryNum", n)
 			})
 		}
 
@@ -615,26 +615,26 @@ func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServe
 	return nil
 }
 
-func (m *Manager) syncIPSetEdgePeerCIDR() error {
+func (m *Manager) syncIPSetPeerCIDR() error {
 	ipsetObj, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDR, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
-	allEdgePeerCIDRs, err := m.getAllEdgePeerCIDRs()
+	allPeerCIDRs, err := m.getAllPeerCIDRs()
 	if err != nil {
 		return err
 	}
 
-	oldEdgePeerCIDRs, err := m.getOldEdgePeerCIDRs()
+	oldPeerCIDRs, err := m.getOldPeerCIDRs()
 	if err != nil {
 		return err
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgePeerCIDRs, oldEdgePeerCIDRs, ipset.HashNet)
+	return m.ipset.SyncIPSetEntries(ipsetObj, allPeerCIDRs, oldPeerCIDRs, ipset.HashNet)
 }
 
-func (m *Manager) getAllEdgePeerCIDRs() (sets.String, error) {
+func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
 	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
 	if err != nil {
 		return nil, err
@@ -646,6 +646,8 @@ func (m *Manager) getAllEdgePeerCIDRs() (sets.String, error) {
 			if _, _, err := net.ParseCIDR(nodeSubnet); err != nil {
 				s := m.ipset.ConvertIPToCIDR(nodeSubnet)
 				cidrSet.Insert(s)
+			} else {
+				cidrSet.Insert(nodeSubnet)
 			}
 		}
 
@@ -658,6 +660,6 @@ func (m *Manager) getAllEdgePeerCIDRs() (sets.String, error) {
 	return cidrSet, nil
 }
 
-func (m *Manager) getOldEdgePeerCIDRs() (sets.String, error) {
+func (m *Manager) getOldPeerCIDRs() (sets.String, error) {
 	return m.ipset.ListEntries(IPSetFabEdgePeerCIDR, ipset.HashNet)
 }
