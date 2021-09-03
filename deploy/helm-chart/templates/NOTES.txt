@@ -5,9 +5,8 @@ Your release is named {{ .Release.Name }}.
 
 {{- if contains "calico" .Values.cniType }}
 
-1. Compatible with the CNI plug-in Calico
+1. Integrate with the CNI plug-in Calico
 
-  To be compatible with CNI plug-in calico of the cluster,
   you need to perform the following operations:
 
   1). Create the ip pool of Calico
