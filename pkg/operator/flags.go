@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 )
 
@@ -35,17 +37,19 @@ var (
 
 	connectorConfig             string
 	connectorName               string
-	connectorIP                 string
+	connectorPublicAddresses    string
 	connectorSubnets            string
 	connectorConfigSyncInterval int64
 
-	endpointIDFormat string
-	agentImage       string
-	strongswanImage  string
-	ipvsScheduler    string
-	useXfrm          bool
-	enableProxy      bool
-	masqOutgoing     bool
+	endpointIDFormat     string
+	agentImage           string
+	strongswanImage      string
+	agentImagePullPolicy string
+	agentLogLevel        int
+	ipvsScheduler        string
+	useXfrm              bool
+	enableProxy          bool
+	masqOutgoing         bool
 
 	caSecretName     string
 	certOrganization string
@@ -65,13 +69,15 @@ func init() {
 	flag.StringVar(&edgePodCIDR, "edge-pod-cidr", "2.2.0.0/16", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node")
 
 	flag.StringVar(&connectorName, "connector-name", "cloud-connector", "The name of connector, only letters, number and '-' are allowed, the initial must be a letter.")
-	flag.StringVar(&connectorIP, "connector-ip", "", "The connector's IP which should be accessible for every edge node")
+	flag.StringVar(&connectorPublicAddresses, "connector-public-addresses", "", "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringVar(&connectorSubnets, "connector-subnets", "", "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
 	flag.StringVar(&connectorConfig, "connector-config", "cloud-tunnels-config", "The name of configmap for connector")
 	flag.Int64Var(&connectorConfigSyncInterval, "connector-config-sync-interval", 5, "The interval(seconds) to synchronize connector configmap")
 
-	flag.StringVar(&agentImage, "agent-image", "fabedge/agent:latest", "Used the image to create agent container of agent pod")
-	flag.StringVar(&strongswanImage, "strongswan-image", "strongswan:5.9.1", "Used the image to create strongswan container of agent pod")
+	flag.StringVar(&agentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
+	flag.StringVar(&strongswanImage, "strongswan-image", "strongswan:5.9.1", "The image of strongswan container of agent pod")
+	flag.StringVar(&agentImagePullPolicy, "agent-image-pull-policy", "IfNotPresent", "The imagePullPolicy for all containers of agent pod")
+	flag.IntVar(&agentLogLevel, "agent-log-level", 3, "The log level of agent")
 	flag.StringVar(&endpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
 	flag.StringVar(&ipvsScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 	flag.BoolVar(&useXfrm, "use-xfrm", false, "let agent use xfrm if edge OS supports")
@@ -103,14 +109,22 @@ func validateFlags() error {
 		return fmt.Errorf("invalid connector config name")
 	}
 
-	if ip := net.ParseIP(connectorIP); ip == nil {
-		return fmt.Errorf("invalid connector ip")
+	addresses := strings.Split(connectorPublicAddresses, ",")
+	if len(addresses) == 0 {
+		return fmt.Errorf("connector public addresses is needed")
 	}
 
 	for _, subnet := range strings.Split(connectorSubnets, ",") {
 		if _, _, err := net.ParseCIDR(subnet); err != nil {
 			return err
 		}
+	}
+
+	policy := corev1.PullPolicy(agentImagePullPolicy)
+	if policy != corev1.PullAlways &&
+		policy != corev1.PullIfNotPresent &&
+		policy != corev1.PullNever {
+		return fmt.Errorf("not supported image pull policy: %s", agentImagePullPolicy)
 	}
 
 	return nil

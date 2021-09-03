@@ -15,7 +15,6 @@
 package connector
 
 import (
-	"fmt"
 	"k8s.io/klog/v2"
 
 	"github.com/fabedge/fabedge/pkg/common/netconf"
@@ -33,24 +32,22 @@ func (m *Manager) readCfgFromFile() error {
 		return err
 	}
 
-	netconf.EnsureNodeSubnets(&nc)
-
 	m.connections = nil
 	connNames = stringset.New()
 
 	for _, peer := range nc.Peers {
 
 		con := tunnel.ConnConfig{
-			Name: fmt.Sprintf("cloud-%s", peer.Name),
+			Name: peer.Name,
 
 			LocalID:          nc.ID,
 			LocalCerts:       []string{m.config.certFile},
-			LocalAddress:     []string{nc.IP},
+			LocalAddress:     nc.PublicAddresses,
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,
 
 			RemoteID:          peer.ID,
-			RemoteAddress:     []string{peer.IP},
+			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
 		}

@@ -99,9 +99,10 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 		It("should reallocate a subnet to a edge node if this node's subnet is not match to record in store", func() {
 			nodeName := getNodeName()
 			handler.store.SaveEndpoint(types.Endpoint{
-				Name:    nodeName,
-				IP:      "",
-				Subnets: []string{"2.2.2.2/26"},
+				Name:            nodeName,
+				PublicAddresses: nil,
+				Subnets:         []string{"2.2.2.2/26"},
+				NodeSubnets:     nil,
 			})
 			node := newNode(nodeName, "10.40.20.181", "2.2.2.1/26")
 			Expect(k8sClient.Create(context.Background(), &node)).ShouldNot(HaveOccurred())

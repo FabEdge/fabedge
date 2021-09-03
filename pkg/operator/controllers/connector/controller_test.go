@@ -56,16 +56,18 @@ var _ = Describe("Controller", func() {
 		interval = 2 * time.Second
 
 		edge1Endpoint = types.Endpoint{
-			ID:      "edge1",
-			Name:    "edge1",
-			IP:      "10.20.40.181",
-			Subnets: []string{"2.2.0.1/26"},
+			ID:              "edge1",
+			Name:            "edge1",
+			PublicAddresses: []string{"10.20.40.181"},
+			Subnets:         []string{"2.2.0.1/26"},
+			NodeSubnets:     []string{"10.20.40.181"},
 		}
 		edge2Endpoint = types.Endpoint{
-			ID:      "edge2",
-			Name:    "edge2",
-			IP:      "10.20.40.182",
-			Subnets: []string{"2.2.0.65/26"},
+			ID:              "edge2",
+			Name:            "edge2",
+			PublicAddresses: []string{"10.20.40.182"},
+			Subnets:         []string{"2.2.0.65/26"},
+			NodeSubnets:     []string{"10.20.40.182"},
 		}
 
 		store = storepkg.NewStore()
@@ -93,13 +95,13 @@ var _ = Describe("Controller", func() {
 			Manager: mgr,
 			Store:   store,
 
-			ConnectorIP:         "192.168.1.1",
-			ConnectorID:         "cloud-connector",
-			ConnectorName:       "cloud-connector",
-			ProvidedSubnets:     []string{"10.10.10.1/26"},
-			CollectPodCIDRs:     true,
-			ConnectorConfigName: "connector-config",
-			Namespace:           namespace,
+			ConnectorPublicAddresses: []string{"192.168.1.1"},
+			ConnectorID:              "cloud-connector",
+			ConnectorName:            "cloud-connector",
+			ProvidedSubnets:          []string{"10.10.10.1/26"},
+			CollectPodCIDRs:          true,
+			ConnectorConfigName:      "connector-config",
+			Namespace:                namespace,
 
 			Interval: interval,
 		}
@@ -114,7 +116,7 @@ var _ = Describe("Controller", func() {
 	It("build connector endpoint when node events come", func() {
 		cep := getConnectorEndpoint()
 
-		Expect(cep.IP).Should(Equal(config.ConnectorIP))
+		Expect(cep.PublicAddresses).Should(Equal(config.ConnectorPublicAddresses))
 		Expect(cep.ID).Should(Equal(config.ConnectorID))
 		Expect(cep.Name).Should(Equal(config.ConnectorName))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0]))
@@ -125,7 +127,7 @@ var _ = Describe("Controller", func() {
 		time.Sleep(time.Second)
 
 		cep = getConnectorEndpoint()
-		Expect(cep.IP).Should(Equal(config.ConnectorIP))
+		Expect(cep.PublicAddresses).Should(Equal(config.ConnectorPublicAddresses))
 		Expect(cep.ID).Should(Equal(config.ConnectorID))
 		Expect(cep.Name).Should(Equal(config.ConnectorName))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0], nodeutil.GetPodCIDRs(node2)[0]))
