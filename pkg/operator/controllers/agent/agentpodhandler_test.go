@@ -31,6 +31,8 @@ var _ = Describe("AgentPodHandler", func() {
 			namespace:       namespace,
 			agentImage:      agentImage,
 			strongswanImage: strongswanImage,
+			imagePullPolicy: corev1.PullIfNotPresent,
+			logLevel:        3,
 			client:          k8sClient,
 			log:             klogr.New().WithName("agentPodHandler"),
 		}
@@ -171,7 +173,7 @@ var _ = Describe("AgentPodHandler", func() {
 		// install-cni initContainer
 		Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni"))
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
-		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
 
 		cpCommand := []string{
 			"/bin/sh",
@@ -204,7 +206,7 @@ var _ = Describe("AgentPodHandler", func() {
 		// agent container
 		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
-		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
 		args := []string{
 			"-tunnels-conf",
 			agentConfigTunnelsFilepath,
@@ -215,6 +217,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"-masq-outgoing=false",
 			"-use-xfrm=false",
 			"-enable-proxy=false",
+			"-v=3",
 		}
 		Expect(pod.Spec.Containers[0].Args).To(Equal(args))
 

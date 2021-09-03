@@ -136,16 +136,16 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 		}
 
 		getConnectorEndpoint, err := connectorctl.AddToManager(connectorctl.Config{
-			Manager:             mgr,
-			Store:               store,
-			Namespace:           namespace,
-			ConnectorConfigName: connectorConfig,
-			ConnectorID:         types.GetID(endpointIDFormat, connectorName),
-			ConnectorName:       connectorName,
-			ConnectorIP:         connectorIP,
-			ProvidedSubnets:     strings.Split(connectorSubnets, ","),
-			CollectPodCIDRs:     !allocatePodCIDR,
-			Interval:            timeutil.Seconds(connectorConfigSyncInterval),
+			Manager:                  mgr,
+			Store:                    store,
+			Namespace:                namespace,
+			ConnectorConfigName:      connectorConfig,
+			ConnectorID:              types.GetID(endpointIDFormat, connectorName),
+			ConnectorName:            connectorName,
+			ConnectorPublicAddresses: strings.Split(connectorPublicAddresses, ","),
+			ProvidedSubnets:          strings.Split(connectorSubnets, ","),
+			CollectPodCIDRs:          !allocatePodCIDR,
+			Interval:                 timeutil.Seconds(connectorConfigSyncInterval),
 		})
 		if err != nil {
 			log.Error(err, "failed to add communities controller to manager")
@@ -160,6 +160,8 @@ func initializeControllers(mgr manager.Manager) manager.Runnable {
 			GetConnectorEndpoint: getConnectorEndpoint,
 
 			Namespace:       namespace,
+			ImagePullPolicy: corev1.PullPolicy(agentImagePullPolicy),
+			AgentLogLevel:   agentLogLevel,
 			AgentImage:      agentImage,
 			StrongswanImage: strongswanImage,
 			AllocatePodCIDR: allocatePodCIDR,
@@ -222,7 +224,7 @@ func initStore(cli client.Client, newEndpoint types.NewEndpointFunc, recordSubne
 
 	for _, node := range nodes.Items {
 		ep := newEndpoint(node)
-		if ep.IP == "" || len(ep.Subnets) == 0 {
+		if !ep.IsValid() {
 			continue
 		}
 

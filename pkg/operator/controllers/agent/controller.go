@@ -63,6 +63,8 @@ type Config struct {
 	Manager   manager.Manager
 
 	Namespace       string
+	ImagePullPolicy corev1.PullPolicy
+	AgentLogLevel   int
 	AgentImage      string
 	StrongswanImage string
 	UseXfrm         bool
@@ -150,6 +152,8 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 		log:       log.WithName("agentPodHandler"),
 
+		imagePullPolicy: cnf.ImagePullPolicy,
+		logLevel:        cnf.AgentLogLevel,
 		agentImage:      cnf.AgentImage,
 		strongswanImage: cnf.StrongswanImage,
 		useXfrm:         cnf.UseXfrm,

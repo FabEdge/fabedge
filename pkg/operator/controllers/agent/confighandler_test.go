@@ -47,10 +47,11 @@ var _ = Describe("ConfigHandler", func() {
 		nodeName := getNodeName()
 		connectorEndpoint = getConnectorEndpoint()
 		edge2Endpoint = types.Endpoint{
-			ID:      "C=CN, O=StrongSwan, CN=edge2",
-			Name:    "edge2",
-			IP:      "10.20.8.141",
-			Subnets: []string{"2.2.1.65/26"},
+			ID:              "C=CN, O=StrongSwan, CN=edge2",
+			Name:            "edge2",
+			PublicAddresses: []string{"10.20.8.141"},
+			Subnets:         []string{"2.2.1.65/26"},
+			NodeSubnets:     []string{"10.20.8.141"},
 		}
 		testCommunity = types.Community{
 			Name:    "test",
@@ -94,8 +95,8 @@ var _ = Describe("ConfigHandler", func() {
 
 	It("Do should update agent configmap when any endpoint changed", func() {
 		By("changing edge2 ip address")
-		edge2IP := "10.20.8.142"
-		edge2Endpoint.IP = edge2IP
+		edge2PublicAddresses := []string{"10.20.8.142"}
+		edge2Endpoint.PublicAddresses = edge2PublicAddresses
 		store.SaveEndpoint(edge2Endpoint)
 
 		By("assign an IP address to node")
@@ -128,7 +129,7 @@ var _ = Describe("ConfigHandler", func() {
 			},
 		}
 		Expect(conf).Should(Equal(expectedConf))
-		Expect(conf.Peers[1].IP).Should(Equal(edge2IP))
+		Expect(conf.Peers[1].PublicAddresses).Should(Equal(edge2PublicAddresses))
 	})
 
 	It("Undo should delete configmap created by Do method", func() {
@@ -142,10 +143,10 @@ var _ = Describe("ConfigHandler", func() {
 
 func getConnectorEndpoint() types.Endpoint {
 	return types.Endpoint{
-		ID:          "C=CN, O=StrongSwan, CN=cloud-connector",
-		Name:        "cloud-connector",
-		IP:          "192.168.1.1",
-		Subnets:     []string{"2.2.1.1/26"},
-		NodeSubnets: []string{"192.168.1.0/24"},
+		ID:              "C=CN, O=StrongSwan, CN=cloud-connector",
+		Name:            "cloud-connector",
+		PublicAddresses: []string{"192.168.1.1"},
+		Subnets:         []string{"2.2.1.1/26"},
+		NodeSubnets:     []string{"192.168.1.0/24"},
 	}
 }

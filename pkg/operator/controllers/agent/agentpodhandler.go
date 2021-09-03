@@ -27,8 +27,10 @@ cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /o
 type agentPodHandler struct {
 	namespace string
 
+	logLevel        int
 	agentImage      string
 	strongswanImage string
+	imagePullPolicy corev1.PullPolicy
 	useXfrm         bool
 	masqOutgoing    bool
 	enableProxy     bool
@@ -132,7 +134,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 				{
 					Name:            "agent",
 					Image:           handler.agentImage,
-					ImagePullPolicy: corev1.PullIfNotPresent,
+					ImagePullPolicy: handler.imagePullPolicy,
 					Args: []string{
 						"-tunnels-conf",
 						agentConfigTunnelsFilepath,
@@ -143,6 +145,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						fmt.Sprintf("-masq-outgoing=%t", handler.masqOutgoing),
 						fmt.Sprintf("-use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("-enable-proxy=%t", handler.enableProxy),
+						fmt.Sprintf("-v=%d", handler.logLevel),
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
@@ -176,7 +179,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 				{
 					Name:            "strongswan",
 					Image:           handler.strongswanImage,
-					ImagePullPolicy: corev1.PullIfNotPresent,
+					ImagePullPolicy: handler.imagePullPolicy,
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},

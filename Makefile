@@ -1,7 +1,6 @@
 OUTPUT_DIR := _output
 BINARIES := agent connector operator cert
-IMAGES := $(addsuffix -image, $(BINARIES))
-IMAGES := $(IMAGES) strongswan-image installer-image
+IMAGES := $(addsuffix -image, agent connector operator strongswan installer)
 
 VERSION := v0.1.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')

@@ -51,14 +51,14 @@ type Node struct {
 }
 
 type Config struct {
-	ConnectorID         string
-	ConnectorName       string
-	ConnectorIP         string
-	ConnectorConfigName string
-	ProvidedSubnets     []string
-	CollectPodCIDRs     bool
-	Namespace           string
-	Interval            time.Duration
+	ConnectorID              string
+	ConnectorName            string
+	ConnectorPublicAddresses []string
+	ConnectorConfigName      string
+	ProvidedSubnets          []string
+	CollectPodCIDRs          bool
+	Namespace                string
+	Interval                 time.Duration
 
 	Store   storepkg.Interface
 	Manager manager.Manager
@@ -70,11 +70,11 @@ type controller struct {
 	configMapKey client.ObjectKey
 	interval     time.Duration
 
-	connectorID     string
-	connectorName   string
-	connectorIP     string
-	providedSubnets []string
-	collectPodCIDRs bool
+	connectorID            string
+	connectorName          string
+	connectorPublicAddress []string
+	providedSubnets        []string
+	collectPodCIDRs        bool
 
 	store  storepkg.Interface
 	client client.Client
@@ -90,13 +90,13 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	mgr := cnf.Manager
 
 	ctl := &controller{
-		configMapKey:    client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
-		interval:        cnf.Interval,
-		connectorID:     cnf.ConnectorID,
-		connectorName:   cnf.ConnectorName,
-		connectorIP:     cnf.ConnectorIP,
-		providedSubnets: cnf.ProvidedSubnets,
-		collectPodCIDRs: cnf.CollectPodCIDRs,
+		configMapKey:           client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
+		interval:               cnf.Interval,
+		connectorID:            cnf.ConnectorID,
+		connectorName:          cnf.ConnectorName,
+		connectorPublicAddress: cnf.ConnectorPublicAddresses,
+		providedSubnets:        cnf.ProvidedSubnets,
+		collectPodCIDRs:        cnf.CollectPodCIDRs,
 
 		store:  cnf.Store,
 		log:    mgr.GetLogger().WithName(controllerName),
@@ -315,11 +315,11 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 	}
 
 	ctl.connectorEndpoint = types.Endpoint{
-		ID:          ctl.connectorID,
-		Name:        ctl.connectorName,
-		IP:          ctl.connectorIP,
-		Subnets:     subnets,
-		NodeSubnets: nodeSubnets,
+		ID:              ctl.connectorID,
+		Name:            ctl.connectorName,
+		PublicAddresses: ctl.connectorPublicAddress,
+		Subnets:         subnets,
+		NodeSubnets:     nodeSubnets,
 	}
 }
 

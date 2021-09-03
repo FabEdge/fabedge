@@ -229,8 +229,6 @@ func (m *Manager) mainNetwork() error {
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 	newNames := stringset.New()
 
-	netconf.EnsureNodeSubnets(&conf)
-
 	for _, peer := range conf.Peers {
 		newNames.Add(peer.Name)
 
@@ -243,7 +241,7 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 			LocalCerts:       m.localCerts,
 
 			RemoteID:          peer.ID,
-			RemoteAddress:     []string{peer.IP},
+			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
 		}
@@ -650,9 +648,6 @@ func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
 				cidrSet.Insert(nodeSubnet)
 			}
 		}
-
-		ip := m.ipset.ConvertIPToCIDR(p.IP)
-		cidrSet.Insert(ip)
 
 		cidrSet.Insert(p.Subnets...)
 	}

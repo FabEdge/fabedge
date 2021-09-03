@@ -78,22 +78,22 @@ var _ = Describe("Controller", func() {
 		}()
 
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "1",
-			Name:    "edge1",
-			IP:      "192.168.1.1",
-			Subnets: []string{"2.2.2.1/26"},
+			ID:              "1",
+			Name:            "edge1",
+			PublicAddresses: []string{"192.168.1.1"},
+			Subnets:         []string{"2.2.2.1/26"},
 		})
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "2",
-			Name:    "edge2",
-			IP:      "192.168.1.2",
-			Subnets: []string{"2.2.2.65/26"},
+			ID:              "2",
+			Name:            "edge2",
+			PublicAddresses: []string{"192.168.1.2"},
+			Subnets:         []string{"2.2.2.65/26"},
 		})
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "4",
-			Name:    "edge4",
-			IP:      "192.168.1.4",
-			Subnets: []string{"2.2.2.130/26"},
+			ID:              "4",
+			Name:            "edge4",
+			PublicAddresses: []string{"192.168.1.4"},
+			Subnets:         []string{"2.2.2.130/26"},
 		})
 	})
 
