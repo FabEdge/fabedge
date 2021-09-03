@@ -1,0 +1,50 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+
+{{- if contains "calico" .Values.cniType }}
+
+1. Integrate with the CNI plug-in Calico
+
+  you need to perform the following operations:
+
+  1). Create the ip pool of Calico
+
+    - `vi fabedge-calico-ip-pool.yaml`
+
+      ```yaml
+      apiVersion: projectcalico.org/v3
+      kind: IPPool
+      metadata:
+        name: fabedge
+      spec:
+        blockSize: 26
+        # CIDR used by pods on edge nodes, modify it per your env.
+        cidr: 10.10.0.0/16
+        natOutgoing: false
+        disabled: true
+      ```
+
+    - Run the following shell command
+
+      ```shell
+      export DATASTORE_TYPE=kubernetes
+      export KUBECONFIG=/etc/kubernetes/admin.conf
+
+      alicoctl create --filename=fabedge-calico-ip-pool.yaml
+      ```
+
+  2). Check whether the ip pool is successfully created
+
+    - Run the following shell command
+
+     ```shell
+     calicoctl get ipPool
+     ```
+{{- end }}
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}

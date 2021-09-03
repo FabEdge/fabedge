@@ -1,0 +1,110 @@
+operator:
+  name: fabedge-operator
+  replicaCount: 1
+  image:
+    repository: fabedge/operator
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  # CIDR used by pods on edge nodes, modify it per your env.
+  edgePodCIDR: 10.10.0.0/16
+
+  # enable masquerade when edge pods access Internet
+  masqOutgoing: false
+
+  # enable fabedge ipvs loadbalancer function
+  enableProxy: true
+
+  # ip of connector accessible by the edge node
+  connectorPublicAddresses: 10.22.46.48
+
+  # CIDR used by pod & service in the cloud k8s cluster
+  connectorSubnets: 10.233.64.0/18,10.233.0.0/18
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/edge
+                operator: DoesNotExist
+
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #resources: {}
+  #  limits:
+  #    cpu: 10m
+  #    memory: 32Mi
+  #  requests:
+  #    cpu: 10m
+  #    memory: 32Mi
+
+cniType: calico
+
+connector:
+  name: connector
+  replicaCount: 1
+  image:
+    repository: fabedge/connector
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  syncPeriod: 1m
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/connector
+                operator: Exists
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - connector
+        topologyKey: kubernetes.io/hostname
+
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #resources: {}
+  #  limits:
+  #    cpu: 10m
+  #    memory: 32Mi
+  #  requests:
+  #    cpu: 10m
+  #    memory: 32Mi
+
+
+strongswan:
+  image:
+    repository: fabedge/strongswan
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #resources: {}
+  #  limits:
+  #    cpu: 10m
+  #    memory: 32Mi
+  #  requests:
+  #    cpu: 10m
+  #    memory: 32Mi
+
+
+agent:
+  image:
+    repository: fabedge/agent
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
+  #resources: {}
+  #  limits:
+  #    cpu: 10m
+  #    memory: 32Mi
+  #  requests:
+  #    cpu: 10m
+  #    memory: 32Mi
+

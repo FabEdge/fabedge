@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.connector.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "connector.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.connector.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "connector.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "connector.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.connector.affinity }}
+      affinity:
+{{ toYaml .Values.connector.affinity | indent 8 }}
+      {{- end}}
+      hostNetwork: true
+      containers:
+        - name: strongswan
+          image: {{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.strongswan.image.pullPolicy }}
+          readinessProbe:
+            exec:
+              command:
+              - /usr/sbin/swanctl
+              - --version
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "SYS_MODULE"]
+          volumeMounts:
+            - name: var-run
+              mountPath: /var/run/
+            - name: ipsec-d
+              mountPath: /etc/ipsec.d/
+              readOnly: true
+            - name: ipsec-secrets
+              mountPath: /etc/ipsec.secrets
+              subPath: ipsec.secrets
+              readOnly: true
+          {{- if .Values.strongswan.resources }}
+          resources:
+{{ toYaml .Values.strongswan.resources | indent 12 }}
+          {{- end }}
+        - name: connector
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          image: {{ .Values.connector.image.repository }}:{{ .Values.connector.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.connector.image.pullPolicy }}
+          args:
+            - -tunnel-config=/etc/fabedge/tunnels.yaml
+            - -cert-file=/etc/ipsec.d/certs/tls.crt
+            - -vici-socket=/var/run/charon.vici
+            - cni-type={{ .Values.cniType }}
+            - -sync-period={{ .Values.connector.syncPeriod }}
+            - -debounce-duration=5s
+            - -v=5
+          volumeMounts:
+            - name: var-run
+              mountPath: /var/run/
+            - name: connector-config
+              mountPath: /etc/fabedge/
+            - name: ipsec-d
+              mountPath: /etc/ipsec.d/
+              readOnly: true
+          {{- if .Values.connector.resources }}
+          resources:
+{{ toYaml .Values.connector.resources | indent 12 }}
+          {{- end }}
+      volumes:
+        - name: var-run
+          emptyDir: {}
+        - name: connector-config
+          configMap:
+            name: connector-config
+        - name: ipsec-d
+          secret:
+            items:
+              - key: ca.crt
+                path: cacerts/ca.crt
+              - key: tls.crt
+                path: certs/tls.crt
+              - key: tls.key
+                path: private/tls.key
+            secretName: cloud-connector
+        - name: ipsec-secrets
+          secret:
+            items:
+              - key: ipsec.secrets
+                path: ipsec.secrets
+            secretName: cloud-connector
