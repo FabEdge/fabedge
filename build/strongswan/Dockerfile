@@ -1,4 +1,4 @@
-FROM alpine:3.11
+FROM alpine:3.13.6
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk --update add strongswan && \
