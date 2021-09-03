@@ -4,7 +4,7 @@ ADD http://116.62.127.76/cni-plugins-linux-amd64-v0.9.1.tgz /tmp
 RUN cd /fabedge && make agent CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct && \
     tar -xzf /tmp/cni-plugins-linux-amd64-v0.9.1.tgz -C /tmp/
 
-FROM alpine:3.11
+FROM alpine:3.13.6
 COPY --from=builder /fabedge/_output/fabedge-agent /tmp/bridge /tmp/host-local /tmp/loopback /usr/local/bin/
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk add iptables && \
