@@ -87,7 +87,7 @@ you can specify the target secret name. You can also choose to save cert/key pai
 fabedge-cert gen edge
 
 # Create a cert/key pair using commonName edge and save data to secret edge-ck
-fabedge-cert gen edge --name=edge-ck
+fabedge-cert gen edge --secret-name=edge-ck
 
 # Create a cert/key pair using commonName edge but save them to files
 fabedge-cert gen edge --save-to-file --save-to-secret=false

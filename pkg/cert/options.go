@@ -60,7 +60,7 @@ type SaveOptions struct {
 }
 
 func (opts *SaveOptions) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&opts.Name, "name", "", "The name of the secret to save, if not provided, the commonName will be used(not work on CA)")
+	fs.StringVar(&opts.Name, "secret-name", "", "The name of the secret to save, if not provided, the commonName will be used(not work on CA)")
 	fs.BoolVar(&opts.Secret, "save-to-secret", true, "Save cert/key into secret")
 	fs.BoolVar(&opts.File, "save-to-file", false, "Save cert/key to files")
 }
