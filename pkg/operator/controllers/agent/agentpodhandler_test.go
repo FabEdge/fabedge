@@ -222,15 +222,15 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
 		args := []string{
-			"-tunnels-conf",
+			"--tunnels-conf",
 			agentConfigTunnelsFilepath,
-			"-services-conf",
+			"--services-conf",
 			agentConfigServicesFilepath,
-			"-local-cert",
+			"--local-cert",
 			"tls.crt",
-			"-masq-outgoing=false",
-			"-use-xfrm=false",
-			"-enable-proxy=false",
+			"--masq-outgoing=false",
+			"--use-xfrm=false",
+			"--enable-proxy=false",
 			"-v=3",
 		}
 		Expect(pod.Spec.Containers[0].Args).To(Equal(args))

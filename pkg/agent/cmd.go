@@ -15,77 +15,57 @@
 package agent
 
 import (
-	"flag"
 	"os"
 
 	"github.com/fsnotify/fsnotify"
+	flag "github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
 )
 
 func Execute() error {
-	klog.InitFlags(nil)
-	// init log level
-	_ = flag.Set("v", "3")
-	flag.Parse()
-
-	if version {
-		about.DisplayVersion()
-		return nil
-	}
-
-	var log = klogr.New().WithName("agent")
 	defer klog.Flush()
 
-	if err := validateFlags(); err != nil {
-		log.Error(err, "invalid arguments")
+	fs := flag.CommandLine
+	cfg := &Config{}
+
+	about.AddFlags(fs)
+	logutil.AddFlags(fs)
+	cfg.AddFlags(fs)
+
+	flag.Parse()
+
+	about.DisplayAndExitIfRequested()
+
+	log := klogr.New().WithName("manager")
+	if err := cfg.Validate(); err != nil {
+		log.Error(err, "validation failed")
 		return err
 	}
 
-	if err := os.MkdirAll(cniConfDir, 0777); err != nil {
+	if err := os.MkdirAll(cfg.CNI.ConfDir, 0777); err != nil {
 		log.Error(err, "failed to create cni conf dir")
 		return err
 	}
 
-	manager, err := newManager(Config{
-		LocalCerts:       []string{localCert},
-		SyncPeriod:       AsSecond(syncPeriod),
-		DebounceDuration: AsSecond(debounceDuration),
-
-		TunnelsConfPath:  tunnelsConfPath,
-		ServicesConfPath: servicesConfPath,
-
-		MasqOutgoing: masqOutgoing,
-
-		DummyInterfaceName: dummyInterfaceName,
-		UseXfrm:            useXfrm,
-		XfrmInterfaceName:  xfrmInterfaceName,
-		XfrmInterfaceID:    xfrmInterfaceID,
-
-		EnableProxy: enableProxy,
-
-		CNI: CNI{
-			Version:     cniVersion,
-			ConfDir:     cniConfDir,
-			NetworkName: cniNetworkName,
-			BridgeName:  cniBridgeName,
-		},
-	})
+	manager, err := cfg.Manager()
 	if err != nil {
 		log.Error(err, "failed to create manager")
 		return err
 	}
+
 	go manager.start()
 
-	err = watchFiles(tunnelsConfPath, servicesConfPath, func(event fsnotify.Event) {
+	err = watchFiles(cfg.TunnelsConfPath, cfg.ServicesConfPath, func(event fsnotify.Event) {
 		log.V(5).Info("tunnels or services config may change", "file", event.Name, "event", event.Op.String())
 		manager.notify()
 	})
 
 	if err != nil {
-		log.Error(err, "failed to watch tunnelsconf", "file", tunnelsConfPath)
+		log.Error(err, "failed to watch tunnelsconf", "file", cfg.TunnelsConfPath)
 	}
 	return err
 }
