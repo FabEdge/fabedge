@@ -63,13 +63,12 @@ type Config struct {
 	Manager   manager.Manager
 
 	Namespace       string
-	ImagePullPolicy corev1.PullPolicy
+	ImagePullPolicy string
 	AgentLogLevel   int
 	AgentImage      string
 	StrongswanImage string
 	UseXfrm         bool
 	MasqOutgoing    bool
-	EnableProxy     bool
 
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
@@ -78,8 +77,8 @@ type Config struct {
 	CertOrganization string
 	CertValidPeriod  int64
 
+	EnableProxy     bool
 	AllocatePodCIDR bool
-	EdgePodCIDR     string
 }
 
 func AddToManager(cnf Config) error {
@@ -152,7 +151,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 		log:       log.WithName("agentPodHandler"),
 
-		imagePullPolicy: cnf.ImagePullPolicy,
+		imagePullPolicy: corev1.PullPolicy(cnf.ImagePullPolicy),
 		logLevel:        cnf.AgentLogLevel,
 		agentImage:      cnf.AgentImage,
 		strongswanImage: cnf.StrongswanImage,

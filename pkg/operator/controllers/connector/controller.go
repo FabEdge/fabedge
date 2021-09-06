@@ -51,14 +51,12 @@ type Node struct {
 }
 
 type Config struct {
-	ConnectorID              string
-	ConnectorName            string
-	ConnectorPublicAddresses []string
-	ConnectorConfigName      string
-	ProvidedSubnets          []string
-	CollectPodCIDRs          bool
-	Namespace                string
-	Interval                 time.Duration
+	Endpoint        types.Endpoint
+	ProvidedSubnets []string
+	CollectPodCIDRs bool
+
+	ConfigMapKey client.ObjectKey
+	SyncInterval time.Duration
 
 	Store   storepkg.Interface
 	Manager manager.Manager
@@ -67,43 +65,26 @@ type Config struct {
 // controller generate tunnels config for connector and
 // provide connector endpoint info for others
 type controller struct {
-	configMapKey client.ObjectKey
-	interval     time.Duration
+	Config
 
-	connectorID            string
-	connectorName          string
-	connectorPublicAddress []string
-	providedSubnets        []string
-	collectPodCIDRs        bool
-
-	store  storepkg.Interface
 	client client.Client
 	log    logr.Logger
 
-	nodeNameSet       stringset.Set
-	nodeCache         map[string]Node
-	connectorEndpoint types.Endpoint
-	mux               sync.RWMutex
+	nodeNameSet stringset.Set
+	nodeCache   map[string]Node
+	mux         sync.RWMutex
 }
 
 func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	mgr := cnf.Manager
 
 	ctl := &controller{
-		configMapKey:           client.ObjectKey{Name: cnf.ConnectorConfigName, Namespace: cnf.Namespace},
-		interval:               cnf.Interval,
-		connectorID:            cnf.ConnectorID,
-		connectorName:          cnf.ConnectorName,
-		connectorPublicAddress: cnf.ConnectorPublicAddresses,
-		providedSubnets:        cnf.ProvidedSubnets,
-		collectPodCIDRs:        cnf.CollectPodCIDRs,
-
-		store:  cnf.Store,
-		log:    mgr.GetLogger().WithName(controllerName),
-		client: mgr.GetClient(),
+		Config: cnf,
 
 		nodeNameSet: stringset.New(),
 		nodeCache:   make(map[string]Node),
+		client:      mgr.GetClient(),
+		log:         mgr.GetLogger().WithName(controllerName),
 	}
 
 	err := ctl.initializeConnectorEndpoint()
@@ -135,7 +116,7 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 }
 
 func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
-	tick := time.NewTicker(ctl.interval)
+	tick := time.NewTicker(ctl.SyncInterval)
 
 	ctl.updateConfigMapIfNeeded()
 	for {
@@ -149,9 +130,9 @@ func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
 }
 
 func (ctl *controller) updateConfigMapIfNeeded() {
-	log := ctl.log.WithValues("key", ctl.configMapKey)
+	log := ctl.log.WithValues("key", ctl.ConfigMapKey)
 
-	ctx, cancel := context.WithTimeout(context.Background(), ctl.interval)
+	ctx, cancel := context.WithTimeout(context.Background(), ctl.SyncInterval)
 	defer cancel()
 
 	connectorEndpoint := ctl.getConnectorEndpoint()
@@ -169,7 +150,7 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	configData := string(confBytes)
 
 	var cm corev1.ConfigMap
-	err = ctl.client.Get(ctx, ctl.configMapKey, &cm)
+	err = ctl.client.Get(ctx, ctl.ConfigMapKey, &cm)
 	if err != nil && !errors.IsNotFound(err) {
 		log.Error(err, "failed to get connector configmap")
 		return
@@ -180,8 +161,8 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 
 		cm = corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      ctl.configMapKey.Name,
-				Namespace: ctl.configMapKey.Namespace,
+				Name:      ctl.ConfigMapKey.Name,
+				Namespace: ctl.ConfigMapKey.Namespace,
 			},
 			Data: map[string]string{
 				constants.ConnectorConfigFileName: configData,
@@ -206,8 +187,8 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 }
 
 func (ctl *controller) getPeers() []netconf.TunnelEndpoint {
-	nameSet := ctl.store.GetAllEndpointNames()
-	endpoints := ctl.store.GetEndpoints(nameSet.Values()...)
+	nameSet := ctl.Store.GetAllEndpointNames()
+	endpoints := ctl.Store.GetEndpoints(nameSet.Values()...)
 
 	peers := make([]netconf.TunnelEndpoint, 0, len(endpoints))
 	for _, ep := range endpoints {
@@ -248,7 +229,7 @@ func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
 		return
 	}
 
-	if !ctl.collectPodCIDRs {
+	if !ctl.CollectPodCIDRs {
 		podCIDRs = nil
 	}
 
@@ -303,10 +284,10 @@ func (ctl *controller) initializeConnectorEndpoint() error {
 }
 
 func (ctl *controller) rebuildConnectorEndpoint() {
-	subnets := make([]string, 0, len(ctl.providedSubnets)+len(ctl.nodeCache))
+	subnets := make([]string, 0, len(ctl.ProvidedSubnets)+len(ctl.nodeCache))
 	nodeSubnets := make([]string, 0, len(ctl.nodeCache))
 
-	subnets = append(subnets, ctl.providedSubnets...)
+	subnets = append(subnets, ctl.ProvidedSubnets...)
 	for _, nodeName := range ctl.nodeNameSet.Values() {
 		node := ctl.nodeCache[nodeName]
 
@@ -314,18 +295,13 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 		nodeSubnets = append(nodeSubnets, node.IP)
 	}
 
-	ctl.connectorEndpoint = types.Endpoint{
-		ID:              ctl.connectorID,
-		Name:            ctl.connectorName,
-		PublicAddresses: ctl.connectorPublicAddress,
-		Subnets:         subnets,
-		NodeSubnets:     nodeSubnets,
-	}
+	ctl.Endpoint.Subnets = subnets
+	ctl.Endpoint.NodeSubnets = nodeSubnets
 }
 
 func (ctl *controller) getConnectorEndpoint() types.Endpoint {
 	ctl.mux.RLock()
 	defer ctl.mux.RUnlock()
 
-	return ctl.connectorEndpoint
+	return ctl.Endpoint
 }

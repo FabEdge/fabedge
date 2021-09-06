@@ -34,7 +34,7 @@ var getEdgeName = testutil.GenerateGetNameFunc("edge-node")
 
 func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Connector Suite")
+	RunSpecs(t, "Endpoint Suite")
 }
 
 var _ = BeforeSuite(func(done Done) {

@@ -27,7 +27,7 @@ import (
 
 func Execute() error {
 	klog.InitFlags(nil)
-	// init klog level
+	// init log level
 	_ = flag.Set("v", "3")
 	flag.Parse()
 
