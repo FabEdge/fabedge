@@ -27,7 +27,7 @@ var (
 )
 
 func (m *Manager) readCfgFromFile() error {
-	nc, err := netconf.LoadNetworkConf(m.config.tunnelConfigFile)
+	nc, err := netconf.LoadNetworkConf(m.TunnelConfigFile)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func (m *Manager) readCfgFromFile() error {
 			Name: peer.Name,
 
 			LocalID:          nc.ID,
-			LocalCerts:       []string{m.config.certFile},
+			LocalCerts:       []string{m.CertFile},
 			LocalAddress:     nc.PublicAddresses,
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,

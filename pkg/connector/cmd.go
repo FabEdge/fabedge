@@ -15,16 +15,31 @@
 package connector
 
 import (
-	"flag"
+	flag "github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+
+	"github.com/fabedge/fabedge/pkg/common/about"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
 )
 
 func Execute() {
-	klog.InitFlags(nil)
 	defer klog.Flush()
+
+	fs := flag.CommandLine
+	cfg := &Config{}
+
+	logutil.AddFlags(fs)
+	about.AddFlags(fs)
+	cfg.AddFlags(fs)
 
 	flag.Parse()
 
-	mgr := NewManager()
-	mgr.Start()
+	about.DisplayAndExitIfRequested()
+
+	manger, err := cfg.Manager()
+	if err != nil {
+		klog.Fatalf("failed to create Manager: %s", err)
+	}
+
+	manger.Start()
 }

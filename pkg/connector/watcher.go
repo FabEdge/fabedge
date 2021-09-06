@@ -43,7 +43,7 @@ func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 	}
 
 	// use debounce to avoid too much fsnotify events
-	debounced := debounce.New(m.config.debounceDuration)
+	debounced := debounce.New(m.DebounceDuration)
 
 	for {
 		select {

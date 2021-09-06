@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
@@ -31,7 +32,7 @@ import (
 )
 
 type Manager struct {
-	config      *config
+	Config
 	tm          tunnel.Manager
 	ipt         *iptables.IPTables
 	connections []tunnel.ConnConfig
@@ -39,50 +40,50 @@ type Manager struct {
 	router      routing.Routing
 }
 
-type config struct {
-	interval         time.Duration //sync interval
-	debounceDuration time.Duration
-	tunnelConfigFile string
-	certFile         string
-	viciSocket       string
-	cniType          string
+type Config struct {
+	SyncPeriod       time.Duration //sync interval
+	DebounceDuration time.Duration
+	TunnelConfigFile string
+	CertFile         string
+	ViciSocket       string
+	CNIType          string
 }
 
-func NewManager() *Manager {
-	c := &config{
-		interval:         syncPeriod,
-		tunnelConfigFile: tunnelConfig,
-		certFile:         certFile,
-		viciSocket:       viciSocket,
-		debounceDuration: debounceDuration,
-		cniType:          cniType,
-	}
+func (c *Config) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&c.TunnelConfigFile, "tunnel-config", "/etc/fabedge/tunnels.yaml", "tunnel config file")
+	fs.StringVar(&c.CertFile, "cert-file", "/etc/ipsec.d/certs/tls.crt", "TLS certificate file")
+	fs.StringVar(&c.ViciSocket, "vici-socket", "/var/run/charon.vici", "vici socket file")
+	fs.StringVar(&c.CNIType, "cni-type", "CALICO", "CNI type used in cloud")
+	fs.DurationVar(&c.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
+	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
+}
 
+func (c Config) Manager() (*Manager, error) {
 	tm, err := strongswan.New(
-		strongswan.SocketFile(c.viciSocket),
+		strongswan.SocketFile(c.ViciSocket),
 		strongswan.StartAction("none"),
 	)
 	if err != nil {
-		klog.Fatal(err)
+		return nil, err
 	}
 
 	ipt, err := iptables.New()
 	if err != nil {
-		klog.Fatal(err)
+		return nil, err
 	}
 
-	router, err := routing.GetRouter(cniType)
+	router, err := routing.GetRouter(c.CNIType)
 	if err != nil {
-		klog.Fatalf("%s", err)
+		return nil, err
 	}
 
 	return &Manager{
-		config: c,
+		Config: c,
 		tm:     tm,
 		ipt:    ipt,
 		ipset:  ipset.New(),
 		router: router,
-	}
+	}, nil
 }
 
 func runTasks(interval time.Duration, handler ...func()) {
@@ -161,14 +162,14 @@ func (m *Manager) Start() {
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
 	// repeats regular tasks periodically
-	go runTasks(m.config.interval, tasks...)
+	go runTasks(m.SyncPeriod, tasks...)
 
 	// sync ALL when config file changed
-	go m.onConfigFileChange(m.config.tunnelConfigFile, tasks...)
+	go m.onConfigFileChange(m.TunnelConfigFile, tasks...)
 
 	about.DisplayVersion()
 	klog.Info("manager started")
-	klog.V(5).Infof("current config:%+v", m.config)
+	klog.V(5).Infof("current config:%+v", m.Config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)
