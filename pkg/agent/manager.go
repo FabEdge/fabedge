@@ -23,17 +23,13 @@ import (
 	"path/filepath"
 	"time"
 
-	debpkg "github.com/bep/debounce"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
 	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2/klogr"
-	"k8s.io/utils/exec"
 
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
@@ -49,49 +45,11 @@ const (
 	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
 )
 
-type CNI struct {
-	Version     string
-	ConfDir     string
-	NetworkName string
-	BridgeName  string
-}
-
-type Config struct {
-	LocalCerts       []string
-	SyncPeriod       time.Duration
-	DebounceDuration time.Duration
-	TunnelsConfPath  string
-	ServicesConfPath string
-	MasqOutgoing     bool
-
-	DummyInterfaceName string
-
-	UseXfrm           bool
-	XfrmInterfaceName string
-	XfrmInterfaceID   uint
-
-	CNI CNI
-
-	EnableProxy bool
-}
-
 type Manager struct {
-	cni CNI
-
-	localCerts       []string
-	syncPeriod       time.Duration
-	tunnelsConfPath  string
-	servicesConfPath string
-
-	netLink            ipvs.NetLinkHandle
-	ipvs               ipvs.Interface
-	ipset              ipset.Interface
-	masqOutgoing       bool
-	useXfrm            bool
-	xfrmInterfaceName  string
-	xfrmInterfaceID    uint
-	dummyInterfaceName string
-	enableProxy        bool
+	Config
+	netLink ipvs.NetLinkHandle
+	ipvs    ipvs.Interface
+	ipset   ipset.Interface
 
 	tm  tunnel.Manager
 	ipt *iptables.IPTables
@@ -99,63 +57,6 @@ type Manager struct {
 
 	events   chan struct{}
 	debounce func(func())
-}
-
-func newManager(cnf Config) (*Manager, error) {
-	kernelHandler := ipvs.NewLinuxKernelHandler()
-	canUseProxy, err := ipvs.CanUseIPVSProxier(kernelHandler)
-	if err != nil {
-		return nil, err
-	}
-	cnf.EnableProxy = canUseProxy && cnf.EnableProxy
-
-	supportXfrm, err := ipvs.SupportXfrmInterface(kernelHandler)
-	if err != nil {
-		return nil, err
-	}
-	cnf.UseXfrm = supportXfrm && cnf.UseXfrm
-
-	var opts strongswan.Options
-	if cnf.UseXfrm {
-		opts = append(opts, strongswan.InterfaceID(&cnf.XfrmInterfaceID))
-	}
-	tm, err := strongswan.New(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	ipt, err := iptables.New()
-	if err != nil {
-		return nil, err
-	}
-
-	m := &Manager{
-		cni:              cnf.CNI,
-		localCerts:       cnf.LocalCerts,
-		syncPeriod:       cnf.SyncPeriod,
-		tunnelsConfPath:  cnf.TunnelsConfPath,
-		servicesConfPath: cnf.ServicesConfPath,
-
-		useXfrm:            cnf.UseXfrm,
-		masqOutgoing:       cnf.MasqOutgoing,
-		xfrmInterfaceName:  cnf.XfrmInterfaceName,
-		xfrmInterfaceID:    cnf.XfrmInterfaceID,
-		dummyInterfaceName: cnf.DummyInterfaceName,
-		enableProxy:        cnf.EnableProxy,
-
-		tm:  tm,
-		ipt: ipt,
-		log: klogr.New().WithName("manager"),
-
-		events:   make(chan struct{}),
-		debounce: debpkg.New(cnf.DebounceDuration),
-
-		netLink: ipvs.NewNetLinkHandle(false),
-		ipvs:    ipvs.New(exec.New()),
-		ipset:   ipset.New(),
-	}
-
-	return m, nil
 }
 
 func (m *Manager) start() {
@@ -176,7 +77,7 @@ func (m *Manager) start() {
 		// this make `go vet` shut up
 		lastCancel = cancel
 
-		if m.masqOutgoing {
+		if m.MASQOutgoing {
 			go retryForever(ctx, m.syncIPSetPeerCIDR, func(n uint, err error) {
 				m.log.Error(err, "failed to sync ipset FABEDGE-PEER-CIDR", "retryNum", n)
 			})
@@ -186,7 +87,7 @@ func (m *Manager) start() {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
 		})
 
-		if m.enableProxy {
+		if m.EnableProxy {
 			go retryForever(ctx, m.syncLoadBalanceRules, func(n uint, err error) {
 				m.log.Error(err, "failed to sync load balance rules", "retryNum", n)
 			})
@@ -202,7 +103,7 @@ func (m *Manager) notify() {
 
 func (m *Manager) mainNetwork() error {
 	m.log.V(3).Info("load network config")
-	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
+	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return err
 	}
@@ -238,7 +139,7 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 			LocalID:          conf.ID,
 			LocalSubnets:     conf.Subnets,
 			LocalNodeSubnets: conf.NodeSubnets,
-			LocalCerts:       m.localCerts,
+			LocalCerts:       m.LocalCerts,
 
 			RemoteID:          peer.ID,
 			RemoteAddress:     peer.PublicAddresses,
@@ -312,7 +213,7 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		return err
 	}
 
-	if m.masqOutgoing {
+	if m.MASQOutgoing {
 		m.log.V(3).Info("configure outgoing NAT iptables rules")
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil {
@@ -369,11 +270,11 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	}
 
 	cni := CNINetConf{
-		CNIVersion: m.cni.Version,
-		Name:       m.cni.NetworkName,
+		CNIVersion: m.CNI.Version,
+		Name:       m.CNI.NetworkName,
 		Type:       "bridge",
 
-		Bridge:           m.cni.BridgeName,
+		Bridge:           m.CNI.BridgeName,
 		IsDefaultGateway: true,
 		ForceAddress:     true,
 
@@ -383,7 +284,7 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		},
 	}
 
-	filename := filepath.Join(m.cni.ConfDir, fmt.Sprintf("%s.conf", m.cni.NetworkName))
+	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conf", m.CNI.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")
 	if err != nil {
 		m.log.Error(err, "failed to marshal cni config")
@@ -400,7 +301,7 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 }
 
 func (m *Manager) sync() {
-	tick := time.NewTicker(m.syncPeriod)
+	tick := time.NewTicker(m.SyncPeriod)
 	for {
 		m.notify()
 		<-tick.C
@@ -408,20 +309,20 @@ func (m *Manager) sync() {
 }
 
 func (m *Manager) ensureInterfacesAndRoutes() error {
-	if m.enableProxy {
+	if m.EnableProxy {
 		m.log.V(3).Info("ensure that the dummy interface exists")
-		if _, err := m.netLink.EnsureDummyDevice(m.dummyInterfaceName); err != nil {
-			m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", m.dummyInterfaceName)
+		if _, err := m.netLink.EnsureDummyDevice(m.DummyInterfaceName); err != nil {
+			m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", m.DummyInterfaceName)
 			return err
 		}
 	}
 
 	// the kernel has supported xfrm interface since version 4.19+
-	if m.useXfrm {
-		log := m.log.V(3).WithValues("xfrmInterface", m.xfrmInterfaceName, "if_id", m.xfrmInterfaceID)
+	if m.UseXFRM {
+		log := m.log.V(3).WithValues("xfrmInterface", m.XFRMInterfaceName, "if_id", m.XFRMInterfaceID)
 
 		log.Info("ensure that the xfrm interface exists")
-		if err := m.netLink.EnsureXfrmInterface(m.xfrmInterfaceName, uint32(m.xfrmInterfaceID)); err != nil {
+		if err := m.netLink.EnsureXfrmInterface(m.XFRMInterfaceName, uint32(m.XFRMInterfaceID)); err != nil {
 			log.Error(err, "failed to create xfrm interface")
 			return err
 		}
@@ -443,7 +344,7 @@ func (m *Manager) ensureInterfacesAndRoutes() error {
 
 		// add routes to the cloud connector
 		for _, subnet := range connectorSubnets {
-			if err = m.netLink.EnsureRouteAdd(subnet, m.xfrmInterfaceName); err != nil {
+			if err = m.netLink.EnsureRouteAdd(subnet, m.XFRMInterfaceName); err != nil {
 				m.log.Error(err, "failed to create route", "subnet", subnet)
 				return err
 			}
@@ -456,7 +357,7 @@ func (m *Manager) syncLoadBalanceRules() error {
 	// sync service clusterIP bound to kube-ipvs0
 	// sync ipvs
 	m.log.V(3).Info("load services config file")
-	conf, err := loadServiceConf(m.servicesConfPath)
+	conf, err := loadServiceConf(m.ServicesConfPath)
 	if err != nil {
 		m.log.Error(err, "failed to load services config")
 		return err
@@ -473,7 +374,7 @@ func (m *Manager) syncLoadBalanceRules() error {
 }
 
 func (m *Manager) getConnectorSubnets() ([]string, error) {
-	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
+	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return nil, err
 	}
@@ -487,9 +388,9 @@ func (m *Manager) getConnectorSubnets() ([]string, error) {
 }
 
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {
-	log := m.log.WithValues("dummyInterface", m.dummyInterfaceName)
+	log := m.log.WithValues("dummyInterface", m.DummyInterfaceName)
 
-	addresses, err := m.netLink.ListBindAddress(m.dummyInterfaceName)
+	addresses, err := m.netLink.ListBindAddress(m.DummyInterfaceName)
 	if err != nil {
 		log.Error(err, "failed to get addresses from dummyInterface")
 		return err
@@ -502,14 +403,14 @@ func (m *Manager) syncServiceClusterIPBind(servers []server) error {
 	}
 
 	for addr := range allServiceAddresses.Difference(boundedAddresses) {
-		if _, err = m.netLink.EnsureAddressBind(addr, m.dummyInterfaceName); err != nil {
+		if _, err = m.netLink.EnsureAddressBind(addr, m.DummyInterfaceName); err != nil {
 			log.Error(err, "failed to bind address", "addr", addr)
 			return err
 		}
 	}
 
 	for addr := range boundedAddresses.Difference(allServiceAddresses) {
-		if err = m.netLink.UnbindAddress(addr, m.dummyInterfaceName); err != nil {
+		if err = m.netLink.UnbindAddress(addr, m.DummyInterfaceName); err != nil {
 			log.Error(err, "failed to unbind address", "addr", addr)
 			return err
 		}
@@ -633,7 +534,7 @@ func (m *Manager) syncIPSetPeerCIDR() error {
 }
 
 func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
-	conf, err := netconf.LoadNetworkConf(m.tunnelsConfPath)
+	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return nil, err
 	}

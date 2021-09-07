@@ -95,15 +95,18 @@ var _ = Describe("Controller", func() {
 			Manager: mgr,
 			Store:   store,
 
-			ConnectorPublicAddresses: []string{"192.168.1.1"},
-			ConnectorID:              "cloud-connector",
-			ConnectorName:            "cloud-connector",
-			ProvidedSubnets:          []string{"10.10.10.1/26"},
-			CollectPodCIDRs:          true,
-			ConnectorConfigName:      "connector-config",
-			Namespace:                namespace,
-
-			Interval: interval,
+			Endpoint: types.Endpoint{
+				ID:              "cloud-connector",
+				Name:            "cloud-connector",
+				PublicAddresses: []string{"192.168.1.1"},
+			},
+			ProvidedSubnets: []string{"10.10.10.1/26"},
+			CollectPodCIDRs: true,
+			ConfigMapKey: client.ObjectKey{
+				Name:      "connector-config",
+				Namespace: namespace,
+			},
+			SyncInterval: interval,
 		}
 		getConnectorEndpoint, err = AddToManager(config)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -116,9 +119,9 @@ var _ = Describe("Controller", func() {
 	It("build connector endpoint when node events come", func() {
 		cep := getConnectorEndpoint()
 
-		Expect(cep.PublicAddresses).Should(Equal(config.ConnectorPublicAddresses))
-		Expect(cep.ID).Should(Equal(config.ConnectorID))
-		Expect(cep.Name).Should(Equal(config.ConnectorName))
+		Expect(cep.PublicAddresses).Should(Equal(config.Endpoint.PublicAddresses))
+		Expect(cep.ID).Should(Equal(config.Endpoint.ID))
+		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0]))
 		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1)))
 
@@ -127,9 +130,9 @@ var _ = Describe("Controller", func() {
 		time.Sleep(time.Second)
 
 		cep = getConnectorEndpoint()
-		Expect(cep.PublicAddresses).Should(Equal(config.ConnectorPublicAddresses))
-		Expect(cep.ID).Should(Equal(config.ConnectorID))
-		Expect(cep.Name).Should(Equal(config.ConnectorName))
+		Expect(cep.PublicAddresses).Should(Equal(config.Endpoint.PublicAddresses))
+		Expect(cep.ID).Should(Equal(config.Endpoint.ID))
+		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0], nodeutil.GetPodCIDRs(node2)[0]))
 		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1), nodeutil.GetIP(node2)))
 
@@ -144,10 +147,7 @@ var _ = Describe("Controller", func() {
 	It("should synchronize connector configmap according to endpoints in store", func() {
 		time.Sleep(interval + time.Second)
 
-		key := client.ObjectKey{
-			Name:      config.ConnectorConfigName,
-			Namespace: namespace,
-		}
+		key := config.ConfigMapKey
 		var cm corev1.ConfigMap
 		Expect(k8sClient.Get(context.Background(), key, &cm)).ShouldNot(HaveOccurred())
 
