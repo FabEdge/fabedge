@@ -6,282 +6,225 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
 - **Connector**，运行在云端选定节点，负责到边缘节点的隧道的管理。
 - **Agent**，运行在每个边缘节点，负责本节点的隧道，负载均衡等配置管理。
 
+
+
 ## 前提条件
 
 - [kubernetes (v1.19.7+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
+
 - [Kubeedge (v1.5.0+, 至少有一个边缘节点)](https://kubeedge.io/en/docs/)  
 
-也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个演示集群
+  也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个演示集群
 
 
 
-## 安装步骤
+## 部署前准备
 
-### 关闭**rp_filter**
+1. 确保所有边缘节点能够访问云端connector
 
-在**所有云端节点**执行下面命令：
+    - 如果有防火墙或security-group，必须允许协议ESP（50），UDP（500），UDP（4500）
+    - 如果底层是Openstack，必须关闭port-security
+   
+2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)的pod已正常启动
 
-```shell
-root@master:~# for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done
+    ```shell
+    $ kubectl get po -A -o wide -l "k8s-app=nodelocaldns"
+    nodelocaldns-4m2jx                              1/1     Running     0          25m    10.22.45.30    master           
+    nodelocaldns-p5h9k                              1/1     Running     0          35m    10.22.45.26    edge1      
+    ```
 
-#保存配置
-root@master:~# vi /etc/sysctl.conf
-..
-net.ipv4.conf.default.rp_filter=0
-net.ipv4.conf.all.rp_filter=0
-..
+3. 获取当前集群配置信息，供下面部署使用
 
-#确认配置生效
-root@master:~# sysctl -a | grep rp_filter | grep -v arp
-..
-net.ipv4.conf.cali18867a5062d.rp_filter = 0
-net.ipv4.conf.cali6202a829553.rp_filter = 0
-..
-```
-
-### 查看nodelocaldns服务
-
-确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)的pod启动正常
-
-```shell
-root@master:~# kubectl get po -n kube-system -o wide| grep nodelocaldns
-nodelocaldns-4m2jx                              1/1     Running     0          25m    10.22.45.30    master           
-nodelocaldns-p5h9k                              1/1     Running     0          35m    10.22.45.26    edge1      
-```
-
-### 获取Fabedge
-
-```shell
-root@master:~# git clone https://github.com/FabEdge/fabedge.git
-```
+    ```shell
+    $ curl http://116.62.127.76/get_cluster_info.sh | bash -
+    This may take some time. Please wait.
+    edgecore clusterDNS   : 169.254.25.10
+    edgecore clusterDomain: root-cluster
+    helm connectorSubnets : 10.233.64.0/18,10.233.0.0/18
+    ```
 
 
 
-### 为[strongswan](https://www.strongswan.org/)生成证书
+## 部署步骤
 
-在控制节点上执行以下指令
+### 配置calico
 
-```shell
-# 确认本节点能够访问K8S API
-root@master:~# kubectl get no
-  NAME    STATUS   ROLES                   AGE    VERSION
-  edge1   Ready    agent,edge              107m   v1.19.3    
-  master  Ready    master,node             117m   v1.19.7 
+1. 修改calico pool配置
 
-root@master:~# wget http://xxxx/fabedge-cert  # TODO
-root@master:~# fabedge-cert gen ca  # 生成CA密钥
-root@master:~# fabedge-cert gen edge --name=cloud-connector    # 为connector生成证书密钥
-```
+    ```shell
+    $ vi ippool.yaml
+    apiVersion: projectcalico.org/v3
+    kind: IPPool
+    metadata:
+      name: fabedge
+    spec:
+      blockSize: 26
+      cidr: 10.10.0.0/16
+      natOutgoing: false
+      disabled: true
+      ipipMode: Always
+    ```
+
+    > **cidr**是一个大的网段，每个边缘节点会从中分配一个小网段，不能和云端pod或service的网段冲突。
+
+2. 创建calico pool
+
+    ```shell
+    $ calicoctl.sh create --filename=ippool.yaml
+    $ calicoctl.sh get pool  # 确认pool创建成功
+    
+    # 如果提示没有calicoctl.sh命令，请执行以下指令
+    $ export DATASTORE_TYPE=kubernetes
+    $ export KUBECONFIG=/etc/kubernetes/admin.conf
+    $ calicoctl get pool
+    NAME           CIDR             SELECTOR   
+    default-pool   10.231.64.0/18   all()      
+    fabedge        10.10.0.0/16     all()
+    ```
 
 
 
-###  创建命名空间
+### 部署fabedge
 
-创建fabedge的资源使用的namespace，默认为**fabedge**，
+1. 创建namesapce
 
-```shell
-root@master:~# kubectl create ns fabedge
-```
+    ```
+    $ kubectl create namespace fabedge
+    ```
 
-
-
-### 部署Connector
-
-1. 在云端选取一个节点运行connector，为节点做标记，以master为例，
+2. 在云端master节点上为[strongswan](https://www.strongswan.org/)生成证书，证书会自动保存到k8s secret中。
 
    ```shell
-   root@master:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              107m   v1.19.3    
-     master  Ready    master,node             117m   v1.19.7     
+   $ wget http://116.62.127.76/fabedge-cert
+   $ chmod +x fabedge-cert
+   $ ./fabedge-cert gen ca  # 生成CA证书，当前用户必须能够访问K8S API
+   $ ./fabedge-cert gen cloud-connector    # 生成connector证书, 当前用户必须能够访问K8S API
+   ```
+
+3. 在云端选取一个节点运行connector，为节点做标记。以master为例，
+
+   ```shell
+   $ kubectl label no master node-role.kubernetes.io/connector=
    
-   root@master:~# kubectl label no master node-role.kubernetes.io/connector=
-   
-   root@master:~# kubectl get node
+   $ kubectl get node
      NAME    STATUS   ROLES                   AGE    VERSION
      edge1   Ready    agent,edge              108m   v1.19.3-kubeedge    
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
 
-2. 部署connector
+4. 准备helm values.yaml文件
 
-```shell
-root@master:~# kubectl apply -f ~/fabedge/deploy/connector/deploy.yaml
-```
+    ```shell
+    $ vim values.yaml
+    operator:
+      edgePodCIDR: 10.10.0.0/16
+      connectorPublicAddresses: 10.22.46.48
+      # get_cluster_info脚本输出的helm connectorSubnets
+      connectorSubnets: 10.233.64.0/18,10.233.0.0/18
+    
+    cniType: calico
+    ```
+    
+    > 配置项说明：
+    >
+    >   **edgePodCIDR**：需要和calico ippool中的cidr配置项保持一致。
+    >
+    >   **connectorPublicAddresses**: connector可以被edge节点访问到的IP地址。
+    >
+    >   **connectorSubnets**: 云端集群中的pod和service cidr。
+    >
+    >   **cniType**: 云端集群中使用的cni插件类型。
 
-3. 修改calico配置
+5.  安装helm(如果已经安装可跳过)
 
-cidr是一个大的网段，每个边缘节点会从中分配一个小段，每个边缘pod会从这个小段分配一个IP地址，不能和云端pod或service的网段冲突
+    ```shell
+    $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
+    $ tar -xf helm-v3.6.3-linux-amd64.tar.gz
+    $ cp linux-amd64/helm /usr/bin/helm 
+    ```
 
-```shell
-root@master:~# vi ~/fabedge/deploy/connector/ippool.yaml
-```
+6.  安装fabedge 
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: fabedge
-spec:
-  blockSize: 26
-  cidr: 10.10.0.0/16
-  natOutgoing: false
-  disabled: true
-```
-
-4. 创建calico pool
-
-```shell
-# 不同环境，calico的命令可能会不同
-root@master:~# calicoctl.sh create --filename=/root/fabedge/deploy/connector/ippool.yaml
-root@master:~# calicoctl.sh get IPPool --output yaml   # 确认pool创建成功
+    ```shell
+    $ helm install fabedge -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.0.1.tgz
+    ```
 
 
-# 如果提示没有calicoctl.sh文件，请执行以下指令
-root@master:~# export DATASTORE_TYPE=kubernetes
-root@master:~# export KUBECONFIG=/etc/kubernetes/admin.conf
-root@master:~# calicoctl get ipPool
-NAME           CIDR             SELECTOR   
-default-pool   10.231.64.0/18   all()      
-fabedge        10.10.0.0/16     all()
-```
-
-### 部署Operator
-
-1. 创建Community CRD
-
-   ```shell
-   root@master:~# kubectl apply -f ~/fabedge/deploy/crds
-   ```
-
-2. 修改配置文件
-
-   按实际环境修改edge-network-cidr
-
-   ```shell
-   root@master:~# vi ~/fabedge/deploy/operator/fabedge-operator.yaml
-   ```
-
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: fabedge-operator
-     namespace: fabedge
-     labels:
-       app: fabedge-operator
-   spec:
-     replicas: 1
-     selector:
-       matchLabels:
-         app: fabedge-operator
-     template:
-       metadata:
-         labels:
-           app: fabedge-operator
-       spec:
-         containers:
-           - name: operator
-             image: fabedge/operator:latest
-             imagePullPolicy: IfNotPresent
-             args:
-               - -namespace=fabedge
-               - -edge-pod-cidr=10.10.0.0/16   # edge pod使用的网络, 和上面为calico分配的cidr保持一致
-               - -agent-image=fabedge/agent     
-               - -strongswan-image=fabedge/strongswan  
-               - -connector-config=connector-config
-               - -endpoint-id-format=C=CN, O=StrongSwan, CN={node}
-               - -v=5
-         hostNetwork: true
-         serviceAccountName: fabedge-operator
-   ```
-
-   >⚠️**注意：**
-   >
-   >**edge-network-cidr**为上面为calico分配cidr。
-
-3. 创建Operator
-
-   ```shell
-   root@master:~# kubectl apply -f ~/fabedge/deploy/operator
-   ```
 
 ### 配置边缘节点
 
 1. 修改edgecore配置文件
 
-   ```shell
-   root@edge1:~# vi /etc/kubeedge/config/edgecore.yaml
-   ```
-
-   禁用edgeMesh
-
-   ```yaml
-   edgeMesh:
-     enable: false
-   ```
-
-   启用CNI
-
-   ```yaml
-   edged:
-       enable: true
-       # 默认配置，如无必要，不要修改
-       cniBinDir: /opt/cni/bin
-       cniCacheDirs: /var/lib/cni/cache
-       cniConfDir: /etc/cni/net.d
-       # 这一行默认配置文件是没有的，得自己添加  
-       networkPluginName: cni
-       networkPluginMTU: 1500
-   ```
-
-   配置域名和DNS
-
-   ```yaml
-   edged:
-       clusterDNS: "169.254.25.10"
-       clusterDomain: "root-cluster"
-   ```
-
-   > 可以在云端执行如下操作获取相关信息
-   >
-   > ```shell
-   > root@master:~# kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}"
-   > root-cluster:53 {
-   > ...
-   > bind 169.254.25.10
-   > ...
-   > }
-   > 
-   > root@master:~# grep -rn "cluster-name" /etc/kubernetes/manifests/kube-controller-manager.yaml
-   > 
-   > 20:    - --cluster-name=root-cluster
-   > 
-   > # 本例中，domain为root-cluster,  dns为169.254.25.10
-   > ```
-
+    ```shell
+    $ vi /etc/kubeedge/config/edgecore.yaml
+    
+    # 必须禁用edgeMesh
+    edgeMesh:
+      enable: false
+    
+    edged:
+        enable: true
+        cniBinDir: /opt/cni/bin
+        cniCacheDirs: /var/lib/cni/cache
+        cniConfDir: /etc/cni/net.d
+        networkPluginName: cni
+        networkPluginMTU: 1500
+        # get_cluster_info脚本输出的edgecore clusterDNS
+        clusterDNS: "169.254.25.10"
+        # get_cluster_info脚本输出的edgecore clusterDomain
+        clusterDomain: "root-cluster"
+    ```
 
 2. 重启edgecore
 
-   ```shell
-   root@edge1:~# systemctl restart edgecore
-   ```
+    ```shell
+    $ systemctl restart edgecore
+    ```
 
-3. 确认边缘节点就绪
 
-   ```shell
-   root@master:~# kubectl get node
-     NAME    STATUS   ROLES                   AGE    VERSION
-     edge1   Ready    agent,edge              125m   v1.19.3-kubeedge-v1.1.0
-     master  Ready    connector,master,node   135m   v1.19.7
-   ```
 
-### 确认服务正常启动
+## 部署后验证
 
-```shell
-root@master:~# kubectl get po -n fabedge
-NAME                               READY   STATUS    RESTARTS   AGE
-connector-5947d5f66-hnfbv          2/2     Running   0          35m
-fabedge-agent-edge1                2/2     Running   0          22s
-fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
-```
+1. 确认边缘节点就绪
+
+    ```shell
+    $ kubectl get node
+      NAME    STATUS   ROLES                   AGE    VERSION
+      edge1   Ready    agent,edge              125m   v1.19.3-kubeedge-v1.1.0
+      master  Ready    connector,master,node   135m   v1.19.7
+    ```
+
+2. 确认服务正常启动
+
+    ```shell
+    $ kubectl get po -n fabedge
+    NAME                               READY   STATUS    RESTARTS   AGE
+    connector-5947d5f66-hnfbv          2/2     Running   0          35m
+    fabedge-agent-edge1                2/2     Running   0          22s
+    fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
+    ```
+
+
+
+## 常见问题
+
+1. 有的网络环境存在非对称路由，需要在云端节点关闭rp_filter
+
+    ```shell
+    $ for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done
+    
+    #保存配置
+    $ vi /etc/sysctl.conf
+    net.ipv4.conf.default.rp_filter=0
+    net.ipv4.conf.all.rp_filter=0
+    ```
+    
+2. 创建证书失败，提示以下错误。
+    ```shell
+    root@master:~# ./fabedge-cert gen ca
+    not able to initiate kube client config: invalid configuration: no configuration has been provided, try setting KUBERNETES_MASTER environment variable
+    ```
+
+
+​       本命令需要保存证书到K8S， 确保在当前节点上，当前用户能够访问K8S AP
+
