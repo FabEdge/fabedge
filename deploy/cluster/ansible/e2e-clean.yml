@@ -1,0 +1,39 @@
+---
+- name: e2e clean
+  gather_facts: no
+  hosts: edgecore
+  become_method: sudo
+  become_user: root
+  become: true
+  tasks:
+    - name: delete cloudcore
+      ignore_errors: yes
+      shell:
+        cmd: kubectl  delete po -n kubeedge -l kubeedge=cloudcore
+      delegate_to: localhost
+      run_once: true
+
+    - name: delete ns
+      community.kubernetes.k8s:
+        name: fabedge-e2e-test
+        api_version: v1
+        kind: Namespace
+        state: absent
+      delegate_to: localhost
+      run_once: true
+
+    - name: delete community
+      ignore_errors: yes
+      shell:
+        kubectl  delete community all-edge-nodes
+      delegate_to: localhost
+      run_once: true
+
+    - ansible.builtin.service:
+        name: edgecore
+        state: restarted
+
+    - name: rm exited containers
+      ignore_errors: yes
+      shell:    
+        docker rm $(docker ps -a | grep "Exit" | awk '{print $1}')

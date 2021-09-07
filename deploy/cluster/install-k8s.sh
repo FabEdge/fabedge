@@ -96,7 +96,6 @@ function docker_cp() {
 }
 
 function docker_load() {
-    echo "wangtao load $*"
     for image in $*; do
         docker load -i ${images_directory}/${image}
     done
