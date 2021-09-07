@@ -86,8 +86,6 @@ var _ = Describe("AgentController", func() {
 		cnf := Config{
 			Namespace: namespace,
 
-			AllocatePodCIDR: true,
-
 			AgentImage:           agentImage,
 			StrongswanImage:      strongswanImage,
 			CertManager:          certManager,

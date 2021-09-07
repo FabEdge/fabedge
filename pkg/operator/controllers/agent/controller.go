@@ -77,8 +77,7 @@ type Config struct {
 	CertOrganization string
 	CertValidPeriod  int64
 
-	EnableProxy     bool
-	AllocatePodCIDR bool
+	EnableProxy bool
 }
 
 func AddToManager(cnf Config) error {
@@ -112,7 +111,7 @@ func AddToManager(cnf Config) error {
 
 func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	var handlers []Handler
-	if cnf.AllocatePodCIDR {
+	if cnf.Allocator != nil {
 		handlers = append(handlers, &allocatablePodCIDRsHandler{
 			store:       cnf.Store,
 			allocator:   cnf.Allocator,
