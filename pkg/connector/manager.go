@@ -158,6 +158,12 @@ func (m *Manager) Start() {
 		} else {
 			klog.Infof("ipset %s are synced", IPSetCloudNodeCIDR)
 		}
+
+		if err := m.syncEdgePodCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgePodCIDR, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetEdgePodCIDR)
+		}
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
