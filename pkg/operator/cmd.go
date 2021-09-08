@@ -46,7 +46,6 @@ func Execute() error {
 	about.DisplayAndExitIfRequested()
 
 	if err := opts.Complete(); err != nil {
-		log.Error(err, "invalid arguments found")
 		return err
 	}
 
