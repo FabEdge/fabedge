@@ -247,7 +247,7 @@ func createKubeClient() client.Client {
 }
 
 func saveCAToSecret(name, namespace string, caDER, keyDER []byte) {
-	createOrUpdateSecret(&corev1.Secret{
+	createSecretIfNotExist(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -287,6 +287,23 @@ func createOrUpdateSecret(secret *corev1.Secret) {
 		exit("failed to save secret: %s", err)
 	}
 }
+
+func createSecretIfNotExist(secret *corev1.Secret) {
+	cli := createKubeClient()
+
+	err := cli.Create(context.TODO(), secret)
+	switch {
+	case err == nil:
+		fmt.Printf("secret %s/%s is saved\n", secret.Namespace, secret.Name)
+		return
+	case errors.IsAlreadyExists(err):
+		fmt.Printf("secret %s/%s exists and gives up\n", secret.Namespace, secret.Name)
+		return
+	default:
+		exit("failed to save secret: %s", err)
+	}
+}
+
 
 func getCA(globalOptions *GlobalOptions) (datader []byte, keyder []byte) {
 	if globalOptions.CAIsFromSecret() {
