@@ -38,19 +38,20 @@ const (
 )
 
 func (m *Manager) ensureForwardIPTablesRules() error {
-	existed, err := m.ipt.ChainExists(TableFilter, ChainFabEdgeForward)
+	err := m.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
 	if err != nil {
 		return err
-	}
-
-	if !existed {
-		return m.ipt.NewChain(TableFilter, ChainFabEdgeForward)
 	}
 
 	// ensure rules exist
 	if err = m.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
 		return err
 	}
+
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
 	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
