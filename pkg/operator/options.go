@@ -101,6 +101,7 @@ func (opts *Options) Complete() (err error) {
 		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
 		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
 		if err != nil {
+			log.Error(err, "failed to create allocator")
 			return err
 		}
 		opts.RecordSubnet = opts.Agent.Allocator.Record
@@ -111,11 +112,13 @@ func (opts *Options) Complete() (err error) {
 
 	cfg, err := config.GetConfig()
 	if err != nil {
+		log.Error(err, "failed to load kubeconfig")
 		return nil
 	}
 
 	kubeClient, err := client.New(cfg, client.Options{})
 	if err != nil {
+		log.Error(err, "failed to create kube client")
 		return err
 	}
 
@@ -132,6 +135,7 @@ func (opts *Options) Complete() (err error) {
 		Namespace: opts.Namespace,
 	})
 	if err != nil {
+		log.Error(err, "failed to create cert manager")
 		return err
 	}
 
@@ -153,7 +157,7 @@ func (opts *Options) Complete() (err error) {
 	opts.Proxy.Manager = opts.Manager
 	opts.Proxy.CheckInterval = 5 * time.Second
 
-	return err
+	return nil
 }
 
 func (opts *Options) Validate() (err error) {
