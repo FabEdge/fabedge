@@ -30,6 +30,7 @@ jobs:
         make connector-image
         make operator-image
         make agent-image
+        make cert-image
 
     - name: Push Images
       env:
@@ -42,3 +43,4 @@ jobs:
         docker push fabedge/agent
         docker push fabedge/strongswan
         docker push fabedge/installer
+        docker push fabedge/cert

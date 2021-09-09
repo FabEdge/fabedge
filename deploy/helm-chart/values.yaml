@@ -81,7 +81,7 @@ strongswan:
   image:
     repository: fabedge/strongswan
     pullPolicy: IfNotPresent
-    # tag:  # default: AppVersion
+    tag: 5.9.1
 
   ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
   #resources: {}
@@ -108,3 +108,9 @@ agent:
   #    cpu: 10m
   #    memory: 32Mi
 
+cert:
+  name: cert
+  image:
+    repository: fabedge/cert
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
