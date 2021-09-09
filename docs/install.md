@@ -86,22 +86,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
 
 ### 部署fabedge
 
-1. 创建namesapce
-
-    ```
-    $ kubectl create namespace fabedge
-    ```
-
-2. 在云端master节点上为[strongswan](https://www.strongswan.org/)生成证书，证书会自动保存到k8s secret中。
-
-   ```shell
-   $ wget http://116.62.127.76/fabedge-cert
-   $ chmod +x fabedge-cert
-   $ ./fabedge-cert gen ca  # 生成CA证书，当前用户必须能够访问K8S API
-   $ ./fabedge-cert gen cloud-connector    # 生成connector证书, 当前用户必须能够访问K8S API
-   ```
-
-3. 在云端选取一个节点运行connector，为节点做标记。以master为例，
+1. 在云端选取一个节点运行connector，为节点做标记。以master为例，
 
    ```shell
    $ kubectl label no master node-role.kubernetes.io/connector=
@@ -112,7 +97,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
 
-4. 准备helm values.yaml文件
+2. 准备helm values.yaml文件
 
     ```shell
     $ vim values.yaml
@@ -135,7 +120,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
     >
     >   **cniType**: 云端集群中使用的cni插件类型。
 
-5.  安装helm(如果已经安装可跳过)
+3.  安装helm(如果已经安装可跳过)
 
     ```shell
     $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
@@ -143,10 +128,10 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
     $ cp linux-amd64/helm /usr/bin/helm 
     ```
 
-6.  安装fabedge 
+4.  安装fabedge 
 
     ```shell
-    $ helm install fabedge -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.0.1.tgz
+    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.0.1.tgz
     ```
 
 
@@ -199,6 +184,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes，kubeedge基�
     ```shell
     $ kubectl get po -n fabedge
     NAME                               READY   STATUS    RESTARTS   AGE
+    cert-zmwjg                         0/1     Completed 0          3m5s
     connector-5947d5f66-hnfbv          2/2     Running   0          35m
     fabedge-agent-edge1                2/2     Running   0          22s
     fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
