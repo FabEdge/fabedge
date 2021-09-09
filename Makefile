@@ -26,7 +26,7 @@ endif
 
 export KUBEBUILDER_ASSETS ?= $(GOBIN)
 
-all: clean test bin
+all: clean bin
 
 define HELP_INFO
 # Build
