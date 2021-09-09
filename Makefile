@@ -1,6 +1,6 @@
 OUTPUT_DIR := _output
 BINARIES := agent connector operator cert
-IMAGES := $(addsuffix -image, agent connector operator strongswan installer cert)
+IMAGES := $(addsuffix -image, agent connector operator cert)
 
 VERSION := v0.2.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
@@ -74,7 +74,13 @@ ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:
 	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile .
 
-images: ${IMAGES}
+fabedge-images: ${IMAGES}
+
+strongswan-image:
+	docker build -t fabedge/strongswan:latest -f build/strongswan/Dockerfile .
+
+installer-image:
+	docker build -t fabedge/installer:latest -f build/installer/Dockerfile .
 
 clean:
 	go clean -cache -testcache
