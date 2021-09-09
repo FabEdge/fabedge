@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 [![Releases](https://img.shields.io/github/release/fabedge/fabedge/all.svg?style=flat-square)](https://github.com/fabedge/fabedge/releases)
 
-<img src="https://user-images.githubusercontent.com/88021699/127422127-e79a00d1-ac8e-4a1e-993c-d6f81bfb3bf9.jpg" width="50%">  
+<img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="50%">  
 
 FabEdge is an open source edge networking solution based on kubernetes and kubeedge. It solves the problems including complex network configuration management,   network fragmentation, the lack of service discovery ability and topology awareness in edge etc. 
 
@@ -53,14 +53,28 @@ Fabedge is different from generic Kubernetes network plug-ins such as Calico/Fla
 # Guides
 Get start with [this doc](docs/install.md).
 
+# Meeting
+Regular Community Meeting
+
+| Beijing Time | Tencent Meeting Link |
+| :---- | :---- |
+| 2021.09.09 15:00-16:00 | Meeting ID 341 406 062 or https://meeting.tencent.com/dm/ZmnDlW6IRMj3?rs=25 |
+| 2021.09.23 15:00-16:00 | TBD |
+
+
+Resources:
+
+[Meeting notes and agenda](https://shimo.im/docs/Wwt9TdGqgVvpDHJt)  
+[Meeting recordings：bilibili channel](https://space.bilibili.com/524926244?spm_id_from=333.1007.0.0)
+
 # Contributing, Support, Discussion, and Community
 If you have questions, feel free to reach out to us in the following ways:
 
 · Please send email to fabedge@beyondcent.com  
 · WeChat Group 扫码加入微信交流群  
-<img src="https://user-images.githubusercontent.com/88021699/128297803-d08235b2-9c68-42da-8bd6-29cf8ba13559.png" width="30%">  
+<img src="https://user-images.githubusercontent.com/88021699/132612921-9c5b872e-f44d-4e6c-b854-16853669028a.png" width="30%"> 
 
-Please submit any FabEdge bugs, issues, and feature requests to [FabEdge GitHub Issue](https://github.com/FabEdge/fabedge/issues).
+Please submit any FabEdge bugs, issues, and feature requests to [FabEdge GitHub Issue](https://github.com/FabEdge/fabedge/issues).
 
 # License
 FabEdge is under the Apache 2.0 license. See the [LICENSE](https://github.com/FabEdge/fabedge/blob/main/LICENSE) file for details.  
