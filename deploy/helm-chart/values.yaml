@@ -50,6 +50,9 @@ connector:
 
   syncPeriod: 1m
 
+  strategy:
+    type: Recreate
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

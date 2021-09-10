@@ -135,7 +135,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 4.  安装fabedge 
 
     ```shell
-    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.0.1.tgz
+    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.2.0.tgz
     ```
 
 
