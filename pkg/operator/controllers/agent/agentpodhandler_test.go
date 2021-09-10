@@ -174,33 +174,19 @@ var _ = Describe("AgentPodHandler", func() {
 			},
 		}
 		Expect(pod.Spec.Volumes).To(Equal(volumes))
-
-		// k8s auto add tolerations for pod: node.kubernetes.io/not-ready:NoExecute and node.kubernetes.io/unreachable:NoExecute
-		Expect(len(pod.Spec.Tolerations)).To(Equal(3))
-
-		tolerations := corev1.Toleration{
-			Key:    "node-role.kubernetes.io/edge",
-			Effect: corev1.TaintEffectNoSchedule,
-		}
-		Expect(pod.Spec.Tolerations[0]).To(Equal(tolerations))
+		Expect(pod.Spec.Tolerations).To(ConsistOf(corev1.Toleration{
+			Key:      "",
+			Operator: corev1.TolerationOpExists,
+		}))
 
 		// install-cni initContainer
 		Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni"))
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
 
-		cpCommand := []string{
-			"/bin/sh",
-		}
-		Expect(pod.Spec.InitContainers[0].Command).To(Equal(cpCommand))
+		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("/bin/sh"))
+		Expect(pod.Spec.InitContainers[0].Args).To(ConsistOf("-c", installCNIScript))
 
-		cpCommandArgs := []string{
-			"-c",
-			installCNIScript,
-		}
-		Expect(pod.Spec.InitContainers[0].Args).To(Equal(cpCommandArgs))
-
-		Expect(len(pod.Spec.InitContainers[0].VolumeMounts)).To(Equal(3))
 		cniVolumeMounts := []corev1.VolumeMount{
 			{
 				Name:      "cni-bin",
@@ -234,11 +220,8 @@ var _ = Describe("AgentPodHandler", func() {
 			"-v=3",
 		}
 		Expect(pod.Spec.Containers[0].Args).To(Equal(args))
+		Expect(*pod.Spec.Containers[0].SecurityContext.Privileged).To(BeTrue())
 
-		privileged := true
-		Expect(pod.Spec.Containers[0].SecurityContext.Privileged).To(Equal(&privileged))
-
-		Expect(len(pod.Spec.Containers[0].VolumeMounts)).To(Equal(5))
 		agentVolumeMounts := []corev1.VolumeMount{
 			{
 				Name:      "netconf",
@@ -268,7 +251,7 @@ var _ = Describe("AgentPodHandler", func() {
 		// strongswan container
 		Expect(pod.Spec.Containers[1].Name).To(Equal("strongswan"))
 		Expect(pod.Spec.Containers[1].Image).To(Equal(strongswanImage))
-		Expect(pod.Spec.Containers[1].SecurityContext.Privileged).To(Equal(&privileged))
+		Expect(*pod.Spec.Containers[1].SecurityContext.Privileged).To(BeTrue())
 		Expect(pod.Spec.Containers[1].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 		Expect(len(pod.Spec.Containers[1].VolumeMounts)).To(Equal(3))
 

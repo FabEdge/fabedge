@@ -112,8 +112,8 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 			RestartPolicy:                corev1.RestartPolicyAlways,
 			Tolerations: []corev1.Toleration{
 				{
-					Key:    "node-role.kubernetes.io/edge",
-					Effect: corev1.TaintEffectNoSchedule,
+					Key:      "",
+					Operator: corev1.TolerationOpExists,
 				},
 			},
 			InitContainers: []corev1.Container{

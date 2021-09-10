@@ -15,14 +15,19 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
@@ -41,6 +46,9 @@ func TestAgentController(t *testing.T) {
 
 var _ = BeforeSuite(func(done Done) {
 	testutil.SetupLogger()
+	nodeutil.SetEdgeNodeLabels(map[string]string{
+		"edge": "",
+	})
 
 	By("starting test environment")
 	var err error
@@ -55,3 +63,53 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).ToNot(HaveOccurred())
 })
+
+func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
+	node := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: nodeutil.GetEdgeNodeLabels(),
+		},
+		Spec: corev1.NodeSpec{
+			PodCIDR:  "2.2.2.2/26",
+			PodCIDRs: []string{"2.2.2.2/26"},
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: ip,
+				},
+			},
+		},
+	}
+
+	if subnets != "" {
+		node.Annotations = map[string]string{
+			constants.KeyPodSubnets: subnets,
+		}
+	}
+
+	return node
+}
+
+func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
+	return corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: nodeutil.GetEdgeNodeLabels(),
+		},
+		Spec: corev1.NodeSpec{
+			PodCIDR:  subnets,
+			PodCIDRs: strings.Split(subnets, ","),
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{
+					Type:    corev1.NodeInternalIP,
+					Address: ip,
+				},
+			},
+		},
+	}
+}

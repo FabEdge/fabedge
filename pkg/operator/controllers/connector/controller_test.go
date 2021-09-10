@@ -204,9 +204,7 @@ func newNormalNode(ip, subnets string) corev1.Node {
 func newEdgeNode(ip, subnets string) corev1.Node {
 	node := newNormalNode(ip, subnets)
 	node.Name = getEdgeName()
-	node.Labels = map[string]string{
-		"node-role.kubernetes.io/edge": "",
-	}
+	node.Labels = edgeLabels
 
 	return node
 }

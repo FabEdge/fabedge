@@ -28,6 +28,7 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
@@ -274,10 +275,8 @@ var _ = Describe("Proxy", func() {
 
 			node = corev1.Node{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: getNodeName(),
-					Labels: map[string]string{
-						"node-role.kubernetes.io/edge": "",
-					},
+					Name:   getNodeName(),
+					Labels: nodeutil.GetEdgeNodeLabels(),
 				},
 			}
 			Expect(k8sClient.Create(context.Background(), &node)).ShouldNot(HaveOccurred())

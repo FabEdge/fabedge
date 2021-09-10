@@ -30,6 +30,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 const (
@@ -143,14 +145,16 @@ func WaitForNamespacesDeleted(client client.Client, namespaces []string, timeout
 
 func GetEdgeNodeNames(cli client.Client) (stringset.Set, error) {
 	var nodes corev1.NodeList
-	err := cli.List(context.TODO(), &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
+	err := cli.List(context.TODO(), &nodes)
 	if err != nil {
 		return nil, err
 	}
 
 	nameSet := stringset.New()
 	for _, node := range nodes.Items {
-		nameSet.Add(node.Name)
+		if nodeutil.IsEdgeNode(node) {
+			nameSet.Add(node.Name)
+		}
 	}
 
 	return nameSet, nil
