@@ -15,30 +15,31 @@
 package predicates
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 func EdgeNodePredicate() predicate.Predicate {
 	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		labels := obj.GetLabels()
-		if labels == nil {
+		node, ok := obj.(*corev1.Node)
+		if !ok {
 			return false
 		}
 
-		_, ok := labels["node-role.kubernetes.io/edge"]
-		return ok
+		return nodeutil.IsEdgeNode(*node)
 	})
 }
 
 func NonEdgeNodePredicate() predicate.Predicate {
 	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		labels := obj.GetLabels()
-		if labels == nil {
+		node, ok := obj.(*corev1.Node)
+		if !ok {
 			return true
 		}
 
-		_, ok := labels["node-role.kubernetes.io/edge"]
-		return !ok
+		return !nodeutil.IsEdgeNode(*node)
 	})
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jjeffery/stringset"
@@ -45,12 +46,12 @@ import (
 
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
-type recordSubnetFunc func(ipNet net.IPNet)
 type Options struct {
 	Namespace        string
 	EdgePodCIDR      string
 	AllocatePodCIDR  bool
 	EndpointIDFormat string
+	EdgeLabels       []string
 
 	CASecretName string
 	Agent        agentctl.Config
@@ -59,10 +60,9 @@ type Options struct {
 
 	ManagerOpts manager.Options
 
-	Store        storepkg.Interface
-	RecordSubnet recordSubnetFunc
-	NewEndpoint  types.NewEndpointFunc
-	Manager      manager.Manager
+	Store       storepkg.Interface
+	NewEndpoint types.NewEndpointFunc
+	Manager     manager.Manager
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -70,6 +70,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.AllocatePodCIDR, "allocate-pod-cidr", true, "Determine whether allocate podCIDRs to edge node")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
+	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
 	flag.StringVar(&opts.Connector.Endpoint.Name, "connector-name", "cloud-connector", "The name of connector, only letters, number and '-' are allowed, the initial must be a letter.")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
@@ -98,6 +99,23 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 }
 
 func (opts *Options) Complete() (err error) {
+	parsedEdgeLabels := make(map[string]string)
+	for _, label := range opts.EdgeLabels {
+		parts := strings.Split(label, "=")
+		switch len(parts) {
+		case 1:
+			parsedEdgeLabels[parts[0]] = ""
+		case 2:
+			if parts[0] == "" {
+				return fmt.Errorf("label's key must not be empty")
+			}
+			parsedEdgeLabels[parts[0]] = parts[1]
+		default:
+			return fmt.Errorf("wrong edge label format: %s", strings.Join(parts, "="))
+		}
+	}
+	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
+
 	if opts.AllocatePodCIDR {
 		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
 		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
@@ -105,10 +123,8 @@ func (opts *Options) Complete() (err error) {
 			log.Error(err, "failed to create allocator")
 			return err
 		}
-		opts.RecordSubnet = opts.Agent.Allocator.Record
 	} else {
 		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRs)
-		opts.RecordSubnet = func(ipNet net.IPNet) {}
 	}
 
 	cfg, err := config.GetConfig()
@@ -163,6 +179,10 @@ func (opts *Options) Complete() (err error) {
 }
 
 func (opts *Options) Validate() (err error) {
+	if len(opts.EdgeLabels) == 0 {
+		return fmt.Errorf("edge labels is needed")
+	}
+
 	if opts.AllocatePodCIDR {
 		if _, _, err := net.ParseCIDR(opts.EdgePodCIDR); err != nil {
 			return err
@@ -301,7 +321,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 	store := opts.Store
 
 	var nodes corev1.NodeList
-	err := cli.List(ctx, &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
+	err := cli.List(ctx, &nodes, client.MatchingLabels(nodeutil.GetEdgeNodeLabels()))
 	if err != nil {
 		return err
 	}
@@ -317,6 +337,10 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 		})
 	}
 
+	if !opts.AllocatePodCIDR {
+		return nil
+	}
+
 	for _, node := range nodes.Items {
 		ep := opts.NewEndpoint(node)
 		if !ep.IsValid() {
@@ -330,7 +354,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 				log.Error(err, "failed to parse subnet of node", "nodeName", node.Name, "node", node)
 				continue
 			}
-			opts.RecordSubnet(*subnet)
+			opts.Agent.Allocator.Record(*subnet)
 		}
 
 		store.SaveEndpoint(ep)

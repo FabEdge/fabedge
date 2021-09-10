@@ -16,13 +16,11 @@ package agent
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -183,57 +181,3 @@ var _ = Describe("AgentController", func() {
 		})
 	})
 })
-
-func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
-	node := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"node-role.kubernetes.io/edge": "",
-			},
-		},
-		Spec: corev1.NodeSpec{
-			PodCIDR:  "2.2.2.2/26",
-			PodCIDRs: []string{"2.2.2.2/26"},
-		},
-		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
-		},
-	}
-
-	if subnets != "" {
-		node.Annotations = map[string]string{
-			constants.KeyPodSubnets: subnets,
-		}
-	}
-
-	return node
-}
-
-func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
-	return corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"node-role.kubernetes.io/edge": "",
-			},
-		},
-		Spec: corev1.NodeSpec{
-			PodCIDR:  subnets,
-			PodCIDRs: strings.Split(subnets, ","),
-		},
-		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
-		},
-	}
-}
