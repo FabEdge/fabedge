@@ -25,15 +25,22 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     - 如果有防火墙或安全组，必须允许协议ESP（50），UDP（500），UDP（4500）
     - 如果底层是Openstack，必须关闭端口安全
    
-2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)的pod已正常启动
+2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)正常运行
 
     ```shell
-    $ kubectl get po -A -o wide -l "k8s-app=nodelocaldns"
+    $ kubectl get po -n kube-system -o wide -l "k8s-app=nodelocaldns"
     nodelocaldns-4m2jx                              1/1     Running     0          25m    10.22.45.30    master           
     nodelocaldns-p5h9k                              1/1     Running     0          35m    10.22.45.26    edge1      
     ```
 
-3. 获取当前集群配置信息，供下面使用
+3. 确认**所有边缘节点**上calico-node**没有**运行
+    ```shell
+    $ kubectl  get po -n kube-system -o wide -l "k8s-app=calico-node" 
+    NAME                READY   STATUS    RESTARTS   AGE   IP            NODE      NOMINATED NODE   READINESS GATES
+    calico-node-cxbd9   1/1     Running   0          47h   10.22.45.30   master   <none>           <none>
+    ```
+    
+4. 获取当前集群配置信息，供下面使用
 
     ```shell
     $ curl http://116.62.127.76/get_cluster_info.sh | bash -
