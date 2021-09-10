@@ -56,10 +56,10 @@ Get start with [this doc](docs/install.md).
 # Meeting
 Regular Community Meeting
 
-| Beijing Time | Tencent Meeting Link |
-| :---- | :---- |
-| 2021.09.09 15:00-16:00 | Meeting ID 341 406 062 or https://meeting.tencent.com/dm/ZmnDlW6IRMj3?rs=25 |
-| 2021.09.23 15:00-16:00 | TBD |
+| Beijing Time | Tencent Meeting Link | Status |
+| :---- | :---- |:---- |
+| 2021.09.09 15:00-16:00 | Meeting ID 341 406 062 or https://meeting.tencent.com/dm/ZmnDlW6IRMj3?rs=25 | End |
+| 2021.09.23 15:00-16:00 | TBD | TBD |
 
 
 Resources:
