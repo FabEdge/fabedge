@@ -10,6 +10,10 @@ spec:
   selector:
     matchLabels:
       {{- include "connector.labels" . | nindent 6 }}
+  {{- if .Values.connector.strategy }}
+  strategy:
+{{ toYaml .Values.connector.strategy | trim | indent 4 }}
+  {{- end }}
   template:
     metadata:
       labels:
