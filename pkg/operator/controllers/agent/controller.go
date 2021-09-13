@@ -77,7 +77,8 @@ type Config struct {
 	CertOrganization string
 	CertValidPeriod  int64
 
-	EnableProxy bool
+	EnableProxy          bool
+	EnableFlannelMocking bool
 }
 
 func AddToManager(cnf Config) error {
@@ -123,6 +124,13 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		handlers = append(handlers, &rawPodCIDRsHandler{
 			store:       cnf.Store,
 			newEndpoint: cnf.NewEndpoint,
+		})
+	}
+
+	if cnf.EnableFlannelMocking {
+		handlers = append(handlers, &flannelNodeMocker{
+			client: cli,
+			log:    log,
 		})
 	}
 
