@@ -22,9 +22,8 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 
 1. 确保所有边缘节点能够访问云端connector
 
-    - 如果有防火墙或安全组，必须允许协议ESP（50），UDP（500），UDP（4500）
-    - 如果底层是Openstack，必须关闭端口安全
-   
+    - 如果有防火墙或安全组，必须允许协议ESP，UDP/500，UDP/4500
+    
 2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)正常运行
 
     ```shell
@@ -40,7 +39,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     calico-node-cxbd9   1/1     Running   0          47h   10.22.45.30   master   <none>           <none>
     ```
     
-4. 获取当前集群配置信息，供下面使用
+4. 获取当前集群配置信息，供后面使用
 
     ```shell
     $ curl http://116.62.127.76/get_cluster_info.sh | bash -
@@ -72,14 +71,13 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
       ipipMode: Always
     ```
 
-    > **cidr**是一个大的网段，每个边缘节点会从中分配一个小网段，不能和云端pod或service的网段冲突。
+    > **cidr**是一个用户自己选定的大网段，每个边缘节点会从中分配一个小网段，不能和云端pod或service的网段冲突。
 
 2. 创建calico pool
 
     ```shell
     $ calicoctl.sh create --filename=ippool.yaml
-    $ calicoctl.sh get pool  # 确认pool创建成功
-    $ calicoctl get pool
+    $ calicoctl.sh get pool  # 如果有fabedge的pool说明创建成功
     NAME           CIDR             SELECTOR   
     default-pool   10.231.64.0/18   all()      
     fabedge        10.10.0.0/16     all()
@@ -87,7 +85,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     # 如果提示没有calicoctl.sh命令，请执行以下指令
     $ export DATASTORE_TYPE=kubernetes
     $ export KUBECONFIG=/etc/kubernetes/admin.conf
-    $ calicoctl get pool
+    $ calicoctl get pool    # 如果有fabedge的pool说明创建成功
     NAME           CIDR             SELECTOR   
     default-pool   10.231.64.0/18   all()      
     fabedge        10.10.0.0/16     all()
@@ -97,7 +95,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 
 ### 部署fabedge
 
-1. 在云端选取一个节点运行connector，为节点做标记。以master为例，
+1. 在云端选取一个运行connector的节点，并为节点做标记。以master为例，
 
    ```shell
    $ kubectl label no master node-role.kubernetes.io/connector=
@@ -113,25 +111,24 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     ```shell
     $ vim values.yaml
     operator:
-      edgePodCIDR: 10.10.0.0/16
-      connectorPublicAddresses: 10.22.46.48
-      # get_cluster_info脚本输出的helm connectorSubnets
-      connectorSubnets: 10.233.64.0/18,10.233.0.0/18
+      edgePodCIDR: 10.10.0.0/16   
+      connectorPublicAddresses: 10.22.46.48   
+      connectorSubnets: 10.233.64.0/18,10.233.0.0/18  
     
-    cniType: calico
+    cniType: calico 
     ```
     
-    > 配置项说明：
+    > 说明：
     >
-    >   **edgePodCIDR**：需要和calico ippool中的cidr配置项保持一致。
+    >   **edgePodCIDR**：使用上面创建的calico pool的cidr。
     >
-    >   **connectorPublicAddresses**: connector可以被edge节点访问到的IP地址。
+    >   **connectorPublicAddresses**: 运行connector的节点的公网地址，确保能够被边缘节点访问。
     >
-    >   **connectorSubnets**: 云端集群中的pod和service cidr。
+    >   **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的connectorSubnets。
     >
     >   **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
-
-3.  安装helm(如果已经安装可跳过)
+    
+3.  安装helm（如果已经安装，可跳过本步骤）
 
     ```shell
     $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
@@ -149,7 +146,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 
 ### 配置边缘节点
 
-1. 修改edgecore配置文件
+1. 在**每个边缘节点**上修改edgecore配置文件
 
     ```shell
     $ vi /etc/kubeedge/config/edgecore.yaml
@@ -171,7 +168,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
         clusterDomain: "root-cluster"
     ```
 
-2. 重启edgecore
+2. 在**每个边缘节点**上重启edgecore
 
     ```shell
     $ systemctl restart edgecore
@@ -181,7 +178,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 
 ## 部署后验证
 
-1. 确认边缘节点就绪
+1. 在**管理节点**上确认边缘节点就绪
 
     ```shell
     $ kubectl get node
@@ -190,7 +187,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
       master  Ready    connector,master,node   135m   v1.19.7
     ```
 
-2. 确认服务正常启动
+2. 在**管理节点**上确认服务正常启动
 
     ```shell
     $ kubectl get po -n fabedge
