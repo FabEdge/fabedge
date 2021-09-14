@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,22 +23,25 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 var _ = Describe("Endpoint", func() {
 	It("should equal if all fields are equal", func() {
 		e1 := types.Endpoint{
-			ID:      "test",
-			Name:    "edge2",
-			IP:      "192.168.0.1",
-			Subnets: []string{"2.2.0.0/64"},
+			ID:              "test",
+			Name:            "edge2",
+			PublicAddresses: []string{"192.168.0.1"},
+			Subnets:         []string{"2.2.0.0/64"},
+			NodeSubnets:     []string{"192.168.0.1"},
 		}
 
 		e2 := types.Endpoint{
-			ID:      "test",
-			Name:    "edge2",
-			IP:      "192.168.0.1",
-			Subnets: []string{"2.2.0.0/64"},
+			ID:              "test",
+			Name:            "edge2",
+			PublicAddresses: []string{"192.168.0.1"},
+			Subnets:         []string{"2.2.0.0/64"},
+			NodeSubnets:     []string{"192.168.0.1"},
 		}
 
 		Expect(e1.Equal(e2)).Should(BeTrue())
@@ -49,25 +52,38 @@ var _ = Describe("Endpoint", func() {
 			Expect(ep.IsValid()).Should(BeFalse())
 		},
 
-		Entry("with invalid ip", types.Endpoint{
-			IP:      "2.2.2.257",
-			Subnets: []string{"2.2.0.0/16"},
+		Entry("with invalid subnets", types.Endpoint{
+			PublicAddresses: []string{"2.2.2.255"},
+			Subnets:         []string{"2.2.0.0/33"},
+			NodeSubnets:     []string{"2.2.2.255"},
 		}),
 
-		Entry("with invalid subets", types.Endpoint{
-			IP:      "2.2.2.255",
-			Subnets: []string{"2.2.0.0/33"},
+		Entry("with invalid node subnets", types.Endpoint{
+			PublicAddresses: []string{"2.2.2.2", "www.google.com"},
+			Subnets:         []string{"2.2.0.0/26"},
+			NodeSubnets:     []string{"2.2.0.0/33"},
 		}),
 
-		Entry("with empty ip and subnets", types.Endpoint{
-			IP:      "",
-			Subnets: nil,
+		Entry("with empty ip", types.Endpoint{
+			PublicAddresses: nil,
+			Subnets:         []string{"2.2.0.0/26"},
+			NodeSubnets:     []string{"2.2.2.1/26"},
+		}),
+		Entry("with empty subnets", types.Endpoint{
+			PublicAddresses: []string{"2.2.2.2"},
+			Subnets:         nil,
+			NodeSubnets:     []string{"2.2.2.1/26"},
+		}),
+		Entry("with empty ip", types.Endpoint{
+			PublicAddresses: []string{"2.2.2.2"},
+			Subnets:         []string{"2.2.0.0/26"},
+			NodeSubnets:     nil,
 		}),
 	)
 })
 
 var _ = Describe("GenerateNewEndpointFunc", func() {
-	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}")
+	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",
@@ -96,6 +112,6 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 	})
 
 	It("should extract ip from node.status.address", func() {
-		Expect(endpoint.IP).Should(Equal("192.168.1.1"))
+		Expect(endpoint.PublicAddresses).Should(ConsistOf("192.168.1.1"))
 	})
 })

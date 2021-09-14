@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ func execute(pod corev1.Pod, cmd []string) (string, string, error) {
 	})
 
 	if err != nil && framework.TestContext.ShowExecError {
-		framework.Logf("failed to execute ping. stderr: %s. err: %s", stderr, err)
+		framework.Logf("failed to execute cmd: %s. stderr: %s. err: %s", strings.Join(cmd, " "), stderr, err)
 	}
 
 	return stdout.String(), stderr.String(), err

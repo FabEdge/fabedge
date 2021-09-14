@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -211,7 +211,7 @@ func (p *proxy) OnServiceUpdate(ctx context.Context, request reconcile.Request) 
 
 	// if service is updated to a invalid service, we take it as deleted and cleanup related resources
 	if p.shouldSkipService(&service) {
-		log.V(5).Info("service has no ClusterIP, skip it", "service", service)
+		log.V(5).Info("service has no ClusterIP, skip it")
 
 		p.cleanupService(request.NamespacedName)
 		return Result{}, nil
@@ -352,7 +352,7 @@ func (p *proxy) OnEndpointSliceUpdate(ctx context.Context, request reconcile.Req
 	}
 
 	if p.shouldSkipService(&service) {
-		log.Info("service has no ClusterIP, skip it", "service", service)
+		log.V(5).Info("service has no ClusterIP, skip it")
 		p.cleanupService(serviceKey)
 		return Result{}, nil
 	}

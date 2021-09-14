@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 package connector
 
 import (
-	"fmt"
+	"k8s.io/klog/v2"
 
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
@@ -27,12 +27,10 @@ var (
 )
 
 func (m *Manager) readCfgFromFile() error {
-	nc, err := netconf.LoadNetworkConf(m.config.tunnelConfigFile)
+	nc, err := netconf.LoadNetworkConf(m.TunnelConfigFile)
 	if err != nil {
 		return err
 	}
-
-	netconf.EnsureNodeSubnets(&nc)
 
 	m.connections = nil
 	connNames = stringset.New()
@@ -40,16 +38,16 @@ func (m *Manager) readCfgFromFile() error {
 	for _, peer := range nc.Peers {
 
 		con := tunnel.ConnConfig{
-			Name: fmt.Sprintf("cloud-%s", peer.Name),
+			Name: peer.Name,
 
 			LocalID:          nc.ID,
-			LocalCerts:       []string{m.config.certFile},
-			LocalAddress:     []string{nc.IP},
+			LocalCerts:       []string{m.CertFile},
+			LocalAddress:     nc.PublicAddresses,
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,
 
 			RemoteID:          peer.ID,
-			RemoteAddress:     []string{peer.IP},
+			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
 		}
@@ -60,10 +58,20 @@ func (m *Manager) readCfgFromFile() error {
 	return nil
 }
 
+// remote local and remote address to support IPSec NAT_T
+func removeLocalAndRemoteAddress(conn tunnel.ConnConfig) tunnel.ConnConfig {
+	c := conn
+	c.LocalAddress = nil
+	c.RemoteAddress = nil
+	return c
+}
+
 func (m *Manager) syncConnections() error {
 	if err := m.readCfgFromFile(); err != nil {
 		return err
 	}
+
+	klog.V(5).Infof("current connections:%+v", m.connections)
 
 	oldNames, err := m.tm.ListConnNames()
 	if err != nil {
@@ -81,7 +89,7 @@ func (m *Manager) syncConnections() error {
 
 	// load active connections
 	for _, c := range m.connections {
-		if err = m.tm.LoadConn(c); err != nil {
+		if err = m.tm.LoadConn(removeLocalAndRemoteAddress(c)); err != nil {
 			return err
 		}
 	}

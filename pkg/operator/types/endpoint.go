@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,18 +21,19 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 )
 
 type NewEndpointFunc func(node corev1.Node) Endpoint
+type PodCIDRsGetter func(node corev1.Node) []string
+type EndpointGetter func() Endpoint
 
 type Endpoint struct {
-	ID          string
-	Name        string
-	IP          string
-	Subnets     []string
-	NodeSubnets []string
+	ID              string
+	Name            string
+	PublicAddresses []string
+	Subnets         []string
+	NodeSubnets     []string
 }
 
 func (e Endpoint) Equal(o Endpoint) bool {
@@ -40,8 +41,7 @@ func (e Endpoint) Equal(o Endpoint) bool {
 }
 
 func (e Endpoint) IsValid() bool {
-	ip := net.ParseIP(e.IP)
-	if ip == nil {
+	if len(e.PublicAddresses) == 0 || len(e.NodeSubnets) == 0 || len(e.Subnets) == 0 {
 		return false
 	}
 
@@ -64,38 +64,39 @@ func (e Endpoint) IsValid() bool {
 
 func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
 	return netconf.TunnelEndpoint{
-		ID:          e.ID,
-		IP:          e.IP,
-		Name:        e.Name,
-		Subnets:     e.Subnets,
-		NodeSubnets: e.NodeSubnets,
+		ID:              e.ID,
+		PublicAddresses: e.PublicAddresses,
+		Name:            e.Name,
+		Subnets:         e.Subnets,
+		NodeSubnets:     e.NodeSubnets,
 	}
 }
 
-func GenerateNewEndpointFunc(idFormat string) NewEndpointFunc {
+func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
 	return func(node corev1.Node) Endpoint {
-		var ip string
+		var nodeSubnets []string
 		for _, addr := range node.Status.Addresses {
 			if addr.Type == corev1.NodeInternalIP {
-				ip = addr.Address
+				nodeSubnets = append(nodeSubnets, addr.Address)
 			}
-		}
-
-		annotations := node.Annotations
-		if annotations == nil {
-			annotations = map[string]string{}
 		}
 
 		var id = ""
 		if node.Name != "" {
-			id = strings.ReplaceAll(idFormat, "{node}", node.Name)
+			id = GetID(idFormat, node.Name)
 		}
 
 		return Endpoint{
-			ID:      id,
-			Name:    node.Name,
-			IP:      ip,
-			Subnets: strings.Split(annotations[constants.KeyPodSubnets], ","),
+			ID:   id,
+			Name: node.Name,
+			// todo: get public address from annotations or labels
+			PublicAddresses: nodeSubnets,
+			Subnets:         getPodCIDRs(node),
+			NodeSubnets:     nodeSubnets,
 		}
 	}
+}
+
+func GetID(format, nodeName string) string {
+	return strings.ReplaceAll(format, "{node}", nodeName)
 }

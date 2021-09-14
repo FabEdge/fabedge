@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,79 +17,73 @@ package connector
 import (
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/spf13/viper"
+	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
-	k8sexec "k8s.io/utils/exec"
 
+	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	utilipset "github.com/fabedge/fabedge/third_party/ipset"
+	"github.com/fabedge/fabedge/pkg/util/ipset"
 )
 
 type Manager struct {
-	config      *config
+	Config
 	tm          tunnel.Manager
 	ipt         *iptables.IPTables
 	connections []tunnel.ConnConfig
-	ipset       utilipset.Interface
+	ipset       ipset.Interface
 	router      routing.Routing
 }
 
-type config struct {
-	interval         time.Duration //sync interval
-	debounceDuration time.Duration
-	edgePodCIDR      string
-	tunnelConfigFile string
-	certFile         string
-	viciSocket       string
-	cniType          string
+type Config struct {
+	SyncPeriod       time.Duration //sync interval
+	DebounceDuration time.Duration
+	TunnelConfigFile string
+	CertFile         string
+	ViciSocket       string
+	CNIType          string
 }
 
-func NewManager() *Manager {
-	c := &config{
-		interval:         viper.GetDuration("syncPeriod"),
-		edgePodCIDR:      viper.GetString("edgePodCIDR"),
-		tunnelConfigFile: viper.GetString("tunnelConfig"),
-		certFile:         viper.GetString("certFile"),
-		viciSocket:       viper.GetString("vicisocket"),
-		debounceDuration: viper.GetDuration("debounceDuration"),
-		cniType:          viper.GetString("cniType"),
-	}
+func (c *Config) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&c.TunnelConfigFile, "tunnel-config", "/etc/fabedge/tunnels.yaml", "tunnel config file")
+	fs.StringVar(&c.CertFile, "cert-file", "/etc/ipsec.d/certs/tls.crt", "TLS certificate file")
+	fs.StringVar(&c.ViciSocket, "vici-socket", "/var/run/charon.vici", "vici socket file")
+	fs.StringVar(&c.CNIType, "cni-type", "CALICO", "CNI type used in cloud")
+	fs.DurationVar(&c.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
+	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
+}
 
+func (c Config) Manager() (*Manager, error) {
 	tm, err := strongswan.New(
-		strongswan.SocketFile(c.viciSocket),
+		strongswan.SocketFile(c.ViciSocket),
 		strongswan.StartAction("none"),
 	)
 	if err != nil {
-		klog.Fatal(err)
+		return nil, err
 	}
 
 	ipt, err := iptables.New()
 	if err != nil {
-		klog.Fatal(err)
+		return nil, err
 	}
 
-	execer := k8sexec.New()
-	ipset := utilipset.New(execer)
-
-	var router routing.Routing
-	if c.cniType == "" || strings.ToUpper(c.cniType) == "CALICO" {
-		router = routing.NewCalicoRouter()
+	router, err := routing.GetRouter(c.CNIType)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Manager{
-		config: c,
+		Config: c,
 		tm:     tm,
 		ipt:    ipt,
-		ipset:  ipset,
+		ipset:  ipset.New(),
 		router: router,
-	}
+	}, nil
 }
 
 func runTasks(interval time.Duration, handler ...func()) {
@@ -130,6 +124,12 @@ func (m *Manager) Start() {
 		} else {
 			klog.Infof("iptables SNAT rules are added")
 		}
+
+		if err := m.ensureInputIPTablesRules(); err != nil {
+			klog.Errorf("error when to add iptables input rules: %s", err)
+		} else {
+			klog.Infof("iptables input rules are added")
+		}
 	}
 
 	tunnelTaskFn := func() {
@@ -152,23 +152,39 @@ func (m *Manager) Start() {
 		} else {
 			klog.Infof("ipset %s are synced", IPSetCloudPodCIDR)
 		}
+
+		if err := m.syncCloudNodeCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudNodeCIDR, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetCloudNodeCIDR)
+		}
+
+		if err := m.syncEdgePodCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgePodCIDR, err)
+		} else {
+			klog.Infof("ipset %s are synced", IPSetEdgePodCIDR)
+		}
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
+	m.clearFabedgeIptablesChains()
+
 	// repeats regular tasks periodically
-	go runTasks(m.config.interval, tasks...)
+	go runTasks(m.SyncPeriod, tasks...)
 
-	// sync tunnels when config file updated by cloud.
-	go m.onConfigFileChange(m.config.tunnelConfigFile, tunnelTaskFn, routeTaskFn)
+	// sync ALL when config file changed
+	go m.onConfigFileChange(m.TunnelConfigFile, tasks...)
 
+	about.DisplayVersion()
 	klog.Info("manager started")
+	klog.V(5).Infof("current config:%+v", m.Config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 	m.gracefulShutdown()
-	klog.Info("manager stopped")
+	klog.Info("connector stopped")
 }
 
 func (m *Manager) gracefulShutdown() {
@@ -177,7 +193,7 @@ func (m *Manager) gracefulShutdown() {
 		klog.Errorf("failed to clean routers: %s", err)
 	}
 
-	err = m.SNatIPTablesRulesCleanup()
+	err = m.CleanSNatIPTablesRules()
 	if err != nil {
 		klog.Errorf("failed to clean iptables: %s", err)
 	}

@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,10 +27,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var _ = Describe("Controller", func() {
@@ -78,22 +78,22 @@ var _ = Describe("Controller", func() {
 		}()
 
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "1",
-			Name:    "edge1",
-			IP:      "192.168.1.1",
-			Subnets: []string{"2.2.2.1/26"},
+			ID:              "1",
+			Name:            "edge1",
+			PublicAddresses: []string{"192.168.1.1"},
+			Subnets:         []string{"2.2.2.1/26"},
 		})
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "2",
-			Name:    "edge2",
-			IP:      "192.168.1.2",
-			Subnets: []string{"2.2.2.65/26"},
+			ID:              "2",
+			Name:            "edge2",
+			PublicAddresses: []string{"192.168.1.2"},
+			Subnets:         []string{"2.2.2.65/26"},
 		})
 		store.SaveEndpoint(types.Endpoint{
-			ID:      "4",
-			Name:    "edge4",
-			IP:      "192.168.1.4",
-			Subnets: []string{"2.2.2.130/26"},
+			ID:              "4",
+			Name:            "edge4",
+			PublicAddresses: []string{"192.168.1.4"},
+			Subnets:         []string{"2.2.2.130/26"},
 		})
 	})
 

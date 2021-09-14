@@ -1,9 +1,8 @@
 OUTPUT_DIR := _output
-BINARIES := agent connector operator
-IMAGES := $(addsuffix -image, $(BINARIES))
-IMAGES := $(IMAGES) strongswan-image installer-image
+BINARIES := agent connector operator cert
+IMAGES := $(addsuffix -image, agent connector operator cert)
 
-VERSION := v0.1.0
+VERSION := v0.2.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fabedge/pkg/common/about
@@ -15,6 +14,17 @@ GOLDFLAGS ?= -s -w
 LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
+KUBEBUILDER_VERSION ?= 2.3.1
+GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+GOARCH ?= amd64
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
+
+export KUBEBUILDER_ASSETS ?= $(GOBIN)
 
 all: clean bin
 
@@ -49,14 +59,31 @@ bin: fmt vet ${BINARIES}
 ${BINARIES}: fmt vet
 	GOOS=linux go build ${LDFLAGS} -o ${OUTPUT_DIR}/fabedge-$@ ./cmd/$@
 
+.PHONY: test
+test:
+ifneq (,$(shell which ginkgo))
+	ginkgo ./pkg/...
+else
+	go test ./pkg/...
+endif
+
 e2e-test:
 	go test -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:
 	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile .
-images: ${IMAGES}
+
+fabedge-images: ${IMAGES}
+
+strongswan-image:
+	docker build -t fabedge/strongswan:latest -f build/strongswan/Dockerfile .
+
+installer-image:
+	docker build -t fabedge/installer:latest -f build/installer/Dockerfile .
+
 clean:
+	go clean -cache -testcache
 	rm -rf ${OUTPUT_DIR}
 
 # Generate manifests e.g. CRD, RBAC etc.
@@ -85,3 +112,7 @@ CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+install-test-dependencies:
+	curl -sL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(GOOS)_$(GOARCH).tar.gz | \
+                    tar -zx -C ${GOBIN} --strip-components=2

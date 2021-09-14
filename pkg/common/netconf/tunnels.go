@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 )
 
 type TunnelEndpoint struct {
-	ID   string `yaml:"id,omitempty"`
-	Name string `yaml:"name,omitempty"`
-	IP   string `yaml:"ip,omitempty"`
+	ID              string   `yaml:"id,omitempty"`
+	Name            string   `yaml:"name,omitempty"`
+	PublicAddresses []string `yaml:"publicAddresses,omitempty"`
 	// only pod subnets are allowed
 	Subnets     []string `yaml:"subnets,omitempty"`
 	NodeSubnets []string `yaml:"nodeSubnets,omitempty"`
@@ -43,19 +43,4 @@ func LoadNetworkConf(path string) (NetworkConf, error) {
 	}
 
 	return conf, yaml.Unmarshal(data, &conf)
-}
-
-func EnsureNodeSubnets(conf *NetworkConf) {
-	if len(conf.NodeSubnets) == 0 {
-		conf.NodeSubnets = append(conf.NodeSubnets, conf.IP)
-	}
-
-	for i, peer := range conf.Peers {
-		if len(peer.NodeSubnets) != 0 {
-			continue
-		}
-
-		peer.NodeSubnets = append(peer.NodeSubnets, peer.IP)
-		conf.Peers[i] = peer
-	}
 }

@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,6 @@ import (
 	"fmt"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/vishvananda/netlink"
-)
-
-const (
-	TableStrongswan = 220
-	dummyInfName    = "fabedge-dummy0"
 )
 
 type CalicoRouter struct {
@@ -100,7 +95,7 @@ func delAllEdgeRoutesFromMainTable(devName string) error {
 	// after the interface is deleted, all routes via which are cleaned automatically.
 	err := netlink.LinkDel(link)
 	if err != nil && invalidArgument(err) {
-		return fmt.Errorf("link:%s does not exist", devName)
+		return fmt.Errorf("%s does not exist", devName)
 	} else {
 		return err
 	}

@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
 	"github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var cfg *rest.Config

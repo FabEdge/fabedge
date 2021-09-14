@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,16 +23,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var getNodeName = testutil.GenerateGetNameFunc("node")
+var getEdgeName = testutil.GenerateGetNameFunc("edge-node")
 
 func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Connector Suite")
+	RunSpecs(t, "Endpoint Suite")
 }
 
 var _ = BeforeSuite(func(done Done) {

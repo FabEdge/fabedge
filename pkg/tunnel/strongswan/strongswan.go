@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,11 +54,12 @@ type authConf struct {
 }
 
 type childSAConf struct {
-	LocalTS     []string `vici:"local_ts"`
-	RemoteTS    []string `vici:"remote_ts"`
-	StartAction string   `vici:"start_action"` //none,trap,start
-	CloseAction string   `vici:"close_action"` //none,clear,hold,restart
-	DpdAction   string   `vici:"dpd_action,omitempty"` //none,clear,hold,restart 
+	LocalTS      []string `vici:"local_ts"`
+	RemoteTS     []string `vici:"remote_ts"`
+	StartAction  string   `vici:"start_action"`         //none,trap,start
+	CloseAction  string   `vici:"close_action"`         //none,clear,hold,restart
+	DpdAction    string   `vici:"dpd_action,omitempty"` //none,clear,hold,restart
+	ESPProposals []string `vici:"esp_proposals,omitempty"`
 }
 
 func New(opts ...option) (*StrongSwanManager, error) {
@@ -118,8 +119,6 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 	conn := connection{
 		LocalAddrs:  cnf.LocalAddress,
 		RemoteAddrs: cnf.RemoteAddress,
-		Proposals:   []string{"aes128-sha256-x25519"},
-		Encap:       "no",
 		IF_ID_IN:    m.interfaceID,
 		IF_ID_OUT:   m.interfaceID,
 		LocalAuth: authConf{
@@ -136,19 +135,19 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 			fmt.Sprintf("%s-n2p", cnf.Name): {
 				LocalTS:     cnf.LocalNodeSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 			fmt.Sprintf("%s-p2n", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
-				DpdAction: "restart",
+				DpdAction:   "restart",
 			},
 		},
 	}

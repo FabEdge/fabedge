@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,73 +15,31 @@
 package connector
 
 import (
-	"fmt"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	flag "github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+
+	"github.com/fabedge/fabedge/pkg/common/about"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
 )
-
-const (
-	defaultConfig = "/etc/fabedge/connector.yaml"
-)
-
-var cfgFile string
-
-var rootCmd = &cobra.Command{
-	Use:   "connector",
-	Short: "",
-	Long:  `connector is part of fabedge, which is responsible for the tunnel/iptables/route management in the cloud.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		mgr := NewManager()
-		mgr.Start()
-	},
-}
 
 func Execute() {
-	cobra.CheckErr(rootCmd.Execute())
-}
+	defer klog.Flush()
 
-func init() {
-	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", defaultConfig, "connector config file")
-}
+	fs := flag.CommandLine
+	cfg := &Config{}
 
-//validateConfig validates the mandatory parameters
-// syncPeriod: interval for period sync tasks
-// IP: ip address for connector to terminate tunnels
-// Subnets: subnets behind connector
-// viciSocket: strongswan vici socket file
-// cerFile: X509 cert for connector node
-func validateConfig() error {
-	allMandatoryKeys := []string{"syncPeriod", "IP", "Subnets",
-		"nodeSubnets", "tunnelConfig", "viciSocket", "certFile", "fabedgeNS"}
+	logutil.AddFlags(fs)
+	about.AddFlags(fs)
+	cfg.AddFlags(fs)
 
-	for _, key := range allMandatoryKeys {
-		if !viper.IsSet(key) {
-			return fmt.Errorf("%s is not set", key)
-		}
+	flag.Parse()
+
+	about.DisplayAndExitIfRequested()
+
+	manger, err := cfg.Manager()
+	if err != nil {
+		klog.Fatalf("failed to create Manager: %s", err)
 	}
 
-	return nil
-}
-
-func initConfig() {
-	// read in connector main config file
-	viper.SetConfigFile(cfgFile)
-	if err := viper.ReadInConfig(); err != nil {
-		klog.Fatalf("failed to parse connector config file: %s", err)
-	}
-
-	// read in tunnel config generated in cloud
-	tunnelConfig := viper.GetString("tunnelConfig")
-	viper.SetConfigFile(tunnelConfig)
-	if err := viper.MergeInConfig(); err != nil {
-		klog.Fatalf("failed to merge tunnel config file: %s", err)
-	}
-
-	viper.AutomaticEnv()
-
-	if err := validateConfig(); err != nil {
-		klog.Fatal(err)
-	}
+	manger.Start()
 }

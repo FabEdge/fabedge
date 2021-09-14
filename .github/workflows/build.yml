@@ -20,7 +20,7 @@ jobs:
     - name: Remove proxies
       run: |
         bash build/utils/no_proxy.sh
-        
+
     - name: Build
       run: |
         make all

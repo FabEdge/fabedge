@@ -1,0 +1,11 @@
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: fabedge
+spec:
+  blockSize: 26
+  # CIDR used by pods on edge nodes, modify it per your env.
+  cidr: 10.10.0.0/16
+  natOutgoing: false
+  disabled: true
+  ipipMode: Always

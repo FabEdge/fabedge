@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,5 +28,17 @@ func EdgeNodePredicate() predicate.Predicate {
 
 		_, ok := labels["node-role.kubernetes.io/edge"]
 		return ok
+	})
+}
+
+func NonEdgeNodePredicate() predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		labels := obj.GetLabels()
+		if labels == nil {
+			return true
+		}
+
+		_, ok := labels["node-role.kubernetes.io/edge"]
+		return !ok
 	})
 }

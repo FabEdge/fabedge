@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,17 +32,17 @@ var _ = Describe("Store", func() {
 
 	It("can support endpoint CRUD operations", func() {
 		e1 := types.Endpoint{
-			ID:      "edge1",
-			Name:    "edge1",
-			IP:      "10.40.20.181",
-			Subnets: []string{"2.2.0.0/26"},
+			ID:              "edge1",
+			Name:            "edge1",
+			PublicAddresses: []string{"10.40.20.181"},
+			Subnets:         []string{"2.2.0.0/26"},
 		}
 
 		e2 := types.Endpoint{
-			ID:      "edge2",
-			Name:    "edge2",
-			IP:      "10.40.20.182",
-			Subnets: []string{"2.2.0.64/26"},
+			ID:              "edge2",
+			Name:            "edge2",
+			PublicAddresses: []string{"10.40.20.182"},
+			Subnets:         []string{"2.2.0.64/26"},
 		}
 
 		store.SaveEndpoint(e1)

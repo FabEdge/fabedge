@@ -1,15 +1,51 @@
+// Copyright 2021 FabEdge Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package routing
 
 import (
+	"fmt"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/vishvananda/netlink"
 	"net"
 	"strings"
 )
 
+const (
+	TableStrongswan = 220
+	dummyInfName    = "fabedge-dummy0"
+)
+
 type Routing interface {
 	SyncRoutes(active bool, connections []tunnel.ConnConfig) error
 	CleanRoutes(connections []tunnel.ConnConfig) error
+}
+
+func GetRouter(cni string) (Routing, error) {
+	var router Routing
+	var err error
+
+	switch strings.ToUpper(cni) {
+	case "CALICO":
+		router = NewCalicoRouter()
+	case "FLANNEL":
+		router = NewFlannelRouter()
+	default:
+		err = fmt.Errorf("cni:%s is not implemented", cni)
+	}
+
+	return router, err
 }
 
 func IsInConns(dst *net.IPNet, connections []tunnel.ConnConfig) (bool, error) {

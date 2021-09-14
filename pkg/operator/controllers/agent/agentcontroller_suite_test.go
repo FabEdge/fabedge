@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,16 +19,16 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	testutil "github.com/fabedge/fabedge/internal/util/test"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var cfg *rest.Config
 var k8sClient client.Client
+var getNodeName = testutil.GenerateGetNameFunc("edge")
 
 // envtest provide a api server which has some differences from real environments,
 // read https://book.kubebuilder.io/reference/envtest.html#testing-considerations

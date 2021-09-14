@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	. "github.com/fabedge/fabedge/internal/util/ginkgoext"
-	testutil "github.com/fabedge/fabedge/internal/util/test"
 	"github.com/fabedge/fabedge/pkg/operator/predicates"
+	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var _ = Describe("Proxy", func() {

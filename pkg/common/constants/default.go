@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ const (
 	KeyFabedgeAPP = "fabedge.io/app"
 	KeyCreatedBy  = "fabedge.io/created-by"
 	KeyPodHash    = "fabedge.io/pod-spec-hash"
+	KeyNode       = "fabedge.io/node"
 	AppAgent      = "fabedge-agent"
 	AppOperator   = "fabedge-operator"
 
 	ConnectorConfigFileName = "tunnels.yaml"
-	ConnectorEndpointName   = "cloud-connector"
 )
