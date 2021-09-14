@@ -11,6 +11,7 @@ RUN mkdir /root/.ssh/ && \
     chmod 600 /root/.ssh/id_rsa
 
 RUN yum -y install epel-release && \
+    yum -y update && \
     yum -y install python3-devel openssl-devel sshpass openssh-clients gcc openssl git && \
     yum clean all && \
     rm -rf /var/cache/yum/*
