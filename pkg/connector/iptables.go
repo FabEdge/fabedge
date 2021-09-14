@@ -37,12 +37,19 @@ const (
 	IPSetEdgePodCIDR        = "FABEDGE-EDGE-POD-CIDR"
 )
 
-func (m *Manager) ensureForwardIPTablesRules() error {
-	err := m.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+func (m *Manager) clearFabedgeIptablesChains() error {
+	err := m.ipt.ClearChain(TableFilter, ChainFabEdgeInput)
 	if err != nil {
 		return err
 	}
+	err = m.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+	if err != nil {
+		return err
+	}
+	return m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+}
 
+func (m *Manager) ensureForwardIPTablesRules() (err error) {
 	// ensure rules exist
 	if err = m.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
 		return err
@@ -68,16 +75,7 @@ func (m *Manager) ensureForwardIPTablesRules() error {
 	return nil
 }
 
-func (m *Manager) ensureSNatIPTablesRules() error {
-	existed, err := m.ipt.ChainExists(TableNat, ChainFabEdgePostRouting)
-	if err != nil {
-		return err
-	}
-
-	if !existed {
-		return m.ipt.NewChain(TableNat, ChainFabEdgePostRouting)
-	}
-
+func (m *Manager) ensureSNatIPTablesRules() (err error) {
 	if err = m.ipt.AppendUnique(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting); err != nil {
 		return err
 	}
@@ -117,16 +115,7 @@ func (m *Manager) ensureSNatIPTablesRules() error {
 	return nil
 }
 
-func (m *Manager) ensureInputIPTablesRules() error {
-	existed, err := m.ipt.ChainExists(TableFilter, ChainFabEdgeInput)
-	if err != nil {
-		return err
-	}
-
-	if !existed {
-		return m.ipt.NewChain(TableFilter, ChainFabEdgeInput)
-	}
-
+func (m *Manager) ensureInputIPTablesRules() (err error) {
 	// ensure rules exist
 	if err = m.ipt.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
 		return err
@@ -138,10 +127,10 @@ func (m *Manager) ensureInputIPTablesRules() error {
 	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah"); err != nil {
+	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 	return nil
