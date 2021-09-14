@@ -167,6 +167,8 @@ func (m *Manager) Start() {
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
+	m.clearFabedgeIptablesChains()
+
 	// repeats regular tasks periodically
 	go runTasks(m.SyncPeriod, tasks...)
 
