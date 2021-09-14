@@ -304,7 +304,6 @@ func createSecretIfNotExist(secret *corev1.Secret) {
 	}
 }
 
-
 func getCA(globalOptions *GlobalOptions) (datader []byte, keyder []byte) {
 	if globalOptions.CAIsFromSecret() {
 		return getCertAndKeyFromSecret(globalOptions.SecretKey(), secretutil.KeyCACert, secretutil.KeyCAKey)

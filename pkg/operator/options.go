@@ -92,8 +92,9 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.BoolVar(&opts.ManagerOpts.LeaderElection, "leader-election", false, "Determines whether or not to use leader election")
 	flag.StringVar(&opts.ManagerOpts.LeaderElectionID, "leader-election-id", "fabedge-operator-leader", "The name of the resource that leader election will use for holding the leader lock")
-	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15, "The duration that non-leader candidates will wait to force acquire leadership")
-	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 4, "The duration that the acting controlplane will retry refreshing leadership before giving up")
+	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
+	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
+	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
 }
 
 func (opts *Options) Complete() (err error) {
@@ -122,6 +123,7 @@ func (opts *Options) Complete() (err error) {
 		return err
 	}
 
+	opts.ManagerOpts.LeaderElectionNamespace = opts.Namespace
 	opts.ManagerOpts.MetricsBindAddress = "0"
 	opts.ManagerOpts.Logger = klogr.New().WithName("fabedge-operator")
 	opts.Manager, err = manager.New(cfg, opts.ManagerOpts)
@@ -190,6 +192,25 @@ func (opts *Options) Validate() (err error) {
 		policy != corev1.PullIfNotPresent &&
 		policy != corev1.PullNever {
 		return fmt.Errorf("not supported image pull policy: %s", policy)
+	}
+
+	// from client-go leaderelection.go
+	const JitterFactor = 1.2
+	leaseDuration, renewDeadline, retryPeriod := *opts.ManagerOpts.LeaseDuration, *opts.ManagerOpts.RenewDeadline, *opts.ManagerOpts.RetryPeriod
+	if leaseDuration <= renewDeadline {
+		return fmt.Errorf("leaseDuration must be greater than renewDeadline")
+	}
+	if renewDeadline <= time.Duration(JitterFactor*float64(retryPeriod)) {
+		return fmt.Errorf("renewDeadline must be greater than retryPeriod*JitterFactor")
+	}
+	if leaseDuration < time.Second {
+		return fmt.Errorf("leaseDuration must be greater than 1 second")
+	}
+	if renewDeadline < time.Second {
+		return fmt.Errorf("renewDeadline must be greater than 1 second")
+	}
+	if retryPeriod < time.Second {
+		return fmt.Errorf("retryPeriod must be greater than 1 second")
 	}
 
 	return nil
