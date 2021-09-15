@@ -32,7 +32,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     nodelocaldns-p5h9k                              1/1     Running     0          35m    10.22.45.26    edge1      
     ```
 
-3. 确认**所有边缘节点**上calico-node**没有**运行
+3. 确认**所有边缘节点**上**没有**运行**任何**calico的组件
     ```shell
     $ kubectl  get po -n kube-system -o wide -l "k8s-app=calico-node" 
     NAME                READY   STATUS    RESTARTS   AGE   IP            NODE      NOMINATED NODE   READINESS GATES
