@@ -34,9 +34,9 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 
 3. 确认**所有边缘节点**上**没有**运行**任何**calico的组件
     ```shell
-    $ kubectl  get po -n kube-system -o wide -l "k8s-app=calico-node" 
-    NAME                READY   STATUS    RESTARTS   AGE   IP            NODE      NOMINATED NODE   READINESS GATES
-    calico-node-cxbd9   1/1     Running   0          47h   10.22.45.30   master   <none>           <none>
+    $ kubectl get po -n kube-system -o wide | grep -i calico
+    calico-kube-controllers-8b5ff5d58-ww4nq         1/1     Running     0          7d18h   10.22.45.30     master1   <none>           <none>
+    calico-node-cxbd9                               1/1     Running     0          7d18h   10.22.45.30     master1   <none>           <none>
     ```
     
 4. 获取当前集群配置信息，供后面使用
