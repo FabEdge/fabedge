@@ -1,6 +1,6 @@
 # What is FabEdge
 
-![Build](https://github.com/FabEdge/fabedge/actions/workflows/main.yml/badge.svg)
+[![main](https://github.com/FabEdge/fabedge/actions/workflows/main.yml/badge.svg)](https://github.com/FabEdge/fabedge/actions/workflows/main.yml)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 [![Releases](https://img.shields.io/github/release/fabedge/fabedge/all.svg?style=flat-square)](https://github.com/fabedge/fabedge/releases)
 
