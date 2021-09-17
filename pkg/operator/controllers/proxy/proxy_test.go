@@ -26,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
@@ -269,7 +268,6 @@ var _ = Describe("Proxy", func() {
 				mgr,
 				reconciler,
 				&corev1.Node{},
-				predicates.EdgeNodePredicate(),
 			)
 			Expect(err).ShouldNot(HaveOccurred())
 
@@ -279,7 +277,7 @@ var _ = Describe("Proxy", func() {
 					Labels: nodeutil.GetEdgeNodeLabels(),
 				},
 			}
-			Expect(k8sClient.Create(context.Background(), &node)).ShouldNot(HaveOccurred())
+			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
 			Eventually(requests, 2*time.Second).Should(ReceiveKey(ObjectKey{Name: node.Name}))
 		})
 
@@ -324,6 +322,17 @@ var _ = Describe("Proxy", func() {
 
 		It("should delete node from nodeSet when node is deleted", func() {
 			Expect(k8sClient.Delete(context.Background(), &node)).ShouldNot(HaveOccurred())
+			Eventually(requests, 2*time.Second).Should(ReceiveKey(ObjectKey{Name: node.Name}))
+
+			_, exists := px.nodeSet[node.Name]
+			Expect(exists).To(BeFalse())
+
+			Expect(len(keeper.nodeSet)).To(Equal(0))
+		})
+
+		It("should delete node from nodeSet when node is no longer edge node", func() {
+			node.Labels = nil
+			Expect(k8sClient.Update(context.Background(), &node)).Should(Succeed())
 			Eventually(requests, 2*time.Second).Should(ReceiveKey(ObjectKey{Name: node.Name}))
 
 			_, exists := px.nodeSet[node.Name]

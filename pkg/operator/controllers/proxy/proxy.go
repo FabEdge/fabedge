@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 const (
@@ -123,7 +123,6 @@ func AddToManager(cnf Config) error {
 		mgr,
 		proxy.onNodeUpdate,
 		&corev1.Node{},
-		predicates.EdgeNodePredicate(),
 	)
 	if err != nil {
 		return err
@@ -169,7 +168,7 @@ func (p *proxy) onNodeUpdate(ctx context.Context, request reconcile.Request) (re
 		return Result{}, err
 	}
 
-	if node.DeletionTimestamp != nil {
+	if node.DeletionTimestamp != nil || !nodeutil.IsEdgeNode(node) {
 		p.removeNode(request.Name)
 		return Result{}, nil
 	}
