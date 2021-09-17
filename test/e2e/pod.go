@@ -52,7 +52,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试非主机网络pod与pod云边通信
-	It("let edge pods communicate with cloud pods [p2p][c2e]", func() {
+	It("let edge pods communicate with cloud pods [p2p][e2c]", func() {
 		cloudPods, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -98,7 +98,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试非主机网络Pods与主机网络Pod的互通
-	It("let edge pods communicate with cloud pods using host network[p2n][c2e]", func() {
+	It("let edge pods communicate with cloud pods using host network[p2n][e2c]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -115,6 +115,30 @@ var _ = Describe("FabEdge", func() {
 		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 		for _, p1 := range edgePods {
 			for _, p2 := range hostCloudPods {
+				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			}
+		}
+	})
+
+	// 测试主机网络Pods与非主机网络Pod的互通
+	It("let edge pods using host network communicate with cloud pods[n2p][e2c]", func() {
+		_, hostEdgePods, err := framework.ListCloudAndEdgePods(k8sclient,
+			client.InNamespace(testNamespace),
+			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+		)
+		framework.ExpectNoError(err)
+
+		cloudPods, _, err := framework.ListCloudAndEdgePods(k8sclient,
+			client.InNamespace(testNamespace),
+			client.MatchingLabels{labelKeyInstance: instanceNetTool},
+		)
+		framework.ExpectNoError(err)
+
+		By("pods communicate with each other")
+		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+		for _, p1 := range hostEdgePods {
+			for _, p2 := range cloudPods {
 				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
 				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
 			}
