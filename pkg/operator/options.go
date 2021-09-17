@@ -192,12 +192,6 @@ func (opts Options) Validate() (err error) {
 		return fmt.Errorf("edge labels is needed")
 	}
 
-	if opts.ShouldAllocatePodCIDR() {
-		if _, _, err := net.ParseCIDR(opts.EdgePodCIDR); err != nil {
-			return err
-		}
-	}
-
 	if !dns1123Reg.MatchString(opts.Connector.Endpoint.Name) {
 		return fmt.Errorf("invalid connector name")
 	}
@@ -212,7 +206,21 @@ func (opts Options) Validate() (err error) {
 
 	for _, subnet := range opts.Connector.ProvidedSubnets {
 		if _, _, err := net.ParseCIDR(subnet); err != nil {
-			return err
+			return fmt.Errorf("invalid subnet: %s. %w", subnet, err)
+		}
+	}
+
+	if opts.ShouldAllocatePodCIDR() {
+		ip, subnet, err := net.ParseCIDR(opts.EdgePodCIDR)
+		if err != nil {
+			return fmt.Errorf("invalid edge pod cidr: %s. %w", opts.EdgePodCIDR, err)
+		}
+
+		for _, s := range opts.Connector.ProvidedSubnets {
+			ip2, subnet2, _ := net.ParseCIDR(s)
+			if subnet.Contains(ip2) || subnet2.Contains(ip) {
+				return fmt.Errorf("EdgePodCIDR is overlaped with connector's subnets")
+			}
 		}
 	}
 
