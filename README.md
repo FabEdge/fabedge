@@ -1,10 +1,10 @@
 # What is FabEdge
 
 [![main](https://github.com/FabEdge/fabedge/actions/workflows/main.yml/badge.svg)](https://github.com/FabEdge/fabedge/actions/workflows/main.yml)
-![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 [![Releases](https://img.shields.io/github/release/fabedge/fabedge/all.svg?style=flat-square)](https://github.com/fabedge/fabedge/releases)
+![license](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 
-<img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="50%">  
+<img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="40%">  
 
 FabEdge is an open source edge networking solution based on kubernetes and kubeedge. It solves the problems including complex network configuration management,   network fragmentation, the lack of service discovery ability and topology awareness in edge etc. 
 
