@@ -32,7 +32,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试边缘pod访问本地服务端点的情况
-	It("let edge pods can access local service endpoint when it exists [p2p][local]", func() {
+	It("let edge pods can access local service endpoint when it exists [p2p]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -61,7 +61,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试边缘pod访问本地服务端点的情况
-	It("let edge pods can access local host service endpoint when it exists [p2n][host-service]", func() {
+	It("let edge pods can access local host service endpoint when it exists [p2n]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -100,7 +100,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试边缘主机网络pod访问云端服务端点的情况
-	It("let edge pods using hostNetwork can access cloud services [n2p][c2e]", func() {
+	It("let edge pods using hostNetwork can access cloud services [n2p][e2c]", func() {
 		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
 			client.InNamespace(testNamespace),
 			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
@@ -117,7 +117,7 @@ var _ = Describe("FabEdge", func() {
 	})
 
 	// 测试边缘pod访问云端服务端点的情况
-	It("let edge pods can access cloud services with host network endpoints [p2n][c2e][host-service]", func() {
+	It("let edge pods can access cloud services with host network endpoints [p2n][e2c][host-service]", func() {
 		// todo: use more flexible control flags
 		Skip("feature not supported now, because higher linux kernel is needed")
 
