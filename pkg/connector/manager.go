@@ -119,10 +119,10 @@ func (m *Manager) Start() {
 			klog.Infof("iptables forward rules are added")
 		}
 
-		if err := m.ensureSNatIPTablesRules(); err != nil {
-			klog.Errorf("error when to add iptables SNAT rules: %s", err)
+		if err := m.ensureNatIPTablesRules(); err != nil {
+			klog.Errorf("error when to add iptables nat rules: %s", err)
 		} else {
-			klog.Infof("iptables SNAT rules are added")
+			klog.Infof("iptables nat rules are added")
 		}
 
 		if err := m.ensureInputIPTablesRules(); err != nil {
