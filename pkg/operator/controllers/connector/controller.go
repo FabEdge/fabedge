@@ -34,7 +34,6 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
@@ -111,7 +110,6 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	return ctl.getConnectorEndpoint, c.Watch(
 		&source.Kind{Type: &corev1.Node{}},
 		&handler.EnqueueRequestForObject{},
-		predicates.NonEdgeNodePredicate(),
 	)
 }
 
@@ -212,7 +210,7 @@ func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{}, err
 	}
 
-	if node.DeletionTimestamp != nil {
+	if node.DeletionTimestamp != nil || nodeutil.IsEdgeNode(node) {
 		ctl.removeNode(request.Name)
 		return reconcile.Result{}, nil
 	}
@@ -254,6 +252,10 @@ func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
 func (ctl *controller) removeNode(nodeName string) {
 	ctl.mux.Lock()
 	defer ctl.mux.Unlock()
+
+	if !ctl.nodeNameSet.Contains(nodeName) {
+		return
+	}
 
 	ctl.nodeNameSet.Remove(nodeName)
 	delete(ctl.nodeCache, nodeName)

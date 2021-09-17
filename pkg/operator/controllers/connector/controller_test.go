@@ -125,23 +125,36 @@ var _ = Describe("Controller", func() {
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0]))
 		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1)))
 
+		By("create node2 and node3")
 		node2 := newNormalNode("192.168.1.3", "10.10.10.128/26")
+		node3 := newNormalNode("192.168.1.4", "10.10.10.200/26")
 		Expect(k8sClient.Create(context.Background(), &node2)).To(Succeed())
+		Expect(k8sClient.Create(context.Background(), &node3)).To(Succeed())
 		time.Sleep(time.Second)
 
 		cep = getConnectorEndpoint()
 		Expect(cep.PublicAddresses).Should(Equal(config.Endpoint.PublicAddresses))
 		Expect(cep.ID).Should(Equal(config.Endpoint.ID))
 		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
-		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0], nodeutil.GetPodCIDRs(node2)[0]))
-		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1), nodeutil.GetIP(node2)))
+		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0], nodeutil.GetPodCIDRs(node2)[0], nodeutil.GetPodCIDRs(node3)[0]))
+		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1), nodeutil.GetIP(node2), nodeutil.GetIP(node3)))
 
+		By("deleting node2")
 		Expect(k8sClient.Delete(context.Background(), &node2)).To(Succeed())
 		time.Sleep(time.Second)
 
 		cep = getConnectorEndpoint()
-		Expect(cep.Subnets).ShouldNot(ContainElements(nodeutil.GetPodCIDRs(node2)))
+		Expect(cep.Subnets).ShouldNot(ContainElements(nodeutil.GetPodCIDRs(node2)[0]))
 		Expect(cep.NodeSubnets).ShouldNot(ContainElements(nodeutil.GetIP(node2)))
+
+		By("changing node3 to edge node")
+		node3.Labels = edgeLabels
+		Expect(k8sClient.Update(context.Background(), &node3)).To(Succeed())
+		time.Sleep(time.Second)
+
+		cep = getConnectorEndpoint()
+		Expect(cep.Subnets).ShouldNot(ContainElements(nodeutil.GetPodCIDRs(node3)[0]))
+		Expect(cep.NodeSubnets).ShouldNot(ContainElements(nodeutil.GetIP(node3)))
 	})
 
 	It("should synchronize connector configmap according to endpoints in store", func() {
