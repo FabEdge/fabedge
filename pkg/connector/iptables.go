@@ -75,24 +75,19 @@ func (m *Manager) ensureForwardIPTablesRules() (err error) {
 	return nil
 }
 
-func (m *Manager) ensureSNatIPTablesRules() (err error) {
+func (m *Manager) ensureNatIPTablesRules() (err error) {
 	if err = m.ipt.AppendUnique(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting); err != nil {
 		return err
 	}
 
 	for _, c := range m.connections {
 		for _, addr := range c.LocalAddress {
-			existRule1, err := m.ipt.Exists(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeIP, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "SNAT", "--to", addr)
+			existRule, err := m.ipt.Exists(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr)
 			if err != nil {
 				return err
 			}
 
-			existRule2, err := m.ipt.Exists(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr)
-			if err != nil {
-				return err
-			}
-
-			if !existRule1 || !existRule2 {
+			if !existRule {
 				// TODO: fixed connector.IP update issue.
 				// now c.LocalAddress contains only one connector.IP,
 				// and if there are more than one connector.IP in c.LocalAddress,
@@ -100,16 +95,17 @@ func (m *Manager) ensureSNatIPTablesRules() (err error) {
 				if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
 					return err
 				}
-
-				if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeIP, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "SNAT", "--to", addr); err != nil {
-					return err
-				}
-
-				if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr); err != nil {
-					return err
-				}
 			}
+
+			if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr); err != nil {
+				return err
+			}
+
 		}
+	}
+
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeIP, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+		return err
 	}
 
 	return nil
