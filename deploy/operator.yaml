@@ -22,6 +22,8 @@ spec:
           args:
             # agent所在的namespace，要跟connector, operator在同一namespace
             - --namespace=fabedge
+            # 根据边缘节点的标签配置,可以配置多个, 比如: key1,key2=,key3=value3
+            - --edge-labels=node-role.kubernetes.io/edge
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
             # 边缘节点的Pod所在的网段, 当CNI是calico时需要配置，该网段不可与connector-subnets里的网段重叠
