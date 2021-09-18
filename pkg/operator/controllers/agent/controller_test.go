@@ -16,13 +16,11 @@ package agent
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -32,7 +30,6 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
@@ -58,6 +55,7 @@ var _ = Describe("AgentController", func() {
 		cancel      context.CancelFunc
 		certManager certutil.Manager
 		newNode     = newNodePodCIDRsInAnnotations
+		edgeNameSet *types.SafeStringSet
 
 		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 	)
@@ -97,10 +95,12 @@ var _ = Describe("AgentController", func() {
 			GetConnectorEndpoint: getConnectorEndpoint,
 		}
 
+		edgeNameSet = types.NewSafeStringSet()
 		reconciler := reconcile.Reconciler(&agentController{
-			handlers: initHandlers(cnf, k8sClient, mgr.GetLogger()),
-			client:   mgr.GetClient(),
-			log:      mgr.GetLogger().WithName(controllerName),
+			handlers:    initHandlers(cnf, k8sClient, mgr.GetLogger()),
+			client:      mgr.GetClient(),
+			edgeNameSet: edgeNameSet,
+			log:         mgr.GetLogger().WithName(controllerName),
 		})
 		reconciler, requests = testutil.WrapReconcile(reconciler)
 		c, err := controller.New(
@@ -115,13 +115,12 @@ var _ = Describe("AgentController", func() {
 		err = c.Watch(
 			&source.Kind{Type: &corev1.Node{}},
 			&handler.EnqueueRequestForObject{},
-			predicates.EdgeNodePredicate(),
 		)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		go func() {
 			defer GinkgoRecover()
-			Expect(mgr.Start(ctx)).NotTo(HaveOccurred())
+			Expect(mgr.Start(ctx)).To(Succeed())
 		}()
 	})
 
@@ -134,7 +133,7 @@ var _ = Describe("AgentController", func() {
 		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
 	})
 
-	It("skip reconciling if this node has no ip", func() {
+	It("skip reconciling if a node has no ip", func() {
 		nodeName := getNodeName()
 		node := newNode(nodeName, "", "")
 
@@ -150,7 +149,24 @@ var _ = Describe("AgentController", func() {
 		Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
 	})
 
-	When("a node is created", func() {
+	It("skip reconciling if a node has no edge labels", func() {
+		nodeName := getNodeName()
+		node := newNode(nodeName, "10.40.20.181", "")
+		node.Labels = nil
+
+		err := k8sClient.Create(context.Background(), &node)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		// create event
+		Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+
+		node = corev1.Node{}
+		err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
+	})
+
+	When("an edge node event comes", func() {
 		var nodeName string
 		var node corev1.Node
 
@@ -161,6 +177,10 @@ var _ = Describe("AgentController", func() {
 			err := k8sClient.Create(context.Background(), &node)
 			Expect(err).ShouldNot(HaveOccurred())
 			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+		})
+
+		It("should record node name in edgeNameSet", func() {
+			Expect(edgeNameSet.Contains(nodeName)).Should(BeTrue())
 		})
 
 		It("should ensure a agent pod for each node", func() {
@@ -181,59 +201,25 @@ var _ = Describe("AgentController", func() {
 			configName := getAgentConfigMapName(nodeName)
 			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: configName}, &cm)).Should(Succeed())
 		})
+
+		It("should execute Undo method of handlers if this node is not found", func() {
+			Expect(k8sClient.Delete(context.Background(), &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+			testutil.DrainChan(requests, time.Second)
+
+			Expect(edgeNameSet.Contains(node.Name)).Should(BeFalse())
+		})
+
+		It("should execute Undo method of handlers if this node has no edge labels", func() {
+			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
+
+			node.Labels = nil
+			Expect(k8sClient.Update(context.Background(), &node)).Should(Succeed())
+			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+			testutil.DrainChan(requests, timeout)
+
+			Expect(edgeNameSet.Contains(node.Name)).Should(BeFalse())
+		})
 	})
+
 })
-
-func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
-	node := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"node-role.kubernetes.io/edge": "",
-			},
-		},
-		Spec: corev1.NodeSpec{
-			PodCIDR:  "2.2.2.2/26",
-			PodCIDRs: []string{"2.2.2.2/26"},
-		},
-		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
-		},
-	}
-
-	if subnets != "" {
-		node.Annotations = map[string]string{
-			constants.KeyPodSubnets: subnets,
-		}
-	}
-
-	return node
-}
-
-func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
-	return corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"node-role.kubernetes.io/edge": "",
-			},
-		},
-		Spec: corev1.NodeSpec{
-			PodCIDR:  subnets,
-			PodCIDRs: strings.Split(subnets, ","),
-		},
-		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
-		},
-	}
-}

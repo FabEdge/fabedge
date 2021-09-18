@@ -15,6 +15,7 @@
 package proxy
 
 import (
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"path/filepath"
 	"testing"
 
@@ -40,6 +41,7 @@ func TestProxy(t *testing.T) {
 }
 
 var _ = BeforeSuite(func(done Done) {
+	nodeutil.SetEdgeNodeLabels(map[string]string{"edge": ""})
 	testutil.SetupLogger()
 
 	By("starting test environment")

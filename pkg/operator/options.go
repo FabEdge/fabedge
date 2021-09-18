@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jjeffery/stringset"
@@ -30,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
@@ -45,12 +47,12 @@ import (
 
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
-type recordSubnetFunc func(ipNet net.IPNet)
 type Options struct {
 	Namespace        string
 	EdgePodCIDR      string
-	AllocatePodCIDR  bool
 	EndpointIDFormat string
+	EdgeLabels       []string
+	CNIType          string
 
 	CASecretName string
 	Agent        agentctl.Config
@@ -59,17 +61,17 @@ type Options struct {
 
 	ManagerOpts manager.Options
 
-	Store        storepkg.Interface
-	RecordSubnet recordSubnetFunc
-	NewEndpoint  types.NewEndpointFunc
-	Manager      manager.Manager
+	Store       storepkg.Interface
+	NewEndpoint types.NewEndpointFunc
+	Manager     manager.Manager
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
-	flag.BoolVar(&opts.AllocatePodCIDR, "allocate-pod-cidr", true, "Determine whether allocate podCIDRs to edge node")
-	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node")
+	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
+	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
+	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
 	flag.StringVar(&opts.Connector.Endpoint.Name, "connector-name", "cloud-connector", "The name of connector, only letters, number and '-' are allowed, the initial must be a letter.")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
@@ -84,9 +86,10 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", true, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", true, "Determine if perform outbound NAT from edge pods to outside of the cluster")
+
+	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.Agent.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
 	flag.Int64Var(&opts.Agent.CertValidPeriod, "cert-validity-period", 365, "The validity period for agent's cert")
-	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 
 	flag.StringVar(&opts.Proxy.IPVSScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 
@@ -98,17 +101,34 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 }
 
 func (opts *Options) Complete() (err error) {
-	if opts.AllocatePodCIDR {
+	opts.CNIType = strings.TrimSpace(opts.CNIType)
+
+	parsedEdgeLabels := make(map[string]string)
+	for _, label := range opts.EdgeLabels {
+		parts := strings.Split(label, "=")
+		switch len(parts) {
+		case 1:
+			parsedEdgeLabels[parts[0]] = ""
+		case 2:
+			if parts[0] == "" {
+				return fmt.Errorf("label's key must not be empty")
+			}
+			parsedEdgeLabels[parts[0]] = parts[1]
+		default:
+			return fmt.Errorf("wrong edge label format: %s", strings.Join(parts, "="))
+		}
+	}
+	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
+
+	if opts.ShouldAllocatePodCIDR() {
 		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
 		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
 		if err != nil {
 			log.Error(err, "failed to create allocator")
 			return err
 		}
-		opts.RecordSubnet = opts.Agent.Allocator.Record
 	} else {
 		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRs)
-		opts.RecordSubnet = func(ipNet net.IPNet) {}
 	}
 
 	cfg, err := config.GetConfig()
@@ -148,11 +168,12 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.Manager = opts.Manager
 	opts.Agent.Store = opts.Store
 	opts.Agent.NewEndpoint = opts.NewEndpoint
+	opts.Agent.EnableFlannelMocking = opts.CNIType == constants.CNIFlannel
 
 	opts.Connector.ConfigMapKey.Namespace = opts.Namespace
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
-	opts.Connector.CollectPodCIDRs = !opts.AllocatePodCIDR
+	opts.Connector.CollectPodCIDRs = !opts.ShouldAllocatePodCIDR()
 	opts.Connector.Endpoint.ID = types.GetID(opts.EndpointIDFormat, opts.Connector.Endpoint.Name)
 
 	opts.Proxy.AgentNamespace = opts.Namespace
@@ -162,11 +183,13 @@ func (opts *Options) Complete() (err error) {
 	return nil
 }
 
-func (opts *Options) Validate() (err error) {
-	if opts.AllocatePodCIDR {
-		if _, _, err := net.ParseCIDR(opts.EdgePodCIDR); err != nil {
-			return err
-		}
+func (opts Options) Validate() (err error) {
+	if opts.CNIType != constants.CNICalico && opts.CNIType != constants.CNIFlannel {
+		return fmt.Errorf("unknown CNI type: %s", opts.CNIType)
+	}
+
+	if len(opts.EdgeLabels) == 0 {
+		return fmt.Errorf("edge labels is needed")
 	}
 
 	if !dns1123Reg.MatchString(opts.Connector.Endpoint.Name) {
@@ -183,7 +206,21 @@ func (opts *Options) Validate() (err error) {
 
 	for _, subnet := range opts.Connector.ProvidedSubnets {
 		if _, _, err := net.ParseCIDR(subnet); err != nil {
-			return err
+			return fmt.Errorf("invalid subnet: %s. %w", subnet, err)
+		}
+	}
+
+	if opts.ShouldAllocatePodCIDR() {
+		ip, subnet, err := net.ParseCIDR(opts.EdgePodCIDR)
+		if err != nil {
+			return fmt.Errorf("invalid edge pod cidr: %s. %w", opts.EdgePodCIDR, err)
+		}
+
+		for _, s := range opts.Connector.ProvidedSubnets {
+			ip2, subnet2, _ := net.ParseCIDR(s)
+			if subnet.Contains(ip2) || subnet2.Contains(ip) {
+				return fmt.Errorf("EdgePodCIDR is overlaped with connector's subnets")
+			}
 		}
 	}
 
@@ -301,7 +338,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 	store := opts.Store
 
 	var nodes corev1.NodeList
-	err := cli.List(ctx, &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
+	err := cli.List(ctx, &nodes, client.MatchingLabels(nodeutil.GetEdgeNodeLabels()))
 	if err != nil {
 		return err
 	}
@@ -317,6 +354,10 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 		})
 	}
 
+	if !opts.ShouldAllocatePodCIDR() {
+		return nil
+	}
+
 	for _, node := range nodes.Items {
 		ep := opts.NewEndpoint(node)
 		if !ep.IsValid() {
@@ -330,11 +371,15 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 				log.Error(err, "failed to parse subnet of node", "nodeName", node.Name, "node", node)
 				continue
 			}
-			opts.RecordSubnet(*subnet)
+			opts.Agent.Allocator.Record(*subnet)
 		}
 
 		store.SaveEndpoint(ep)
 	}
 
 	return nil
+}
+
+func (opts Options) ShouldAllocatePodCIDR() bool {
+	return opts.CNIType == constants.CNICalico
 }

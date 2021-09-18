@@ -68,7 +68,7 @@ else
 endif
 
 e2e-test:
-	go test -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
+	go test ${LDFLAGS} -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:

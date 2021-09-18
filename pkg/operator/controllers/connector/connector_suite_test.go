@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
@@ -31,6 +32,9 @@ var k8sClient client.Client
 var testEnv *envtest.Environment
 var getNodeName = testutil.GenerateGetNameFunc("node")
 var getEdgeName = testutil.GenerateGetNameFunc("edge-node")
+var edgeLabels = map[string]string{
+	"edge": "",
+}
 
 func TestConnector(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -39,6 +43,7 @@ func TestConnector(t *testing.T) {
 
 var _ = BeforeSuite(func(done Done) {
 	testutil.SetupLogger()
+	nodeutil.SetEdgeNodeLabels(edgeLabels)
 
 	By("starting test environment")
 	var err error
