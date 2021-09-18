@@ -22,7 +22,9 @@ spec:
           args:
             # agent所在的namespace，要跟connector, operator在同一namespace
             - --namespace=fabedge
-            # 边缘节点的Pod所在的网段，根据环境配置
+            # 根据所采用的CNI配置, 目前仅支持calico, flannel
+            - --cni-type=calico
+            # 边缘节点的Pod所在的网段, 当CNI是calico时需要配置，该网段不可与connector-subnets里的网段重叠
             - --edge-pod-cidr=10.10.0.0/16
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
@@ -35,6 +37,7 @@ spec:
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
             - --agent-masq-outgoing=false
+            # 建议在边缘节点不能运行kube-proxy时启用
             - --agent-enable-proxy=true
             - -v=5
       hostNetwork: true
@@ -44,5 +47,6 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
+                  # 根据选择的边缘系统来配置，避免把operator部署到边缘节点
                   - key: node-role.kubernetes.io/edge
                     operator: DoesNotExist
