@@ -41,6 +41,8 @@ spec:
             - --agent-masq-outgoing=false
             # 建议在边缘节点不能运行kube-proxy时启用
             - --agent-enable-proxy=true
+            # 开启CNI plug-in的相关特性(为边缘节点安装CNI plug-ins, 并维护FabEdgeNatOutgoing iptables rule)
+            - --add-on=true
             - -v=5
       hostNetwork: true
       serviceAccountName: fabedge-operator
