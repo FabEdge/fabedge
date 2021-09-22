@@ -50,7 +50,8 @@ type Config struct {
 	XFRMInterfaceName string
 	XFRMInterfaceID   uint
 
-	CNI CNI
+	AddOn bool
+	CNI   CNI
 
 	EnableProxy bool
 }
@@ -63,6 +64,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.DebounceDuration, "debounce", time.Second, "The debounce delay to avoid too much network reconfiguring")
 	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
+	fs.BoolVar(&cfg.AddOn, "add-on", true, "enable CNI plug-in features")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
 	fs.StringVar(&cfg.CNI.ConfDir, "cni-conf-path", "/etc/cni/net.d", "cni version")
 	fs.StringVar(&cfg.CNI.NetworkName, "cni-network-name", "fabedge", "the name of network")
