@@ -33,7 +33,7 @@ import (
 
 var _ Handler = &agentPodHandler{}
 
-const installCNIScript = `set -ex
+const installCNIPluginsScript = `set -ex
 find /etc/cni/net.d/ -type f -not -name fabedge.conf -exec rm {} \;
 cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin
 `
@@ -48,6 +48,7 @@ type agentPodHandler struct {
 	useXfrm         bool
 	masqOutgoing    bool
 	enableProxy     bool
+	addOn           bool
 
 	client client.Client
 	log    logr.Logger
@@ -116,34 +117,6 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Operator: corev1.TolerationOpExists,
 				},
 			},
-			InitContainers: []corev1.Container{
-				{
-					Name:            "install-cni",
-					Image:           handler.agentImage,
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					Command: []string{
-						"/bin/sh",
-					},
-					Args: []string{
-						"-c",
-						installCNIScript,
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "cni-bin",
-							MountPath: "/opt/cni/bin",
-						},
-						{
-							Name:      "cni-cache",
-							MountPath: "/var/lib/cni/cache",
-						},
-						{
-							Name:      "cni-config",
-							MountPath: "/etc/cni/net.d",
-						},
-					},
-				},
-			},
 			Containers: []corev1.Container{
 				{
 					Name:            "agent",
@@ -157,6 +130,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						"--local-cert",
 						"tls.crt",
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
+						fmt.Sprintf("--add-on=%t", handler.addOn),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
@@ -313,8 +287,42 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 		},
 	}
 
+	if handler.addOn {
+		container := handler.buildInstallCNIPluginsContainer()
+		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
+	}
+
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)
 	return pod
+}
+
+func (handler *agentPodHandler) buildInstallCNIPluginsContainer() corev1.Container {
+	return corev1.Container{
+		Name:            "install-cni-plugins",
+		Image:           handler.agentImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"/bin/sh",
+		},
+		Args: []string{
+			"-c",
+			installCNIPluginsScript,
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "cni-bin",
+				MountPath: "/opt/cni/bin",
+			},
+			{
+				Name:      "cni-cache",
+				MountPath: "/var/lib/cni/cache",
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
+			},
+		},
+	}
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {
