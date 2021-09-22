@@ -86,6 +86,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", true, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", true, "Determine if perform outbound NAT from edge pods to outside of the cluster")
+	flag.BoolVar(&opts.Agent.AddOn, "add-on", true, "enable CNI plug-in features")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.Agent.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
