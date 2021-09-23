@@ -52,7 +52,7 @@ type Node struct {
 type Config struct {
 	Endpoint        types.Endpoint
 	ProvidedSubnets []string
-	CollectPodCIDRs bool
+	GetPodCIDRs     types.PodCIDRsGetter
 
 	ConfigMapKey client.ObjectKey
 	SyncInterval time.Duration
@@ -221,14 +221,10 @@ func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Requ
 }
 
 func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
-	ip, podCIDRs := nodeutil.GetIP(node), nodeutil.GetPodCIDRs(node)
+	ip, podCIDRs := nodeutil.GetIP(node), ctl.GetPodCIDRs(node)
 	if len(ip) == 0 || len(podCIDRs) == 0 {
 		ctl.log.V(5).Info("this node has no IP or PodCIDRs, skip adding it", "nodeName", node.Name)
 		return
-	}
-
-	if !ctl.CollectPodCIDRs {
-		podCIDRs = nil
 	}
 
 	ctl.mux.Lock()
