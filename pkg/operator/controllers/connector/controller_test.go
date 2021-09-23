@@ -100,8 +100,8 @@ var _ = Describe("Controller", func() {
 				Name:            "cloud-connector",
 				PublicAddresses: []string{"192.168.1.1"},
 			},
+			GetPodCIDRs:     nodeutil.GetPodCIDRs,
 			ProvidedSubnets: []string{"10.10.10.1/26"},
-			CollectPodCIDRs: true,
 			ConfigMapKey: client.ObjectKey{
 				Name:      "connector-config",
 				Namespace: namespace,

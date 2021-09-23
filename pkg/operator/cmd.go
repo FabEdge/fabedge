@@ -23,12 +23,14 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/about"
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
 
 var log = klogr.New().WithName("agent")
 
 func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
+	_ = calicoapi.AddToScheme(scheme.Scheme)
 }
 
 func Execute() error {
