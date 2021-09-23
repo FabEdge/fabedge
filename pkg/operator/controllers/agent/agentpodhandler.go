@@ -48,7 +48,7 @@ type agentPodHandler struct {
 	useXfrm         bool
 	masqOutgoing    bool
 	enableProxy     bool
-	addOn           bool
+	enableIPAM      bool
 
 	client client.Client
 	log    logr.Logger
@@ -130,7 +130,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						"--local-cert",
 						"tls.crt",
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
-						fmt.Sprintf("--add-on=%t", handler.addOn),
+						fmt.Sprintf("--enable-ipam=%t", handler.enableIPAM),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
@@ -147,10 +147,6 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						{
 							Name:      "var-run",
 							MountPath: "/var/run/",
-						},
-						{
-							Name:      "cni-config",
-							MountPath: "/etc/cni/net.d",
 						},
 						{
 							Name:      "lib-modules",
@@ -196,15 +192,6 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name: "var-run",
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
-					},
-				},
-				{
-					Name: "cni-config",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/cni/net.d",
-							Type: &hostPathDirectoryOrCreate,
-						},
 					},
 				},
 				{
@@ -265,31 +252,50 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						},
 					},
 				},
-				{
-					Name: "cni-bin",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/opt/cni/bin",
-							Type: &hostPathDirectoryOrCreate,
-						},
-					},
-				},
-				{
-					Name: "cni-cache",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/var/lib/cni/cache",
-							Type: &hostPathDirectoryOrCreate,
-						},
-					},
-				},
 			},
 		},
 	}
 
-	if handler.addOn {
+	if handler.enableIPAM {
 		container := handler.buildInstallCNIPluginsContainer()
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
+
+		cniVolumes := []corev1.Volume{
+			{
+				Name: "cni-config",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/etc/cni/net.d",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+			{
+				Name: "cni-bin",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/cni/bin",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+			{
+				Name: "cni-cache",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/var/lib/cni/cache",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+		}
+		pod.Spec.Volumes = append(pod.Spec.Volumes, cniVolumes...)
+
+		volMount := corev1.VolumeMount{
+			Name:      "cni-config",
+			MountPath: "/etc/cni/net.d",
+		}
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, volMount)
 	}
 
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)

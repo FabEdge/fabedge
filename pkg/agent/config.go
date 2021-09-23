@@ -50,8 +50,8 @@ type Config struct {
 	XFRMInterfaceName string
 	XFRMInterfaceID   uint
 
-	AddOn bool
-	CNI   CNI
+	EnableIPAM bool
+	CNI        CNI
 
 	EnableProxy bool
 }
@@ -64,7 +64,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.DebounceDuration, "debounce", time.Second, "The debounce delay to avoid too much network reconfiguring")
 	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
-	fs.BoolVar(&cfg.AddOn, "add-on", true, "enable CNI plug-in features")
+	fs.BoolVar(&cfg.EnableIPAM, "enable-ipam", true, "enable the IPAM feature")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
 	fs.StringVar(&cfg.CNI.ConfDir, "cni-conf-path", "/etc/cni/net.d", "cni version")
 	fs.StringVar(&cfg.CNI.NetworkName, "cni-network-name", "fabedge", "the name of network")
@@ -99,6 +99,8 @@ func (cfg Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 	cfg.EnableProxy = canUseProxy && cfg.EnableProxy
+
+	cfg.MASQOutgoing = cfg.EnableIPAM && cfg.MASQOutgoing
 
 	supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
 	if err != nil {

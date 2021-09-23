@@ -46,15 +46,17 @@ func Execute() error {
 		return err
 	}
 
-	if err := os.MkdirAll(cfg.CNI.ConfDir, 0777); err != nil {
-		log.Error(err, "failed to create cni conf dir")
-		return err
-	}
-
 	manager, err := cfg.Manager()
 	if err != nil {
 		log.Error(err, "failed to create manager")
 		return err
+	}
+
+	if manager.EnableIPAM {
+		if err := os.MkdirAll(cfg.CNI.ConfDir, 0777); err != nil {
+			log.Error(err, "failed to create cni conf dir")
+			return err
+		}
 	}
 
 	go manager.start()
