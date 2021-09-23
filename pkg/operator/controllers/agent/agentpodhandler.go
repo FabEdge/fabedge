@@ -33,11 +33,6 @@ import (
 
 var _ Handler = &agentPodHandler{}
 
-const installCNIPluginsScript = `set -ex
-find /etc/cni/net.d/ -type f -not -name fabedge.conf -exec rm {} \;
-cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin
-`
-
 type agentPodHandler struct {
 	namespace string
 
@@ -257,7 +252,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 	}
 
 	if handler.enableIPAM {
-		container := handler.buildInstallCNIPluginsContainer()
+		container := handler.buildInitEnvContainer()
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
 
 		cniVolumes := []corev1.Volume{
@@ -302,17 +297,13 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 	return pod
 }
 
-func (handler *agentPodHandler) buildInstallCNIPluginsContainer() corev1.Container {
+func (handler *agentPodHandler) buildInitEnvContainer() corev1.Container {
 	return corev1.Container{
-		Name:            "install-cni-plugins",
+		Name:            "initialize-environment",
 		Image:           handler.agentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{
-			"/bin/sh",
-		},
-		Args: []string{
-			"-c",
-			installCNIPluginsScript,
+			"init_env.sh",
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
