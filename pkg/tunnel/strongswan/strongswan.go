@@ -66,7 +66,7 @@ func New(opts ...option) (*StrongSwanManager, error) {
 	manager := &StrongSwanManager{
 		socketPath:  "/var/run/charon.vici",
 		certsPath:   filepath.Join("/etc/ipsec.d", "certs"),
-		startAction: "trap",
+		startAction: "start",
 	}
 
 	for _, opt := range opts {
