@@ -109,22 +109,22 @@ func (m *Manager) mainNetwork() error {
 	}
 
 	m.log.V(3).Info("synchronize tunnels")
-	if err = m.ensureConnections(conf); err != nil {
+	if err := m.ensureConnections(conf); err != nil {
 		return err
 	}
 
 	m.log.V(3).Info("generate cni config file")
-	if err = m.generateCNIConfig(conf); err != nil {
+	if err := m.generateCNIConfig(conf); err != nil {
 		return err
 	}
 
 	m.log.V(3).Info("keep iptables rules")
-	if err = m.ensureIPTablesRules(conf); err != nil {
+	if err := m.ensureIPTablesRules(conf); err != nil {
 		return err
 	}
 
 	m.log.V(3).Info("maintain dummy/xfrm interface and routes")
-	return m.ensureInterfacesAndRoutes()
+	return m.ensureInterfacesAndRoutes(conf)
 }
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
@@ -308,7 +308,7 @@ func (m *Manager) sync() {
 	}
 }
 
-func (m *Manager) ensureInterfacesAndRoutes() error {
+func (m *Manager) ensureInterfacesAndRoutes(conf netconf.NetworkConf) error {
 	if m.EnableProxy {
 		m.log.V(3).Info("ensure that the dummy interface exists")
 		if _, err := m.netLink.EnsureDummyDevice(m.DummyInterfaceName); err != nil {
@@ -349,7 +349,19 @@ func (m *Manager) ensureInterfacesAndRoutes() error {
 				return err
 			}
 		}
+	} else {
+		log := m.log.V(5).WithValues("conf", conf)
+		log.V(3).Info("to sync routes")
+
+		if err := addRoutesToAllPeers(conf); err != nil {
+			return err
+		}
+
+		if err := delStaleRoutes(conf); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }
 
