@@ -18,8 +18,9 @@ do
 done <<< "`kubectl cluster-info dump | awk '(/cluster-cidr/ || /cluster-name/ || /service-cluster-ip-range/) && !a[$0]++{print}'`"
 
 
-cluster_dns=$(kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}" | awk '/bind/ && !a[$0]++{print $2}')
+cluster_dns=$(kubectl get cm nodelocaldns -n kube-system -o jsonpath="{.data.Corefile}" 2> /dev/null | awk '/bind/ && !a[$0]++{print $2}')
 
-echo "edgecore clusterDNS   : $cluster_dns"
-echo "edgecore clusterDomain: $cluster_name"
-echo "helm connectorSubnets : $cluster_cidr,$service_cluster_ip_rang"
+echo "edgecore clusterDNS                             : $cluster_dns"
+echo "edgecore clusterDomain                          : $cluster_name"
+echo "helm connectorSubnets(cluster-cidr)             : $cluster_cidr"
+echo "helm connectorSubnets(service-cluster-ip-range) : $service_cluster_ip_rang"

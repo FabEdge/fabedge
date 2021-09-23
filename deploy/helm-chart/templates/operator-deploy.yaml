@@ -22,9 +22,11 @@ spec:
           args:
             - --namespace={{ .Release.Namespace }}
             - --edge-pod-cidr={{ .Values.operator.edgePodCIDR }}
+            - --cni-type={{ .Values.cniType }}
             - --agent-image={{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
             - --agent-strongswan-image={{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}
             - --connector-config=connector-config
+            - --edge-labels={{ .Values.operator.edgeLabels }}
             - --connector-public-addresses={{ .Values.operator.connectorPublicAddresses }}
             - --connector-subnets={{ .Values.operator.connectorSubnets }}
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
