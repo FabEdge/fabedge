@@ -77,7 +77,7 @@ func (m *Manager) start() {
 		// this make `go vet` shut up
 		lastCancel = cancel
 
-		if m.MASQOutgoing && m.AddOn {
+		if m.MASQOutgoing {
 			go retryForever(ctx, m.syncIPSetPeerCIDR, func(n uint, err error) {
 				m.log.Error(err, "failed to sync ipset FABEDGE-PEER-CIDR", "retryNum", n)
 			})
@@ -113,9 +113,11 @@ func (m *Manager) mainNetwork() error {
 		return err
 	}
 
-	m.log.V(3).Info("generate cni config file")
-	if err := m.generateCNIConfig(conf); err != nil {
-		return err
+	if m.EnableIPAM {
+		m.log.V(3).Info("generate cni config file")
+		if err := m.generateCNIConfig(conf); err != nil {
+			return err
+		}
 	}
 
 	m.log.V(3).Info("keep iptables rules")
@@ -213,7 +215,7 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 		return err
 	}
 
-	if m.MASQOutgoing && m.AddOn {
+	if m.MASQOutgoing {
 		m.log.V(3).Info("configure outgoing NAT iptables rules")
 		iFace, err := m.netLink.GetDefaultIFace()
 		if err != nil {
