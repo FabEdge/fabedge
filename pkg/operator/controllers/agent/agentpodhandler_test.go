@@ -49,7 +49,7 @@ var _ = Describe("AgentPodHandler", func() {
 			logLevel:        3,
 			client:          k8sClient,
 			log:             klogr.New().WithName("agentPodHandler"),
-			addOn:           true,
+			enableIPAM:      true,
 		}
 
 		nodeName := getNodeName()
@@ -85,15 +85,6 @@ var _ = Describe("AgentPodHandler", func() {
 				Name: "var-run",
 				VolumeSource: corev1.VolumeSource{
 					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			},
-			{
-				Name: "cni-config",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/etc/cni/net.d",
-						Type: &hostPathDirectoryOrCreate,
-					},
 				},
 			},
 			{
@@ -155,6 +146,15 @@ var _ = Describe("AgentPodHandler", func() {
 				},
 			},
 			{
+				Name: "cni-config",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/etc/cni/net.d",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+			{
 				Name: "cni-bin",
 				VolumeSource: corev1.VolumeSource{
 					HostPath: &corev1.HostPathVolumeSource{
@@ -180,30 +180,26 @@ var _ = Describe("AgentPodHandler", func() {
 		}))
 
 		// install-cni initContainer
-		if handler.addOn {
-			Expect(len(pod.Spec.InitContainers)).To(Equal(1))
+		Expect(len(pod.Spec.InitContainers)).To(Equal(1))
 
-			cniVolumeMounts := []corev1.VolumeMount{
-				{
-					Name:      "cni-bin",
-					MountPath: "/opt/cni/bin",
-				},
-				{
-					Name:      "cni-cache",
-					MountPath: "/var/lib/cni/cache",
-				},
-				{
-					Name:      "cni-config",
-					MountPath: "/etc/cni/net.d",
-				},
-			}
-			Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
-			Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni-plugins"))
-			Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("/bin/sh"))
-			Expect(pod.Spec.InitContainers[0].Args).To(ConsistOf("-c", installCNIPluginsScript))
-		} else {
-			Expect(len(pod.Spec.InitContainers)).To(Equal(0))
+		cniVolumeMounts := []corev1.VolumeMount{
+			{
+				Name:      "cni-bin",
+				MountPath: "/opt/cni/bin",
+			},
+			{
+				Name:      "cni-cache",
+				MountPath: "/var/lib/cni/cache",
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
+			},
 		}
+		Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
+		Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni-plugins"))
+		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("/bin/sh"))
+		Expect(pod.Spec.InitContainers[0].Args).To(ConsistOf("-c", installCNIPluginsScript))
 
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
@@ -220,7 +216,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"--local-cert",
 			"tls.crt",
 			"--masq-outgoing=false",
-			"--add-on=true",
+			"--enable-ipam=true",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",
@@ -238,10 +234,6 @@ var _ = Describe("AgentPodHandler", func() {
 				MountPath: "/var/run/",
 			},
 			{
-				Name:      "cni-config",
-				MountPath: "/etc/cni/net.d",
-			},
-			{
 				Name:      "lib-modules",
 				MountPath: "/lib/modules",
 				ReadOnly:  true,
@@ -250,6 +242,10 @@ var _ = Describe("AgentPodHandler", func() {
 				Name:      "ipsec-d",
 				MountPath: "/etc/ipsec.d",
 				ReadOnly:  true,
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
 			},
 		}
 		Expect(pod.Spec.Containers[0].VolumeMounts).To(Equal(agentVolumeMounts))
@@ -279,6 +275,127 @@ var _ = Describe("AgentPodHandler", func() {
 			},
 		}
 		Expect(pod.Spec.Containers[1].VolumeMounts).To(Equal(strongswanVolumeMounts))
+	})
+
+	It("agent pod should not contain CNI related volumes and initContainer when enableIPAM is false", func() {
+		handler.enableIPAM = false
+		agentPodName := getAgentPodName(node.Name)
+		pod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
+
+		Expect(len(pod.Spec.Volumes)).To(Equal(5))
+
+		hostPathDirectory := corev1.HostPathDirectory
+		defaultMode := int32(420)
+		edgeTunnelConfigMap := getAgentConfigMapName(node.Name)
+		volumes := []corev1.Volume{
+			{
+				Name: "var-run",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+			{
+				Name: "lib-modules",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/lib/modules",
+						Type: &hostPathDirectory,
+					},
+				},
+			},
+			{
+				Name: "netconf",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: edgeTunnelConfigMap,
+						},
+						DefaultMode: &defaultMode,
+					},
+				},
+			},
+			{
+				Name: "ipsec-d",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  getCertSecretName(node.Name),
+						DefaultMode: &defaultMode,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  secretutil.KeyCACert,
+								Path: "cacerts/ca.crt",
+							},
+							{
+								Key:  corev1.TLSCertKey,
+								Path: "certs/tls.crt",
+							},
+							{
+								Key:  corev1.TLSPrivateKeyKey,
+								Path: "private/tls.key",
+							},
+						},
+					},
+				},
+			},
+			{
+				Name: "ipsec-secrets",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  getCertSecretName(node.Name),
+						DefaultMode: &defaultMode,
+						Items: []corev1.KeyToPath{
+							{
+								Key:  secretutil.KeyIPSecSecretsFile,
+								Path: "ipsec.secrets",
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(pod.Spec.Volumes).To(Equal(volumes))
+
+		// install-cni initContainer
+		Expect(len(pod.Spec.InitContainers)).To(Equal(0))
+
+		// agent container
+		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
+		args := []string{
+			"--tunnels-conf",
+			agentConfigTunnelsFilepath,
+			"--services-conf",
+			agentConfigServicesFilepath,
+			"--local-cert",
+			"tls.crt",
+			"--masq-outgoing=false",
+			"--enable-ipam=false",
+			"--use-xfrm=false",
+			"--enable-proxy=false",
+			"-v=3",
+		}
+		Expect(pod.Spec.Containers[0].Args).To(Equal(args))
+
+		agentVolumeMounts := []corev1.VolumeMount{
+			{
+				Name:      "netconf",
+				MountPath: "/etc/fabedge",
+			},
+			{
+				Name:      "var-run",
+				MountPath: "/var/run/",
+			},
+			{
+				Name:      "lib-modules",
+				MountPath: "/lib/modules",
+				ReadOnly:  true,
+			},
+			{
+				Name:      "ipsec-d",
+				MountPath: "/etc/ipsec.d",
+				ReadOnly:  true,
+			},
+		}
+		Expect(pod.Spec.Containers[0].VolumeMounts).To(Equal(agentVolumeMounts))
 	})
 
 	It("should delete agent pod if is not matched to expected pod spec", func() {

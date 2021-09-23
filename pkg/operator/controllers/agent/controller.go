@@ -80,7 +80,7 @@ type Config struct {
 	EnableProxy          bool
 	EnableFlannelMocking bool
 
-	AddOn bool
+	EnableEdgeIPAM bool
 }
 
 func AddToManager(cnf Config) error {
@@ -167,7 +167,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		useXfrm:         cnf.UseXfrm,
 		masqOutgoing:    cnf.MasqOutgoing,
 		enableProxy:     cnf.EnableProxy,
-		addOn:           cnf.AddOn,
+		enableIPAM:      cnf.EnableEdgeIPAM,
 	})
 
 	return handlers
