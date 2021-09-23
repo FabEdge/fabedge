@@ -5,10 +5,7 @@ echo ""
 
 while read line
 do
-    if [[ "$line" =~ \"--cluster-cidr=.* ]];
-    then
-        cluster_cidr=`awk -F '["=]' '{print $3}' <<< $line`
-    elif [[ "$line" =~ \"--cluster-name=.* ]];
+    if [[ "$line" =~ \"--cluster-name=.* ]];
     then
         cluster_name=`awk -F '["=]' '{print $3}' <<< $line`
     elif [[ "$line" =~ \"--service-cluster-ip-range=.* ]];
