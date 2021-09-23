@@ -197,9 +197,8 @@ var _ = Describe("AgentPodHandler", func() {
 			},
 		}
 		Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
-		Expect(pod.Spec.InitContainers[0].Name).To(Equal("install-cni-plugins"))
-		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("/bin/sh"))
-		Expect(pod.Spec.InitContainers[0].Args).To(ConsistOf("-c", installCNIPluginsScript))
+		Expect(pod.Spec.InitContainers[0].Name).To(Equal("initialize-environment"))
+		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("init_env.sh"))
 
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
