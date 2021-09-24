@@ -103,10 +103,16 @@ func (m *Manager) Start() {
 			klog.Errorf("failed to get tunnel manager status: %s", err)
 			return
 		}
-		err = m.router.SyncRoutes(active, m.connections)
-		if err != nil {
-			klog.Errorf("failed to sync routes: %s", err)
-			return
+		if active {
+			if err = m.router.SyncRoutes(m.connections); err != nil {
+				klog.Errorf("failed to sync routes: %s", err)
+				return
+			}
+		} else {
+			if err = m.router.CleanRoutes(m.connections); err!= nil {
+				klog.Errorf("failed to clean routes: %s", err)
+				return
+			}
 		}
 
 		klog.Info("routes are synced")

@@ -28,7 +28,7 @@ const (
 )
 
 type Routing interface {
-	SyncRoutes(active bool, connections []tunnel.ConnConfig) error
+	SyncRoutes(connections []tunnel.ConnConfig) error
 	CleanRoutes(connections []tunnel.ConnConfig) error
 }
 

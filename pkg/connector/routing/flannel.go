@@ -25,22 +25,11 @@ func NewFlannelRouter() *FlannelRouter {
 	return &FlannelRouter{}
 }
 
-func (c *FlannelRouter) SyncRoutes(active bool, connections []tunnel.ConnConfig) error {
-	switch active {
-	case true:
-		if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
-			return err
-		}
-		if err := addAllEdgeRoutes(connections, TableStrongswan); err != nil {
-			return err
-		}
-	case false:
-		if err := c.CleanRoutes(connections); err != nil {
-			return err
-		}
+func (c *FlannelRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
+	if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
+		return err
 	}
-
-	return nil
+	return addAllEdgeRoutes(connections, TableStrongswan)
 }
 
 func (c *FlannelRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
