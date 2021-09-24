@@ -298,12 +298,16 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 }
 
 func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
+	privileged := true
 	return corev1.Container{
 		Name:            "environment-prepare",
 		Image:           handler.agentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{
 			"env_prepare.sh",
+		},
+		SecurityContext: &corev1.SecurityContext{
+			Privileged: &privileged,
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
