@@ -109,7 +109,7 @@ func (m *Manager) Start() {
 				return
 			}
 		} else {
-			if err = m.router.CleanRoutes(m.connections); err!= nil {
+			if err = m.router.CleanRoutes(m.connections); err != nil {
 				klog.Errorf("failed to clean routes: %s", err)
 				return
 			}
@@ -147,10 +147,10 @@ func (m *Manager) Start() {
 	}
 
 	ipsetTaskFn := func() {
-		if err := m.syncEdgeNodeIPSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeIP, err)
+		if err := m.syncEdgeNodeCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeCIDR, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgeNodeIP)
+			klog.Infof("ipset %s are synced", IPSetEdgeNodeCIDR)
 		}
 
 		if err := m.syncCloudPodCIDRSet(); err != nil {
