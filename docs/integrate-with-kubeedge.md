@@ -1,24 +1,18 @@
-# FabEdge部署
+# KubeEdge和FabEdge集成
 
-FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础上构建的容器网络方案，主要包含以下组件：
+[KubeEdge](https://github.com/kubeedge/kubeedge/blob/master/README_zh.md) 是一个开源的系统，可将本机容器化应用编排和管理扩展到边缘端设备。 它基于Kubernetes构建，为网络和应用程序提供核心基础架构支持，并在云端和边缘端部署应用，同步元数据。KubeEdge 还支持 MQTT 协议，允许开发人员编写客户逻辑，并在边缘端启用设备通信的资源约束。KubeEdge 包含云端和边缘端两部分。
 
-- **Operator**， 运行在云端任何节点，监听节点，服务等相关资源变化，自动为Agent维护配置，并管理Agent生命周期。
-- **Connector**，运行在云端选定节点，负责管理到边缘节点的隧道，路由等。
-- **Agent**，运行在每个边缘节点，负责管理本节点的隧道，负载均衡，路由等。
+[FabEdge](https://github.com/FabEdge/fabedge)是一个专门针对边缘计算场景设计的，基于kubernetes的容器网络方案，它符合CNI规范，可以无缝集成任何K8S环境，解决边缘计算场景下云边协同，边边协同，服务发现等难题。
 
+## 前置条件
 
-
-## 前提条件
-
-- [kubernetes (v1.19.7+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
+- [kubernetes (v1.19.0+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
 
 - [Kubeedge (v1.5.0+, 至少有一个边缘节点)](https://kubeedge.io/en/docs/)  
 
   也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个演示集群
 
-
-
-## 部署前准备
+## 环境准备
 
 1. 确保所有边缘节点能够访问云端connector
 
@@ -49,9 +43,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     helm connectorSubnets : 10.233.64.0/18,10.233.0.0/18
     ```
 
-
-
-## 部署步骤
+## 安装部署
 
 ### 配置calico
 
@@ -91,9 +83,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     fabedge        10.10.0.0/16     all()
     ```
 
-
-
-### 部署fabedge
+### 部署FabEdge
 
 1. 在云端选取一个运行connector的节点，并为节点做标记。以master为例，
 
@@ -109,7 +99,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
 2. 准备helm values.yaml文件
 
     ```shell
-    $ vim values.yaml
+    $ vi values.yaml
     operator:
       edgePodCIDR: 10.10.0.0/16   
       connectorPublicAddresses: 10.22.46.48   
@@ -142,8 +132,6 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.2.0.tgz
     ```
 
-
-
 ### 配置边缘节点
 
 1. 在**每个边缘节点**上修改edgecore配置文件
@@ -174,8 +162,6 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     $ systemctl restart edgecore
     ```
 
-
-
 ## 部署后验证
 
 1. 在**管理节点**上确认边缘节点就绪
@@ -197,8 +183,6 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     fabedge-agent-edge1                2/2     Running   0          22s
     fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
     ```
-
-
 
 ## 常见问题
 
