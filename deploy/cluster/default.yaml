@@ -31,3 +31,4 @@ cluster_primary_ip: "{% if keepalived_vip is defined %}{{ keepalived_vip }}{% el
 single_master_mode: "{% if groups[kubespray_master_group_name] | length > 1 %}false{% else %}true{% endif %}"
 
 iptables_persistent_enabled: true
+kube_network_plugin: calico
