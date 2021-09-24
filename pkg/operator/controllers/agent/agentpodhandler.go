@@ -252,7 +252,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 	}
 
 	if handler.enableIPAM {
-		container := handler.buildInitEnvContainer()
+		container := handler.buildEnvPrepareContainer()
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
 
 		cniVolumes := []corev1.Volume{
@@ -297,13 +297,13 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 	return pod
 }
 
-func (handler *agentPodHandler) buildInitEnvContainer() corev1.Container {
+func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
 	return corev1.Container{
-		Name:            "initialize-environment",
+		Name:            "environment-prepare",
 		Image:           handler.agentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{
-			"init_env.sh",
+			"env_prepare.sh",
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
