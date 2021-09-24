@@ -31,7 +31,7 @@ const (
 	ChainFabEdgeInput       = "FABEDGE-INPUT"
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	IPSetEdgeNodeIP         = "FABEDGE-EDGE-NODE-IP"
+	IPSetEdgeNodeCIDR       = "FABEDGE-EDGE-NODE-CIDR"
 	IPSetCloudPodCIDR       = "FABEDGE-CLOUD-POD-CIDR"
 	IPSetCloudNodeCIDR      = "FABEDGE-CLOUD-NODE-CIDR"
 	IPSetEdgePodCIDR        = "FABEDGE-EDGE-POD-CIDR"
@@ -104,7 +104,7 @@ func (m *Manager) ensureNatIPTablesRules() (err error) {
 		}
 	}
 
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeIP, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE"); err != nil {
 		return err
 	}
 
@@ -132,32 +132,39 @@ func (m *Manager) ensureInputIPTablesRules() (err error) {
 	return nil
 }
 
-func (m *Manager) syncEdgeNodeIPSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeIP, ipset.HashIP)
+func (m *Manager) syncEdgeNodeCIDRSet() error {
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeCIDR, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
-	allEdgeNodeIPs := m.getAllEdgeNodeIPs()
+	allEdgeNodeCIDRs := m.getAllEdgeNodeCIDRs()
 
-	oldEdgeNodeIPs, err := m.getOldEdgeNodeIPs()
+	oldEdgeNodeCIDRs, err := m.getOldEdgeNodeCIDRs()
 	if err != nil {
 		return err
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeIPs, oldEdgeNodeIPs, ipset.HashIP)
+	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeCIDRs, oldEdgeNodeCIDRs, ipset.HashNet)
 }
 
-func (m *Manager) getAllEdgeNodeIPs() sets.String {
-	ips := sets.NewString()
+func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
+	cidrs := sets.NewString()
 	for _, c := range m.connections {
-		ips.Insert(c.RemoteAddress...)
+		for _, subnet := range c.RemoteNodeSubnets {
+			// translate the IP address to CIDR is needed
+			// because FABEDGE-EDGE-NODE-CIDR ipset type is hash:net
+			if _, _, err := net.ParseCIDR(subnet); err != nil {
+				subnet = m.ipset.ConvertIPToCIDR(subnet)
+			}
+			cidrs.Insert(subnet)
+		}
 	}
-	return ips
+	return cidrs
 }
 
-func (m *Manager) getOldEdgeNodeIPs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetEdgeNodeIP, ipset.HashIP)
+func (m *Manager) getOldEdgeNodeCIDRs() (sets.String, error) {
+	return m.ipset.ListEntries(IPSetEdgeNodeCIDR, ipset.HashNet)
 }
 
 func (m *Manager) syncCloudPodCIDRSet() error {
