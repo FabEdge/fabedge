@@ -76,39 +76,22 @@ func (m *Manager) ensureForwardIPTablesRules() (err error) {
 }
 
 func (m *Manager) ensureNatIPTablesRules() (err error) {
+	if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+		return err
+	}
+
 	if err = m.ipt.AppendUnique(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting); err != nil {
 		return err
 	}
 
-	for _, c := range m.connections {
-		for _, addr := range c.LocalAddress {
-			existRule, err := m.ipt.Exists(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr)
-			if err != nil {
-				return err
-			}
-
-			if !existRule {
-				// TODO: fixed connector.IP update issue.
-				// now c.LocalAddress contains only one connector.IP,
-				// and if there are more than one connector.IP in c.LocalAddress,
-				// the processing logic here is going to be problematic
-				if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
-					return err
-				}
-			}
-
-			if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr); err != nil {
-				return err
-			}
-
-		}
-	}
-
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
 		return err
 	}
 
-	return nil
+	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
+	return m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE")
+
 }
 
 func (m *Manager) ensureInputIPTablesRules() (err error) {
