@@ -40,6 +40,7 @@ type connection struct {
 	RemoteAddrs []string               `vici:"remote_addrs,omitempty"`
 	Proposals   []string               `vici:"proposals,omitempty"`
 	Encap       string                 `vici:"encap"` //yes,no
+	DPDDelay    string                 `json:"dpd_delay,omitempty"`
 	LocalAuth   authConf               `vici:"local"`
 	RemoteAuth  authConf               `vici:"remote"`
 	Children    map[string]childSAConf `vici:"children"`
@@ -119,6 +120,7 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 	conn := connection{
 		LocalAddrs:  cnf.LocalAddress,
 		RemoteAddrs: cnf.RemoteAddress,
+		DPDDelay:    "5s",
 		IF_ID_IN:    m.interfaceID,
 		IF_ID_OUT:   m.interfaceID,
 		LocalAuth: authConf{
@@ -136,18 +138,21 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
 				DpdAction:   "restart",
+				CloseAction: "start",
 			},
 			fmt.Sprintf("%s-n2p", cnf.Name): {
 				LocalTS:     cnf.LocalNodeSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
 				DpdAction:   "restart",
+				CloseAction: "start",
 			},
 			fmt.Sprintf("%s-p2n", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
 				DpdAction:   "restart",
+				CloseAction: "start",
 			},
 		},
 	}
