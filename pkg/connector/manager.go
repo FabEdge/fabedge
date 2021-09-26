@@ -173,7 +173,9 @@ func (m *Manager) Start() {
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
-	m.clearFabedgeIptablesChains()
+	if err := m.clearFabedgeIptablesChains(); err != nil {
+		klog.Errorf("failed to clean iptables: %s", err)
+	}
 
 	// repeats regular tasks periodically
 	go runTasks(m.SyncPeriod, tasks...)
