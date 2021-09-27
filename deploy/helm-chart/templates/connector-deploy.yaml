@@ -59,12 +59,8 @@ spec:
           image: {{ .Values.connector.image.repository }}:{{ .Values.connector.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.connector.image.pullPolicy }}
           args:
-            - --tunnel-config=/etc/fabedge/tunnels.yaml
-            - --cert-file=/etc/ipsec.d/certs/tls.crt
-            - --vici-socket=/var/run/charon.vici
             - --cni-type={{ .Values.cniType }}
             - --sync-period={{ .Values.connector.syncPeriod }}
-            - --debounce-duration=5s
             - -v=5
           volumeMounts:
             - name: var-run

@@ -71,7 +71,7 @@ func (m *Manager) syncConnections() error {
 		return err
 	}
 
-	klog.V(5).Infof("current connections:%+v", m.connections)
+	klog.V(5).Infof("connections:%+v", m.connections)
 
 	oldNames, err := m.tm.ListConnNames()
 	if err != nil {

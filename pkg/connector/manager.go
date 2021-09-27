@@ -185,7 +185,7 @@ func (m *Manager) Start() {
 
 	about.DisplayVersion()
 	klog.Info("manager started")
-	klog.V(5).Infof("current config:%+v", m.Config)
+	klog.V(5).Infof("config:%+v", m.Config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)
