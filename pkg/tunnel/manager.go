@@ -17,6 +17,7 @@ package tunnel
 type Manager interface {
 	ListConnNames() ([]string, error)
 	LoadConn(conn ConnConfig) error
+	InitiateConn(name string) error
 	UnloadConn(name string) error
 	IsActive() (bool, error)
 }
