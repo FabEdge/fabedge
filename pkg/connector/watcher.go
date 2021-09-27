@@ -21,6 +21,10 @@ import (
 	"time"
 )
 
+func eventOpIs(ent fsnotify.Event, Op fsnotify.Op) bool {
+	return ent.Op&Op == Op
+}
+
 func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -44,12 +48,21 @@ func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 	for {
 		select {
 		case event, _ := <-watcher.Events:
-			klog.Infof("network configuration changed. event: %s", event)
-			debounced(func() {
-				for _, c := range callbacks {
-					c()
+			switch {
+			case eventOpIs(event, fsnotify.Remove):
+				klog.Infof("file removed, add it back. event: %s", event)
+				if err = watcher.Add(fileToWatch); err != nil {
+					klog.Errorf("failed to watch %s. Error: %s", fileToWatch, err)
 				}
-			})
+			default:
+				klog.Infof("file changed, start to sync. event: %s", event)
+				debounced(func() {
+					for _, c := range callbacks {
+						c()
+					}
+				})
+			}
+
 		case err, _ = <-watcher.Errors:
 			klog.Errorf("fsnotify has an error: %s", err)
 			// not encounter it so far, hope it can be recovered after some time
