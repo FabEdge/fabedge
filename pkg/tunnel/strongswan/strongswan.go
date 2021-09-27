@@ -17,6 +17,7 @@ package strongswan
 import (
 	"encoding/pem"
 	"fmt"
+	"github.com/jjeffery/stringset"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
@@ -67,7 +68,7 @@ func New(opts ...option) (*StrongSwanManager, error) {
 	manager := &StrongSwanManager{
 		socketPath:  "/var/run/charon.vici",
 		certsPath:   filepath.Join("/etc/ipsec.d", "certs"),
-		startAction: "start",
+		startAction: "trap",
 	}
 
 	for _, opt := range opts {
@@ -91,6 +92,82 @@ func (m StrongSwanManager) ListConnNames() ([]string, error) {
 	})
 
 	return names, err
+}
+
+func (m StrongSwanManager) listSANames(ike string) (stringset.Set, error) {
+	var names stringset.Set
+
+	request := vici.NewMessage()
+	if err := request.Set("ike", ike); err != nil {
+		return names, err
+	}
+
+	err := m.do(func(session *vici.Session) error {
+		ms, err := session.StreamedCommandRequest("list-sas", "list-sa", request)
+		if err != nil {
+			return err
+		}
+		for _, msg := range ms.Messages() {
+			if err = msg.Err(); err != nil {
+				return err
+			} else {
+				for _, name := range msg.Keys() {
+					children := msg.Get(name).(*vici.Message).Get("child-sas").(*vici.Message)
+					for _, child := range children.Keys() {
+						names.Add(children.Get(child).(*vici.Message).Get("name").(string))
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	return names, err
+}
+
+func (m StrongSwanManager) InitiateConn(name string) error {
+	childSANames, err := m.listSANames(name)
+	if err != nil {
+		return err
+	}
+
+	childNames := []string{
+		fmt.Sprintf("%s-p2p", name),
+		fmt.Sprintf("%s-p2n", name),
+		fmt.Sprintf("%s-n2p", name),
+	}
+
+	for _, child := range childNames {
+		if childSANames.Contains(child) {
+			continue
+		}
+		if err = m.initiateSA(&name, &child); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m StrongSwanManager) initiateSA(ike, child *string) error {
+	msg := vici.NewMessage()
+
+	if err := msg.Set("ike", *ike); err != nil {
+		return err
+	}
+
+	if child != nil {
+		if err := msg.Set("child", child); err != nil {
+			return err
+		}
+	}
+
+	return m.do(func(session *vici.Session) error {
+		if _, err := session.CommandRequest("initiate", msg); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (m StrongSwanManager) IsActive() (bool, error) {

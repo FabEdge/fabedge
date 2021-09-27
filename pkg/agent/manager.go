@@ -153,6 +153,11 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 		if err := m.tm.LoadConn(conn); err != nil {
 			return err
 		}
+
+		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
+		if err := m.tm.InitiateConn(peer.Name); err != nil {
+			return err
+		}
 	}
 
 	oldNames, err := m.tm.ListConnNames()
