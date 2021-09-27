@@ -63,12 +63,8 @@ spec:
           image: fabedge/connector
           imagePullPolicy: IfNotPresent
           args:
-            - --tunnel-config=/etc/fabedge/tunnels.yaml
-            - --cert-file=/etc/ipsec.d/certs/tls.crt
-            - --vici-socket=/var/run/charon.vici
             - --cni-type=calico
             - --sync-period=1m
-            - --debounce-duration=5s
             - -v=5
           volumeMounts:
             - name: var-run
