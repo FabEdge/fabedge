@@ -52,7 +52,7 @@
 1. 获取当前集群配置信息，供后面使用
 
      ```shell
-     $ curl http://116.62.127.76/get_cluster_info.sh | bash -
+     $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
      This may take some time. Please wait.
      clusterDNS: 
      clusterDomain: kubernetes
