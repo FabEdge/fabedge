@@ -36,11 +36,13 @@
 4. 获取当前集群配置信息，供后面使用
 
     ```shell
-    $ curl http://116.62.127.76/get_cluster_info.sh | bash -
+    $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
     This may take some time. Please wait.
-    edgecore clusterDNS   : 169.254.25.10
-    edgecore clusterDomain: root-cluster
-    helm connectorSubnets : 10.233.64.0/18,10.233.0.0/18
+
+    clusterDNS               : 169.254.25.10
+    clusterDomain            : root-cluster
+    cluster-cidr             : 10.233.64.0/18
+    service-cluster-ip-range : 10.233.0.0/18
     ```
 
 ## 安装部署
@@ -114,7 +116,7 @@
     >
     >   **connectorPublicAddresses**: 运行connector的节点的公网地址，确保能够被边缘节点访问。
     >
-    >   **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的connectorSubnets。
+    >   **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的service-cluster-ip-range和cluster-cidr。
     >
     >   **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
     
@@ -150,9 +152,9 @@
         cniConfDir: /etc/cni/net.d
         networkPluginName: cni
         networkPluginMTU: 1500
-        # get_cluster_info脚本输出的edgecore clusterDNS
+        # get_cluster_info脚本输出的clusterDNS
         clusterDNS: "169.254.25.10"
-        # get_cluster_info脚本输出的edgecore clusterDomain
+        # get_cluster_info脚本输出的clusterDomain
         clusterDomain: "root-cluster"
     ```
 
