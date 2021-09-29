@@ -20,8 +20,8 @@ spec:
           image: {{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
           args:
-            - --namespace={{ .Release.Namespace }}
             - --edge-pod-cidr={{ .Values.operator.edgePodCIDR }}
+            - --agent-enable-edge-ipam=true
             - --cni-type={{ .Values.cniType }}
             - --agent-image={{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
             - --agent-strongswan-image={{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}

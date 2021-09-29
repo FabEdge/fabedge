@@ -58,6 +58,14 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - crd.projectcalico.org
+    resources:
+      - ipamblocks
+    verbs:
+      - get
+      - list
+      - watch
 ---
 
 apiVersion: v1
