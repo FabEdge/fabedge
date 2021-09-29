@@ -117,6 +117,7 @@
       edgePodCIDR: 10.10.0.0/16   
       connectorPublicAddresses: 10.22.46.48 
       connectorSubnets: 10.233.0.0/18
+      enableProxy: true
     
     cniType: calico 
     ```
