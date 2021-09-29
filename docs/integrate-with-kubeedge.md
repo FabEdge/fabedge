@@ -6,11 +6,11 @@
 
 ## 前置条件
 
-- kubernetes (v1.19.7)
+- Kubernetes (v1.19.7)
 
-- calico（v3.16.5）
+- Calico（v3.16.5）
 
-- Kubeedge (v1.8.0) 
+- KubeEdge (v1.8.0) 
 
 也可以[快速部署一个测试集群](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)
 
@@ -109,7 +109,13 @@
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
 
-2. 准备helm values.yaml文件
+2. 为**所有边缘节点**添加一个标签
+
+    ```shell
+    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+    ```
+    
+3. 准备helm values.yaml文件
 
     ```shell
     $ vi values.yaml
@@ -117,22 +123,25 @@
       edgePodCIDR: 10.10.0.0/16   
       connectorPublicAddresses: 10.22.46.48 
       connectorSubnets: 10.233.0.0/18
+      edgeLabels: node-role.kubernetes.io/edge
       enableProxy: true
-    
+      
     cniType: calico 
     ```
-    
+
     > 说明：
     >
-    >   **edgePodCIDR**：使用上面创建的calico pool的cidr。
+    > **edgePodCIDR**：使用上面创建的calico pool的cidr。
     >
-    >   **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
+    > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
     >
-    >   **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的service-cluster-ip-range。
+    > **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的service-cluster-ip-range。
     >
-    >   **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
+    > **edgeLables**：前面为边缘节点添加的标签，默认是node-role.kubernetes.io/edge
+    >
+    > **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
 
-1.  安装FabEdge
+4. 安装FabEdge
 
     ```shell
     $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.3.0.tgz
