@@ -8,7 +8,7 @@
 ## 前置条件
 
 - kubernetes (v1.18.8)
-- flannel(v0.14.0)
+- flannel (v0.14.0)
 - openyurt (v0.4.0, 至少有一个边缘节点)
 
 ## 环境准备
