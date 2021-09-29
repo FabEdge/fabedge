@@ -8,9 +8,9 @@
 
 - Kubernetes (v1.19.7)
 
-- Calico(v3.16.5)
+- Calico (v3.16.5)
 
-- KubeEdge (v1.8.0) 
+- KubeEdge (v1.8.0)
 
 也可以[快速部署一个测试集群](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)
 
