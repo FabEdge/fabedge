@@ -2,9 +2,9 @@
 
 ## 新特性
 
-1. 支持云端集群使用[Flannel](https://github.com/flannel-io/flannel)网络插件
+1. 支持云端集群使用Flannel网络插件
 
-   Flannel简单，易用，有大量的用户，本版本加入了对它的支持。到目前为止，FabEdge支持的插件有：Calico， Flannel。
+   [Flannel](https://github.com/flannel-io/flannel)简单，易用，有大量的用户，本版本加入了对它的支持。到目前为止，FabEdge支持的插件有：Calico， Flannel。
 
 1. 支持SuperEdge
 
