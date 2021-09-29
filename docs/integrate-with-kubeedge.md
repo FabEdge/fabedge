@@ -8,7 +8,7 @@
 
 - Kubernetes (v1.19.7)
 
-- Calico（v3.16.5）
+- Calico(v3.16.5)
 
 - KubeEdge (v1.8.0) 
 
