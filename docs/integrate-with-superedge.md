@@ -200,3 +200,13 @@
     net.ipv4.conf.default.rp_filter=0
     net.ipv4.conf.all.rp_filter=0
     ```
+2. 出现边缘POD不能访问云端节点的情况，有可能是iptables里有flannel残留规则，需要清除。
+   ```shell
+   $ sudo  iptables -t nat -L POSTROUTING --line-numbers
+    Chain POSTROUTING (policy ACCEPT)
+    num  target     prot opt source               destination
+    4    MASQUERADE  all  --  192.168.0.0/16      !224.0.0.0/4   # 须要清除的规则
+    6    MASQUERADE  all  -- !192.168.0.0/16       192.168.0.0/16 # 须要清除的规则
+    $ sudo iptables -t nat -D POSTROUTING 4  # 确认规则编号
+    $ sudo iptables -t nat -D POSTROUTING 5  # 注意规则编号会变化   
+   ```
