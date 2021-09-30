@@ -197,7 +197,6 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 	conn := connection{
 		LocalAddrs:  cnf.LocalAddress,
 		RemoteAddrs: cnf.RemoteAddress,
-		DPDDelay:    "5s",
 		IF_ID_IN:    m.interfaceID,
 		IF_ID_OUT:   m.interfaceID,
 		LocalAuth: authConf{
