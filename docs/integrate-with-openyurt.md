@@ -137,8 +137,9 @@
    ```
       > 如果出现错误：“Error: cannot re-use a name that is still in use”，是因为fabedge helm chart已经安装，使用以下命令卸载后重试。
    >```shell
-    $ helm uninstall -n fabedge fabedge
-    release "fabedge" uninstalled
+   > $ helm uninstall -n fabedge fabedge
+   > release "fabedge" uninstalled
+   > ```
 
 ## 部署后验证
 
