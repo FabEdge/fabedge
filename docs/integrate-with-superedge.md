@@ -8,7 +8,7 @@
 ## 前置条件
 
 - Kubernetes (v1.18.2）
-- Flannel (v0.14.0)
+- Flannel (v0.13.0)
 - SuperEdge (v0.5.0, 至少有一个边缘节点)
 
 ## 环境准备
