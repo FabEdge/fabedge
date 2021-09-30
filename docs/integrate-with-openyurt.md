@@ -7,15 +7,15 @@
 
 ## 前置条件
 
-- kubernetes (v1.18.8)
-- flannel (v0.14.0)
-- openyurt (v0.4.0, 至少有一个边缘节点)
+- Kubernetes (v1.18.8)
+- Flannel (v0.14.0)
+- OpenYurt (v0.4.0, 至少有一个边缘节点)
 
 ## 环境准备
 
 1. 确保所有边缘节点能够访问云端运行connector的节点
 
-   - 如果有防火墙或安全组，必须允许协议ESP(50)，UDP/500，UDP/4500
+   - 如果有防火墙或安全组，必须允许ESP(50)，UDP/500，UDP/4500
 
 1. 安装helm
 
@@ -61,8 +61,9 @@
 
 
 ## 安装部署
-1. 在master节点上，修改flannel，禁止其在边缘节点上运行
+1. 在master节点上，修改flannel ds，禁止其在边缘节点上运行
    ```shell
+   # 创建kube-flannel-ds.patch.yaml文件
    $ vi kube-flannel-ds.patch.yaml
    spec:
      template:
@@ -104,6 +105,7 @@
    master   Ready    master      5h29m   v1.18.2
    node1    Ready    connector   5h23m   v1.18.2
    ```
+   >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
 
 2. 准备values.yaml文件
 
@@ -133,7 +135,10 @@
    ```shell
    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.3.0.tgz
    ```
-   
+      > 如果出现错误：“Error: cannot re-use a name that is still in use”，是因为fabedge helm chart已经安装，使用以下命令卸载后重试。
+   >```shell
+    $ helm uninstall -n fabedge fabedge
+    release "fabedge" uninstalled
 
 ## 部署后验证
 
@@ -159,7 +164,7 @@
     fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
     ```
 
-3. 在**管理节点**上确认openyurt和kubernetes服务正常
+3. 在**管理节点**上确认OpenYurt和Kubernetes服务正常
    
    ```shell
    $ kubectl get po -n kube-system

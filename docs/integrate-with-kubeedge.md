@@ -18,7 +18,7 @@
 
 1. 确保所有边缘节点能够访问云端connector
 
-    - 如果有防火墙或安全组，必须允许协议ESP(50)，UDP/500，UDP/4500
+    - 如果有防火墙或安全组，必须允许ESP(50)，UDP/500，UDP/4500
     
 2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)正常运行
 
@@ -108,7 +108,7 @@
      edge1   Ready    agent,edge              108m   v1.19.3-kubeedge    
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
-
+   >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
 2. 为**所有边缘节点**添加一个标签
 
     ```shell
@@ -146,7 +146,11 @@
     ```shell
     $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.3.0.tgz
     ```
-
+   > 如果出现错误：“Error: cannot re-use a name that is still in use”，是因为fabedge helm chart已经安装，使用以下命令卸载后重试。
+   >```shell
+    $ helm uninstall -n fabedge fabedge
+    release "fabedge" uninstalled
+   
 ### 配置边缘节点
 
 1. 在**每个边缘节点**上修改edgecore配置文件
