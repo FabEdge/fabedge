@@ -113,7 +113,7 @@
      connectorPublicAddresses: 10.20.8.23   
      connectorSubnets: 10.96.0.0/12  
      edgeLabels: superedge.io/edge-node=enable
-     masqOutgoing: false
+     masqOutgoing: true
      enableProxy: false
    cniType: flannel
    ```
