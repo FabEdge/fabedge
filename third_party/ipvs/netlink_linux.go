@@ -18,14 +18,10 @@ package ipvs
 
 import (
 	"fmt"
-	"net"
-	"strings"
-
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/exec"
-
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"net"
 )
 
 type netlinkHandle struct {
@@ -191,29 +187,6 @@ func (h *netlinkHandle) GetLocalAddresses(dev, filterDev string) (sets.String, e
 		}
 	}
 	return res, nil
-}
-
-// GetDefaultIFace return the outgoing interface name of default route
-func (h *netlinkHandle) GetDefaultIFace() (string, error) {
-	execer := exec.New()
-	ipPath, err := execer.LookPath("ip")
-	if err != nil {
-		return "", fmt.Errorf("failed to lookup path of ip: %v", err)
-	}
-
-	output, err := execer.Command(ipPath, "route").CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-
-	routes := strings.Split(string(output), "\n")
-	for _, route := range routes {
-		if strings.HasPrefix(route, "default via") {
-			iFace := strings.Split(route, " ")[4]
-			return iFace, nil
-		}
-	}
-	return "", fmt.Errorf("not found the outgoing interface of default route")
 }
 
 // EnsureXfrmInterface checks if xfrm interface is exist and, if not, create one and up one

@@ -36,8 +36,6 @@ type NetLinkHandle interface {
 	// GetLocalAddresses returns all unique local type IP addresses based on specified device and filter device
 	// If device is not specified, it will list all unique local type addresses except filter device addresses
 	GetLocalAddresses(dev, filterDev string) (sets.String, error)
-	// GetDefaultIFace return the outgoing interface name of default route
-	GetDefaultIFace() (string, error)
 	// EnsureXfrmInterface checks if xfrm interface is exist and, if not, create one and up one
 	EnsureXfrmInterface(devName string, ifid uint32) error
 	// DeleteXfrmInterface deletes the given xfrm interface by name.
