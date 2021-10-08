@@ -10,7 +10,7 @@ operator:
   edgePodCIDR: 10.10.0.0/16
 
   # enable masquerade when edge pods access Internet
-  masqOutgoing: false
+  masqOutgoing: true
 
   # enable fabedge ipvs loadbalancer function
   enableProxy: true
