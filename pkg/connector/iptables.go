@@ -76,6 +76,10 @@ func (m *Manager) ensureForwardIPTablesRules() (err error) {
 }
 
 func (m *Manager) ensureNatIPTablesRules() (err error) {
+	if err = m.ipt.ClearChain(TableNat, ChainPostRouting); err != nil {
+		return err
+	}
+
 	if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
 		return err
 	}
