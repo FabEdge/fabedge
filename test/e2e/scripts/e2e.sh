@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# how to compile the fabedge-e2e.test binary
+# git pull
+# make e2e-test
+# cd _output/
+# scp fabedge-e2e.test 10.20.8.24:~
+
 kubectl delete community all-edge-nodes
 kubectl delete ns fabedge-e2e-test
 
