@@ -12,8 +12,4 @@ ip link delete flannel.1
 ip route | grep "flannel" |  while read dst via gw others; do ip route delete $dst via $gw; done
 iptables -t nat -F POSTROUTING
 
-# cleanup xfrm stuff
-ip xfrm policy flush
-ip xfrm state flush
-
 exit 0
