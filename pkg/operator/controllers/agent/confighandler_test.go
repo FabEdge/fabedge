@@ -66,6 +66,7 @@ var _ = Describe("ConfigHandler", func() {
 			PublicAddresses: []string{"10.20.8.141"},
 			Subnets:         []string{"2.2.1.65/26"},
 			NodeSubnets:     []string{"10.20.8.141"},
+			Type:            netconf.EdgeNode,
 		}
 		testCommunity = types.Community{
 			Name:    "test",
@@ -105,6 +106,8 @@ var _ = Describe("ConfigHandler", func() {
 			},
 		}
 		Expect(conf).Should(Equal(expectedConf))
+		Expect(conf.Peers[0].Type).Should(Equal(netconf.Connector))
+		Expect(conf.Peers[1].Type).Should(Equal(netconf.EdgeNode))
 	})
 
 	It("Do should update agent configmap when any endpoint changed", func() {
@@ -162,5 +165,6 @@ func getConnectorEndpoint() types.Endpoint {
 		PublicAddresses: []string{"192.168.1.1"},
 		Subnets:         []string{"2.2.1.1/26"},
 		NodeSubnets:     []string{"192.168.1.0/24"},
+		Type:            netconf.Connector,
 	}
 }

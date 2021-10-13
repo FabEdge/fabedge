@@ -124,6 +124,7 @@ var _ = Describe("Controller", func() {
 		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0]))
 		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1)))
+		Expect(cep.Type).Should(Equal(netconf.Connector))
 
 		By("create node2 and node3")
 		node2 := newNormalNode("192.168.1.3", "10.10.10.128/26")

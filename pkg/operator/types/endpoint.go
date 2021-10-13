@@ -28,13 +28,7 @@ type NewEndpointFunc func(node corev1.Node) Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
 type EndpointGetter func() Endpoint
 
-type Endpoint struct {
-	ID              string
-	Name            string
-	PublicAddresses []string
-	Subnets         []string
-	NodeSubnets     []string
-}
+type Endpoint netconf.TunnelEndpoint
 
 func (e Endpoint) Equal(o Endpoint) bool {
 	return reflect.DeepEqual(e, o)
@@ -63,13 +57,7 @@ func (e Endpoint) IsValid() bool {
 }
 
 func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
-	return netconf.TunnelEndpoint{
-		ID:              e.ID,
-		PublicAddresses: e.PublicAddresses,
-		Name:            e.Name,
-		Subnets:         e.Subnets,
-		NodeSubnets:     e.NodeSubnets,
-	}
+	return netconf.TunnelEndpoint(e)
 }
 
 func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
@@ -93,6 +81,7 @@ func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEnd
 			PublicAddresses: nodeSubnets,
 			Subnets:         getPodCIDRs(node),
 			NodeSubnets:     nodeSubnets,
+			Type:            netconf.EdgeNode,
 		}
 	}
 }

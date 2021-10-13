@@ -142,11 +142,13 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 			LocalSubnets:     conf.Subnets,
 			LocalNodeSubnets: conf.NodeSubnets,
 			LocalCerts:       m.LocalCerts,
+			LocalType:        conf.Type,
 
 			RemoteID:          peer.ID,
 			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
+			RemoteType:        peer.Type,
 		}
 
 		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
@@ -388,18 +390,19 @@ func (m *Manager) syncLoadBalanceRules() error {
 	return m.syncVirtualServer(servers)
 }
 
-func (m *Manager) getConnectorSubnets() ([]string, error) {
+func (m *Manager) getConnectorSubnets() (subnets []string, err error) {
 	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// the first peer always be connector endpoint
-	if len(conf.Peers) > 0 {
-		return conf.Peers[0].Subnets, nil
+	for _, peer := range conf.Peers {
+		if peer.Type == netconf.Connector {
+			subnets = append(subnets, peer.Subnets...)
+		}
 	}
 
-	return nil, nil
+	return subnets, nil
 }
 
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {
