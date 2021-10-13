@@ -61,9 +61,14 @@
 
 
 ## 安装部署
-1. 在master节点上，修改flannel ds，禁止其在边缘节点上运行
+1. 为**所有边缘节点**添加标签
    ```shell
-   # 创建kube-flannel-ds.patch.yaml文件
+   $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+   ```
+   
+2. 在master节点上，修改flannel配置，禁止其在边缘节点上运行，创建kube-flannel-ds.patch.yaml文件
+
+   ```shell
    $ vi kube-flannel-ds.patch.yaml
    spec:
      template:
@@ -77,13 +82,13 @@
                    operator: In
                    values:
                    - linux
-                 - key: superedge.io/edge-node
+                 - key: node-role.kubernetes.io/edge   # 使用前面为所有边缘节点添加的标签
                    operator: DoesNotExist
                    
    $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat kube-flannel-ds.patch.yaml)"
    ```
-   
-1. 确认**所有边缘节点**上**没有**运行**任何**flannel的组件
+
+3. 确认**所有边缘节点**上**没有**运行**任何**flannel的组件
 
    ```shell
    $ kubectl get po -n kube-system -o wide | grep -i flannel
@@ -91,44 +96,44 @@
    kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1    <none> 
    ```
 
-1. 在云端选取一个运行connector的节点，并为它做标记，以node1为例，
+4. 在云端选取一个运行connector的节点，并为它做标记，以node1为例，
 
    ```shell
    $ kubectl label no node1 node-role.kubernetes.io/connector=
    
    $ kubectl get node
    NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
+   edge1    Ready    edge        5h22m   v1.18.2
+   edge2    Ready    edge        5h21m   v1.18.2
    master   Ready    master      5h29m   v1.18.2
    node1    Ready    connector   5h23m   v1.18.2
    ```
    >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
 
-2. 准备values.yaml文件
+5. 准备values.yaml文件
 
    ```shell
    $ vi values.yaml
    operator:
      connectorPublicAddresses: 10.20.8.23   
      connectorSubnets: 10.96.0.0/12  
-     edgeLabels: superedge.io/edge-node=enable
+     edgeLabels: node-role.kubernetes.io/edge
      masqOutgoing: true
      enableProxy: false
    cniType: flannel
    ```
-   
+
    > 说明：
    >
    > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
    >
    > **connectorSubnets**: 云端集群中的service使用的网段，get_cluster_info脚本输出的service_cluster_ip_range。
    >
-   > **edgeLabels**：标记边缘节点的标签组。
+   > **edgeLabels**：使用前面为所有边缘节点添加的标签。
    >
    > **cniType**: 云端集群中使用的cni插件类型。
-   
-3. 安装fabedge 
+
+6. 安装fabedge 
 
    ```shell
    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.3.0.tgz
@@ -138,7 +143,7 @@
    > $ helm uninstall -n fabedge fabedge
    >  release "fabedge" uninstalled
    >```
-   
+
 
 ## 部署后验证
 
