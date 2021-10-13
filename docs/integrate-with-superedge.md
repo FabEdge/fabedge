@@ -10,12 +10,15 @@
 - Kubernetes (v1.18.2）
 - Flannel (v0.13.0)
 - SuperEdge (v0.5.0, 至少有一个边缘节点)
+- 操作系统
+  - Ubuntu 18.04.5 Server 4.15.0-136-generic
+  - CentOS Linux release 8.0.1905 (Core)
 
 ## 环境准备
 
 1. 确保所有边缘节点能够访问云端运行connector的节点
 
-   - 如果有防火墙或安全组，必须允许ESP，UDP/500，UDP/4500
+   - 如果有防火墙或安全组，必须允许ESP(50)，UDP/500，UDP/4500
 
 1. 安装helm
 
@@ -28,25 +31,37 @@
    ```shell
    $ kubectl get po -n edge-system
    NAME                                           READY   STATUS    RESTARTS   AGE
-   application-grid-controller-84d64b86f9-gz9cp   1/1     Running   0          3h3m
-   application-grid-wrapper-master-dx8wn          1/1     Running   0          3h3m
-   edge-coredns-master3-6f8f449d4d-tkmqh          1/1     Running   0          3h2m
-   edge-coredns-super1-7b454c749-bwtgx            1/1     Running   0          178m
-   edge-health-admission-86c5c6dd6-9cswx          1/1     Running   0          3h3m
-   edge-health-n9f7v                              1/1     Running   0          177m
-   tunnel-cloud-6557fcdd67-l74x2                  1/1     Running   0          3h3m
-   tunnel-coredns-7d8b48c7ff-5659c                1/1     Running   0          3h3m
-   tunnel-edge-2x8mf                              1/1     Running   0          170m
+   application-grid-controller-84d64b86f9-2zpvg   1/1     Running   0          12m
+   application-grid-wrapper-master-x75nh          1/1     Running   0          12m
+   application-grid-wrapper-node-hdpt4            1/1     Running   0          5m7s
+   application-grid-wrapper-node-v4xpq            1/1     Running   0          7m19s
+   edge-coredns-edge1-5758f9df57-czp8h            1/1     Running   0          7m47s
+   edge-coredns-edge2-84fd9cfd98-dhdjr            1/1     Running   0          5m45s
+   edge-coredns-master-f8bf9975c-9jf4b            1/1     Running   0          11m
+   edge-health-9qkjd                              1/1     Running   0          5m7s
+   edge-health-admission-86c5c6dd6-zdbt9          1/1     Running   0          12m
+   edge-health-ptwl5                              1/1     Running   1          7m19s
+   tunnel-cloud-6557fcdd67-dkdpz                  1/1     Running   0          12m
+   tunnel-coredns-7d8b48c7ff-k86sq                1/1     Running   0          12m
+   tunnel-edge-jf72f                              1/1     Running   0          5m7s
+   tunnel-edge-snqtw                              1/1     Running   0          7m19s
    
    $ kubectl get po -n kube-system
-   NAME                              READY   STATUS    RESTARTS   AGE
-   coredns-5c66f5c95-6rp86           1/1     Running   0          3h3m
-   etcd-master                       1/1     Running   0          3h4m
-   kube-apiserver-master             1/1     Running   0          3h4m
-   kube-controller-manager-master    1/1     Running   0          3h4m
-   kube-flannel-ds-2b5kk             1/1     Running   0          16m
-   kube-proxy-kkm6j                  1/1     Running   0          171m
-   kube-scheduler-master             1/1     Running   0          3h4m
+   NAME                             READY   STATUS    RESTARTS   AGE
+   coredns-5c66f5c95-7rkgq          1/1     Running   0          12m
+   coredns-5c66f5c95-cnlgz          1/1     Running   0          12m
+   etcd-master                      1/1     Running   0          13m
+   kube-apiserver-master            1/1     Running   0          13m
+   kube-controller-manager-master   1/1     Running   0          13m
+   kube-flannel-ds-6pw82            1/1     Running   3          6m
+   kube-flannel-ds-6qf8j            1/1     Running   3          8m3s
+   kube-flannel-ds-hw42q            1/1     Running   0          12m
+   kube-flannel-ds-rn8n7            1/1     Running   4          10m
+   kube-proxy-kpffx                 1/1     Running   0          10m
+   kube-proxy-ktddk                 1/1     Running   0          6m
+   kube-proxy-mvfrh                 1/1     Running   0          8m2s
+   kube-proxy-zpszh                 1/1     Running   0          11m
+   kube-scheduler-master            1/1     Running   0          13m
    ```
    
 1. 获取当前集群配置信息，供后面使用
@@ -54,8 +69,10 @@
      ```shell
      $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
      This may take some time. Please wait.
-     clusterDNS: 
-     clusterDomain: kubernetes
+     
+     clusterDNS               : 
+     clusterDomain            : kubernetes
+     cluster-cidr             : 192.168.0.0/16
      service-cluster-ip-range : 10.96.0.0/12
      ```
 
@@ -64,6 +81,9 @@
 1. 为**所有边缘节点**添加标签
    ```shell
    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+   node/edge1 labeled
+   $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
+   node/edge2 labeled
    ```
    
 2. 在master节点上，修改flannel配置，禁止其在边缘节点上运行，创建kube-flannel-ds.patch.yaml文件
@@ -92,8 +112,8 @@
 
    ```shell
    $ kubectl get po -n kube-system -o wide | grep -i flannel
-   kube-flannel-79l8h               1/1     Running   0          3d19h   10.20.8.24    master   <none>       
-   kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1    <none> 
+   kube-flannel-ds-56x59            1/1     Running   0          47s   10.20.8.23    node1    <none>         
+   kube-flannel-ds-92sw6            1/1     Running   0          7s    10.20.8.24    master   <none>         
    ```
 
 4. 在云端选取一个运行connector的节点，并为它做标记，以node1为例，
@@ -102,13 +122,13 @@
    $ kubectl label no node1 node-role.kubernetes.io/connector=
    
    $ kubectl get node
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    edge        5h22m   v1.18.2
-   edge2    Ready    edge        5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
+   NAME     STATUS   ROLES       AGE    VERSION
+   edge1    Ready    edge        95m    v1.18.2
+   edge2    Ready    edge        93m    v1.18.2
+   master   Ready    master      100m   v1.18.2
+   node1    Ready    connector   97m    v1.18.2
    ```
-   >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
+   >选取的节点要允许调度POD，不要有不能调度的污点，否则部署会失败。
 
 5. 准备values.yaml文件
 
@@ -151,22 +171,23 @@
 
     ```shell
     $ kubectl get no
-    NAME     STATUS   ROLES       AGE     VERSION
-    edge1    Ready    <none>      5h22m   v1.18.2
-    edge2    Ready    <none>      5h21m   v1.18.2
-    master   Ready    master      5h29m   v1.18.2
-    node1    Ready    connector   5h23m   v1.18.2
+    NAME     STATUS   ROLES       AGE    VERSION
+    edge1    Ready    edge        97m    v1.18.2
+    edge2    Ready    edge        95m    v1.18.2
+    master   Ready    master      102m   v1.18.2
+    node1    Ready    connector   99m    v1.18.2
     ```
 
 2. 在**管理节点**上确认FabEdge服务正常
 
     ```shell
     $ kubectl get po -n fabedge
-    NAME                               READY   STATUS    RESTARTS   AGE
-    cert-zmwjg                         0/1     Completed 0          3m5s
-    connector-5947d5f66-hnfbv          2/2     Running   0          35m
-    fabedge-agent-edge1                2/2     Running   0          22s
-    fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
+    NAME                                READY   STATUS      RESTARTS   AGE
+    cert-vcbb9                          0/1     Completed   0          87s
+    connector-5767476fd4-82bfg          2/2     Running     0          69s
+    fabedge-agent-edge1                 2/2     Running     0          57s
+    fabedge-agent-edge2                 2/2     Running     0          56s
+    fabedge-operator-6bdd896c45-45nlc   1/1     Running     0          69s
     ```
 
 3. 在**管理节点**上确认superedge服务正常
@@ -175,23 +196,26 @@
    
    ```shell
    $ kubectl get po -n edge-system
-     NAME                                           READY   STATUS    RESTARTS   AGE
-      application-grid-controller-84d64b86f9-gz9cp   1/1     Running   0          3h3m
-      application-grid-wrapper-master-dx8wn          1/1     Running   0          3h3m
-      application-grid-wrapper-node-j4nhj            1/1     Running   0          170m
-      edge-coredns-master3-6f8f449d4d-tkmqh          1/1     Running   0          3h2m
-      edge-coredns-super1-7b454c749-bwtgx            0/1     Running   0          178m    # 状态错误
-      edge-coredns-super2-8456587986-zhbg8           0/1     Running   0          171m    # 状态错误
-      edge-health-admission-86c5c6dd6-9cswx          1/1     Running   0          3h3m
-      edge-health-n9f7v                              1/1     Running   0          177m
-      tunnel-cloud-6557fcdd67-l74x2                  1/1     Running   0          3h3m
-      tunnel-coredns-7d8b48c7ff-5659c                1/1     Running   0          3h3m
-      tunnel-edge-2x8mf                              1/1     Running   0          170m
+   NAME                                           READY   STATUS    RESTARTS   AGE
+   application-grid-controller-84d64b86f9-2zpvg   1/1     Running   0          103m
+   application-grid-wrapper-master-x75nh          1/1     Running   0          103m
+   application-grid-wrapper-node-hdpt4            1/1     Running   0          96m
+   application-grid-wrapper-node-v4xpq            1/1     Running   0          98m
+   edge-coredns-edge1-5758f9df57-czp8h            0/1     Running   1          99m    # 状态错误
+   edge-coredns-edge2-84fd9cfd98-dhdjr            0/1     Running   1          97m    # 状态错误
+   edge-coredns-master-f8bf9975c-9jf4b            1/1     Running   0          102m
+   edge-health-9qkjd                              1/1     Running   0          96m
+   edge-health-admission-86c5c6dd6-zdbt9          1/1     Running   0          103m
+   edge-health-ptwl5                              1/1     Running   1          98m
+   tunnel-cloud-6557fcdd67-dkdpz                  1/1     Running   0          103m
+   tunnel-coredns-7d8b48c7ff-k86sq                1/1     Running   0          103m
+   tunnel-edge-jf72f                              1/1     Running   0          96m
+   tunnel-edge-snqtw                              1/1     Running   0          98m
       
-   $ kubectl delete po -n edge-system edge-coredns-edge1-7b454c749-bwtgx
-     pod "edge-coredns-edge1-7b454c749-bwtgx" deleted
-   $ kubectl delete po -n edge-system edge-coredns-edge2-8456587986-zhbg8
-     pod "edge-coredns-edge2-8456587986-zhbg8" deleted
+   $ kubectl delete po -n edge-system edge-coredns-edge1-5758f9df57-czp8h
+     pod "edge-coredns-edge1-5758f9df57-czp8h" deleted
+   $ kubectl delete po -n edge-system edge-coredns-edge2-84fd9cfd98-dhdjr
+     pod "edge-coredns-edge2-84fd9cfd98-dhdjr" deleted
    ```
 
 ## 常见问题
