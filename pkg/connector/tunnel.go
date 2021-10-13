@@ -45,11 +45,13 @@ func (m *Manager) readCfgFromFile() error {
 			LocalAddress:     nc.PublicAddresses,
 			LocalSubnets:     nc.Subnets,
 			LocalNodeSubnets: nc.NodeSubnets,
+			LocalType:        nc.Type,
 
 			RemoteID:          peer.ID,
 			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
+			RemoteType:        peer.Type,
 		}
 		m.connections = append(m.connections, con)
 		connNames.Add(con.Name)

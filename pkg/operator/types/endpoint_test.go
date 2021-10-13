@@ -22,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
@@ -113,5 +114,9 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 
 	It("should extract ip from node.status.address", func() {
 		Expect(endpoint.PublicAddresses).Should(ConsistOf("192.168.1.1"))
+	})
+
+	It("should mark endpoint as EdgeNode", func() {
+		Expect(endpoint.Type).Should(Equal(netconf.EdgeNode))
 	})
 })

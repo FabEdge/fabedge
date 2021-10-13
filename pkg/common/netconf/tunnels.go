@@ -20,6 +20,13 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type EndpointType string
+
+const (
+	Connector EndpointType = "Connector"
+	EdgeNode  EndpointType = "EdgeNode"
+)
+
 type TunnelEndpoint struct {
 	ID   string `yaml:"id,omitempty"`
 	Name string `yaml:"name,omitempty"`
@@ -28,7 +35,8 @@ type TunnelEndpoint struct {
 	// pod subnets
 	Subnets []string `yaml:"subnets,omitempty"`
 	// internal IPs of kubernetes node
-	NodeSubnets []string `yaml:"nodeSubnets,omitempty"`
+	NodeSubnets []string     `yaml:"nodeSubnets,omitempty"`
+	Type        EndpointType `yaml:"type,omitempty"`
 }
 
 type NetworkConf struct {

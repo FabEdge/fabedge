@@ -295,6 +295,7 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 
 	ctl.Endpoint.Subnets = subnets
 	ctl.Endpoint.NodeSubnets = nodeSubnets
+	ctl.Endpoint.Type = netconf.Connector
 }
 
 func (ctl *controller) getConnectorEndpoint() types.Endpoint {
