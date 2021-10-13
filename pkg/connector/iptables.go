@@ -79,9 +79,15 @@ func (m *Manager) ensureNatIPTablesRules() (err error) {
 	if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
 		return err
 	}
-
-	if err = m.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+	exists, err := m.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	if err != nil {
 		return err
+	}
+
+	if !exists {
+		if err = m.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+			return err
+		}
 	}
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
