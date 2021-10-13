@@ -6,6 +6,7 @@ FROM alpine:3.13.6
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk --update add iptables && \
     apk --update add ipset && \
+    ln -sf /sbin/xtables-nft-multi /sbin/iptables && \
     rm -rf /var/cache/apk/*
 
 COPY --from=builder /fabedge/_output/fabedge-connector /usr/local/bin/connector
