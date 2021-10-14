@@ -11,7 +11,7 @@
 - Flannel (v0.13.0)
 - SuperEdge (v0.5.0, 至少有一个边缘节点)
 - 操作系统
-  - Ubuntu 18.04.5 Server 4.15.0-136-generic
+  - Ubuntu 18.04.5 Server 4.15.0-136-generic (**推荐使用**）
   - CentOS Linux release 8.0.1905 (Core)
 
 ## 环境准备
