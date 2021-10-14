@@ -84,6 +84,12 @@
    node/edge1 labeled
    $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
    node/edge2 labeled
+   $ kubectl get no
+   NAME     STATUS   ROLES    AGE   VERSION
+   edge1    Ready    edge     22h   v1.18.2
+   edge2    Ready    edge     22h   v1.18.2
+   master   Ready    master   22h   v1.18.2
+   node1    Ready    <none>   22h   v1.18.2
    ```
    
 2. 在master节点上，修改flannel配置，禁止其在边缘节点上运行，创建kube-flannel-ds.patch.yaml文件
@@ -111,7 +117,13 @@
 3. 确认**所有边缘节点**上**没有**运行**任何**flannel的组件
 
    ```shell
-   $ kubectl get po -n kube-system -o wide | grep -i flannel
+   $ kubectl get no; kubectl get po -n kube-system -o wide | grep -i flannel
+   NAME     STATUS   ROLES    AGE   VERSION
+   edge1    Ready    edge     22h   v1.18.2
+   edge2    Ready    edge     22h   v1.18.2
+   master   Ready    master   22h   v1.18.2
+   node1    Ready    <none>   22h   v1.18.2
+   
    kube-flannel-ds-56x59            1/1     Running   0          47s   10.20.8.23    node1    <none>         
    kube-flannel-ds-92sw6            1/1     Running   0          7s    10.20.8.24    master   <none>         
    ```
