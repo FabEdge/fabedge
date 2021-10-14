@@ -30,6 +30,13 @@
      
 1. 确保superedge和kubernetes组件正常运行
    ```shell
+   $ kubectl get no
+   NAME     STATUS   ROLES    AGE   VERSION
+   edge1    Ready    <none>   22h   v1.18.2
+   edge2    Ready    <none>   22h   v1.18.2
+   master   Ready    master   22h   v1.18.2
+   node1    Ready    <none>   22h   v1.18.2
+  
    $ kubectl get po -n edge-system
    NAME                                           READY   STATUS    RESTARTS   AGE
    application-grid-controller-84d64b86f9-2zpvg   1/1     Running   0          12m
