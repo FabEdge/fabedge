@@ -102,7 +102,7 @@
                    operator: In
                    values:
                    - linux
-                 - key: node-role.kubernetes.io/edge   # 使用前面为所有边缘节点添加的标签
+                 - key: node-role.kubernetes.io/edge   # label to identify all edge nodes added before
                    operator: DoesNotExist
                    
    $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat kube-flannel-ds.patch.yaml)"
