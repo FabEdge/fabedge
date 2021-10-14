@@ -27,6 +27,7 @@
      $ tar -xf helm-v3.6.3-linux-amd64.tar.gz
      $ cp linux-amd64/helm /usr/bin/helm 
      ```
+     
 1. 确保superedge和kubernetes组件正常运行
    ```shell
    $ kubectl get po -n edge-system
@@ -82,8 +83,10 @@
    ```shell
    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
    node/edge1 labeled
+   
    $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
    node/edge2 labeled
+   
    $ kubectl get no
    NAME     STATUS   ROLES    AGE   VERSION
    edge1    Ready    edge     22h   v1.18.2
@@ -113,6 +116,7 @@
                    
    $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat kube-flannel-ds.patch.yaml)"
    ```
+   > 使用前面为边缘节点添加的标签的Key
 
 3. 确认**所有边缘节点**上**没有**运行**任何**flannel的组件
 
@@ -131,16 +135,15 @@
 4. 在云端选取一个运行connector的节点，并为它做标记，以node1为例，
 
    ```shell
-   $ kubectl label no node1 node-role.kubernetes.io/connector=
-   
-   $ kubectl get node
-   NAME     STATUS   ROLES       AGE    VERSION
-   edge1    Ready    edge        95m    v1.18.2
-   edge2    Ready    edge        93m    v1.18.2
-   master   Ready    master      100m   v1.18.2
-   node1    Ready    connector   97m    v1.18.2
+   $ kubectl label no node1 node-role.kubernetes.io/connector=; kubectl get node
+     node/node1 labeled
+     NAME     STATUS   ROLES       AGE   VERSION
+     edge1    Ready    edge        22h   v1.18.2
+     edge2    Ready    edge        22h   v1.18.2
+     master   Ready    master      22h   v1.18.2
+     node1    Ready    connector   22h   v1.18.2
    ```
-   >选取的节点要允许调度POD，不要有不能调度的污点，否则部署会失败。
+   >SuperEdge默认的master节点上有不能调度的污点，不能选取它运行connector。
 
 5. 准备values.yaml文件
 
