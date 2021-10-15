@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"

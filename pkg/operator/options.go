@@ -33,7 +33,7 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
 	connectorctl "github.com/fabedge/fabedge/pkg/operator/controllers/connector"

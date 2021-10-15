@@ -88,7 +88,7 @@ clean:
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=fabedge-admin paths="./..." output:dir:crd=deploy/crds
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=fabedge-admin paths="./pkg/..." output:dir:crd=deploy/crds
 	@# 因为k8s的bug, 导致必须手动删除一些信息，详细内容参考 https://github.com/kubernetes/kubernetes/issues/91395
 #    sed -i '/- protocol/d' build/crds/edge.bocloud.com_edgeapplications.yaml
 
