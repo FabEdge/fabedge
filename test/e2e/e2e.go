@@ -32,7 +32,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	"github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
@@ -63,7 +63,7 @@ var (
 )
 
 func init() {
-	_ = apis.AddToScheme(scheme.Scheme)
+	_ = v1alpha1.AddToScheme(scheme.Scheme)
 	rand.Seed(time.Now().Unix())
 	serviceCloudNginx = getName(serviceCloudNginx)
 	serviceEdgeNginx = getName(serviceEdgeNginx)
@@ -151,11 +151,11 @@ func addAllEdgesToCommunity(cli client.Client) {
 		framework.Failf("no edge nodes are available")
 	}
 
-	community := apis.Community{
+	community := v1alpha1.Community{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: communityName,
 		},
-		Spec: apis.CommunitySpec{},
+		Spec: v1alpha1.CommunitySpec{},
 	}
 
 	for _, node := range edgeNodes {
@@ -289,7 +289,6 @@ func newHostNetToolPod(node corev1.Node) corev1.Pod {
 			Value: "18083",
 		},
 	}
-	spec.Containers[0].ReadinessProbe.HTTPGet.Port = intstr.FromInt(18080)
 
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -330,17 +329,6 @@ func podSpec(nodeName string) corev1.PodSpec {
 						Name:          "http",
 						ContainerPort: 80,
 					},
-				},
-				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						HTTPGet: &corev1.HTTPGetAction{
-							Path: "/",
-							Port: intstr.FromInt(80),
-						},
-					},
-					InitialDelaySeconds: 5,
-					TimeoutSeconds:      5,
-					PeriodSeconds:       5,
 				},
 			},
 		},

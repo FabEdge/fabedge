@@ -21,7 +21,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
