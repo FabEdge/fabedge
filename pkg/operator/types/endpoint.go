@@ -24,6 +24,8 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 )
 
+type IDFunc func(nodeName string) string
+type NamingFunc func(nodeName string) string
 type NewEndpointFunc func(node corev1.Node) Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
 type EndpointGetter func() Endpoint
@@ -60,7 +62,7 @@ func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
 	return netconf.TunnelEndpoint(e)
 }
 
-func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
+func GenerateNewEndpointFunc(idFormat string, getName NamingFunc, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
 	return func(node corev1.Node) Endpoint {
 		var nodeSubnets []string
 		for _, addr := range node.Status.Addresses {
@@ -69,14 +71,14 @@ func GenerateNewEndpointFunc(idFormat string, getPodCIDRs PodCIDRsGetter) NewEnd
 			}
 		}
 
-		var id = ""
-		if node.Name != "" {
-			id = GetID(idFormat, node.Name)
+		if node.Name == "" {
+			return Endpoint{}
 		}
 
+		name := getName(node.Name)
 		return Endpoint{
-			ID:   id,
-			Name: node.Name,
+			ID:   GetID(idFormat, name),
+			Name: name,
 			// todo: get public address from annotations or labels
 			PublicAddresses: nodeSubnets,
 			Subnets:         getPodCIDRs(node),

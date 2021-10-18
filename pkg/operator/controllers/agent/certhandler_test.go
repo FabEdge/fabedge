@@ -52,6 +52,7 @@ var _ = Describe("CertHandler", func() {
 			namespace:        namespace,
 			client:           k8sClient,
 			certManager:      certManager,
+			getEndpointName:  getEndpointName,
 			certValidPeriod:  365,
 			certOrganization: certutil.DefaultOrganization,
 			log:              klogr.New().WithName("configHandler"),
@@ -75,7 +76,7 @@ var _ = Describe("CertHandler", func() {
 
 		By("Changing TLS secret with expired cert")
 		certDER, keyDER, _ := certManager.SignCert(certutil.Config{
-			CommonName:     node.Name,
+			CommonName:     getEndpointName(node.Name),
 			ValidityPeriod: time.Second,
 		})
 		secret.Data[corev1.TLSCertKey] = certutil.EncodeCertPEM(certDER)

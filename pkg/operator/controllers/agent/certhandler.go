@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
@@ -35,6 +36,7 @@ var _ Handler = &certHandler{}
 type certHandler struct {
 	namespace string
 
+	getEndpointName  types.NamingFunc
 	certManager      certutil.Manager
 	certOrganization string
 	certValidPeriod  int64
@@ -96,7 +98,7 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 
 func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
 	certDER, keyDER, err := handler.certManager.SignCert(certutil.Config{
-		CommonName:     node.Name,
+		CommonName:     handler.getEndpointName(node.Name),
 		Organization:   []string{handler.certOrganization},
 		ValidityPeriod: timeutil.Days(handler.certValidPeriod),
 		Usages:         certutil.ExtKeyUsagesServerAndClient,

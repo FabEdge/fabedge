@@ -50,6 +50,7 @@ import (
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 type Options struct {
+	Cluster          string
 	Namespace        string
 	EdgePodCIDR      string
 	EndpointIDFormat string
@@ -71,16 +72,16 @@ type Options struct {
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
+	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster, must be distinct among all clusters")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
 	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
-	flag.StringVar(&opts.Connector.Endpoint.Name, "connector-name", "cloud-connector", "The name of connector, only letters, number and '-' are allowed, the initial must be a letter.")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
-	flag.StringVar(&opts.Connector.ConfigMapKey.Name, "connector-config", "cloud-tunnels-config", "The name of configmap for connector")
+	flag.StringVar(&opts.Connector.ConfigMapKey.Name, "connector-config", "connector-config", "The name of configmap for connector")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
 
 	flag.StringVar(&opts.Agent.AgentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
@@ -125,22 +126,25 @@ func (opts *Options) Complete() (err error) {
 	}
 	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
 
+	getEndpointName := func(nodeName string) string {
+		return fmt.Sprintf("%s.%s", opts.Cluster, nodeName)
+	}
 	switch opts.CNIType {
 	case constants.CNICalico:
 		opts.PodCIDRStore = types.NewPodCIDRStore()
 		opts.GetPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
 		if opts.Agent.EnableEdgeIPAM {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
+			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
 			if err != nil {
 				log.Error(err, "failed to create allocator")
 				return err
 			}
 		} else {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, opts.GetPodCIDRs)
+			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, opts.GetPodCIDRs)
 		}
 	case constants.CNIFlannel:
-		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRs)
+		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, nodeutil.GetPodCIDRs)
 		opts.GetPodCIDRs = nodeutil.GetPodCIDRs
 	default:
 		return fmt.Errorf("unknown CNI: %s", opts.CNIType)
@@ -183,12 +187,14 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.Manager = opts.Manager
 	opts.Agent.Store = opts.Store
 	opts.Agent.NewEndpoint = opts.NewEndpoint
+	opts.Agent.GetEndpointName = getEndpointName
 	opts.Agent.EnableFlannelMocking = opts.CNIType == constants.CNIFlannel
 
 	opts.Connector.ConfigMapKey.Namespace = opts.Namespace
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
 	opts.Connector.GetPodCIDRs = opts.GetPodCIDRs
+	opts.Connector.Endpoint.Name = getEndpointName("connector")
 	opts.Connector.Endpoint.ID = types.GetID(opts.EndpointIDFormat, opts.Connector.Endpoint.Name)
 
 	opts.Proxy.AgentNamespace = opts.Namespace
@@ -199,6 +205,10 @@ func (opts *Options) Complete() (err error) {
 }
 
 func (opts Options) Validate() (err error) {
+	if len(opts.Cluster) == 0 {
+		return fmt.Errorf("cluster name is needed")
+	}
+
 	if len(opts.EdgeLabels) == 0 {
 		return fmt.Errorf("edge labels is needed")
 	}

@@ -11,9 +11,9 @@ type TunnelEndpoint struct {
 	// PodCIDRs, ServiceCIDR
 	Subnets []string `json:"subnets,omitempty"`
 	// Internal IPs of kubernetes node
-	NodeSubnets []string             `json:"nodeSubnets,omitempty"`
+	NodeSubnets []string `json:"nodeSubnets,omitempty"`
 	// Type of endpoints: Connector or EdgeNode
-	Type        netconf.EndpointType `json:"type,omitempty"`
+	Type netconf.EndpointType `json:"type,omitempty"`
 }
 
 type ClusterSpec struct {
