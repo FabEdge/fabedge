@@ -25,7 +25,6 @@ type CommunitySpec struct {
 // Community is used to manage a communication unit, it's members
 // should be edge nodes
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=cmm
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Members",type="string",JSONPath=".spec.members",description="community members"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="How long a community is created"
