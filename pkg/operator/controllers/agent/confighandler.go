@@ -37,6 +37,7 @@ var _ Handler = &configHandler{}
 type configHandler struct {
 	namespace            string
 	store                storepkg.Interface
+	getEndpointName      types.NamingFunc
 	getConnectorEndpoint types.EndpointGetter
 	client               client.Client
 	log                  logr.Logger
@@ -100,10 +101,12 @@ func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
 	return err
 }
 
-func (handler *configHandler) buildNetworkConf(name string) netconf.NetworkConf {
+func (handler *configHandler) buildNetworkConf(nodeName string) netconf.NetworkConf {
 	store := handler.store
-	endpoint, _ := store.GetEndpoint(name)
-	peerEndpoints := handler.getPeers(name)
+
+	epName := handler.getEndpointName(nodeName)
+	endpoint, _ := store.GetEndpoint(epName)
+	peerEndpoints := handler.getPeers(epName)
 
 	conf := netconf.NetworkConf{
 		TunnelEndpoint: endpoint.ConvertToTunnelEndpoint(),

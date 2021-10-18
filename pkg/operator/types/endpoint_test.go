@@ -15,6 +15,7 @@
 package types_test
 
 import (
+	"fmt"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -84,7 +85,11 @@ var _ = Describe("Endpoint", func() {
 })
 
 var _ = Describe("GenerateNewEndpointFunc", func() {
-	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
+	getEndpointName := func(nodeName string) string {
+		return fmt.Sprintf("cluster.%s", nodeName)
+	}
+
+	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",
@@ -104,7 +109,7 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 	endpoint := newEndpoint(node)
 
 	It("should replace {node} in id format", func() {
-		Expect(endpoint.ID).Should(Equal("C=CN, O=StrongSwan, CN=edge1"))
+		Expect(endpoint.ID).Should(Equal("C=CN, O=StrongSwan, CN=cluster.edge1"))
 	})
 
 	It("should extract subnets from annotations", func() {

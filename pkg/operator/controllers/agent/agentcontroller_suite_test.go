@@ -15,6 +15,7 @@
 package agent
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -112,4 +113,8 @@ func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
 			},
 		},
 	}
+}
+
+func getEndpointName(nodeName string) string {
+	return fmt.Sprintf("cluster.%s", nodeName)
 }

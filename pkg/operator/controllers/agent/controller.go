@@ -72,6 +72,7 @@ type Config struct {
 
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
+	GetEndpointName      types.NamingFunc
 
 	CertManager      certutil.Manager
 	CertOrganization string
@@ -116,16 +117,18 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	var handlers []Handler
 	if cnf.Allocator != nil {
 		handlers = append(handlers, &allocatablePodCIDRsHandler{
-			store:       cnf.Store,
-			allocator:   cnf.Allocator,
-			newEndpoint: cnf.NewEndpoint,
-			client:      cli,
-			log:         log.WithName("podCIDRsHandler"),
+			store:           cnf.Store,
+			allocator:       cnf.Allocator,
+			newEndpoint:     cnf.NewEndpoint,
+			getEndpointName: cnf.GetEndpointName,
+			client:          cli,
+			log:             log.WithName("podCIDRsHandler"),
 		})
 	} else {
 		handlers = append(handlers, &rawPodCIDRsHandler{
-			store:       cnf.Store,
-			newEndpoint: cnf.NewEndpoint,
+			store:           cnf.Store,
+			getEndpointName: cnf.GetEndpointName,
+			newEndpoint:     cnf.NewEndpoint,
 		})
 	}
 
@@ -140,6 +143,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		namespace:            cnf.Namespace,
 		client:               cli,
 		store:                cnf.Store,
+		getEndpointName:      cnf.GetEndpointName,
 		getConnectorEndpoint: cnf.GetConnectorEndpoint,
 		log:                  log.WithName("configHandler"),
 	})
@@ -149,6 +153,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 
 		certManager:      cnf.CertManager,
+		getEndpointName:  cnf.GetEndpointName,
 		certOrganization: cnf.CertOrganization,
 		certValidPeriod:  cnf.CertValidPeriod,
 

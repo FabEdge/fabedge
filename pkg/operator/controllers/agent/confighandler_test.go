@@ -41,7 +41,7 @@ var _ = Describe("ConfigHandler", func() {
 		connectorEndpoint, edge2Endpoint types.Endpoint
 		testCommunity                    types.Community
 
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
+		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 		newNode     = newNodePodCIDRsInAnnotations
 
 		handler *configHandler
@@ -54,6 +54,7 @@ var _ = Describe("ConfigHandler", func() {
 			namespace:            namespace,
 			client:               k8sClient,
 			store:                store,
+			getEndpointName:      getEndpointName,
 			getConnectorEndpoint: getConnectorEndpoint,
 			log:                  klogr.New().WithName("configHandler"),
 		}
@@ -70,7 +71,7 @@ var _ = Describe("ConfigHandler", func() {
 		}
 		testCommunity = types.Community{
 			Name:    "test",
-			Members: stringset.New(edge2Endpoint.Name, nodeName),
+			Members: stringset.New(edge2Endpoint.Name, getEndpointName(nodeName)),
 		}
 
 		agentConfigName = getAgentConfigMapName(nodeName)

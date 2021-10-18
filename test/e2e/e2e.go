@@ -159,7 +159,7 @@ func addAllEdgesToCommunity(cli client.Client) {
 	}
 
 	for _, node := range edgeNodes {
-		community.Spec.Members = append(community.Spec.Members, node.Name)
+		community.Spec.Members = append(community.Spec.Members, framework.GetEndpointName(node.Name))
 	}
 
 	if err = cli.Create(context.TODO(), &community); err != nil {

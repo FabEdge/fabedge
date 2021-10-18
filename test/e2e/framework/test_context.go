@@ -35,6 +35,7 @@ const (
 )
 
 type Context struct {
+	Cluster           string
 	KubeConfig        string
 	EdgeLabels        string
 	GenReport         bool
@@ -50,6 +51,7 @@ type Context struct {
 var TestContext Context
 
 func RegisterAndHandleFlags() {
+	flag.StringVar(&TestContext.Cluster, "cluster", "", "Your cluster name")
 	flag.StringVar(&TestContext.KubeConfig, "kube-config", clientcmd.RecommendedHomeFile,
 		"Path to config containing embedded authinfo for kubernetes.")
 	flag.StringVar(&TestContext.PreserveResources, "preserve-resources", string(PreserveResourcesOnFailure),
@@ -72,6 +74,11 @@ func RegisterAndHandleFlags() {
 		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
 	flag.Parse()
+
+	if len(TestContext.Cluster) == 0 {
+		fatalf("cluster is require")
+	}
+
 	// Turn on verbose by default to get spec names
 	config.DefaultReporterConfig.Verbose = true
 

@@ -57,7 +57,7 @@ var _ = Describe("AgentController", func() {
 		newNode     = newNodePodCIDRsInAnnotations
 		edgeNameSet *types.SafeStringSet
 
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
+		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 	)
 
 	BeforeEach(func() {
@@ -87,6 +87,7 @@ var _ = Describe("AgentController", func() {
 			AgentImage:           agentImage,
 			StrongswanImage:      strongswanImage,
 			CertManager:          certManager,
+			GetEndpointName:      getEndpointName,
 			CertOrganization:     certutil.DefaultOrganization,
 			CertValidPeriod:      365,
 			Allocator:            alloc,
