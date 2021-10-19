@@ -94,7 +94,7 @@ manifests: controller-gen
 
 # Generate code
 generate: controller-gen
-	$(CONTROLLER_GEN) object paths="./..."
+	$(CONTROLLER_GEN) object paths="./pkg/..."
 
 # find or download controller-gen
 # download controller-gen if necessary
