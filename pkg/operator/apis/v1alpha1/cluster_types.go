@@ -37,3 +37,11 @@ type Cluster struct {
 
 	Spec ClusterSpec `json:"spec,omitempty"`
 }
+
+// ClusterList contains a list of clusters
+// +kubebuilder:object:root=true
+type ClusterList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Cluster `json:"items"`
+}
