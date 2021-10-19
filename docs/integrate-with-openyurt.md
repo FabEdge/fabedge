@@ -7,9 +7,11 @@
 
 ## 前置条件
 
-- Kubernetes (v1.18.8)
+- Kubernetes (v1.18.9)
 - Flannel (v0.14.0)
-- OpenYurt (v0.4.0, 至少有一个边缘节点)
+- OpenYurt (v0.5.0, 至少有一个边缘节点)
+- 操作系统：
+  - CentOS Linux release 7.9.2009 (Core)
 
 ## 环境准备
 
@@ -54,9 +56,11 @@
      ```shell
      $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
      This may take some time. Please wait.
-     clusterDNS: 
-     clusterDomain: kubernetes
-     service-cluster-ip-range : 10.96.0.0/12
+     
+     clusterDNS               :
+     clusterDomain            : kubernetes
+     cluster-cidr             : 10.100.0.0/16
+     service-cluster-ip-range : 10.96.0.0/16
      ```
 
 
@@ -89,21 +93,22 @@
 
    ```shell
    $ kubectl get po -n kube-system -o wide | grep -i flannel
-   kube-flannel-79l8h               1/1     Running   0          3d19h   10.20.8.24    master   <none>       
-   kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1    <none> 
+   kube-flannel-ds-6t4rz        1/1     Running   0          41m     192.168.9.168   master       <none>
+   kube-flannel-ds-mjx5v        1/1     Running   0          42m     192.168.9.169   cloud-node   <none>
    ```
 
-1. 在云端选取一个运行connector的节点，并为它做标记，以node1为例，
+3. 在云端选取一个运行connector的节点，并为它做标记，以cloud-node为例，
 
    ```shell
-   $ kubectl label no node1 node-role.kubernetes.io/connector=
+   $ kubectl label no cloud-node node-role.kubernetes.io/connector=
    
    $ kubectl get node
    NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
+   NAME         STATUS   ROLES       AGE     VERSION
+   cloud-node   Ready    connector   4h36m   v1.18.9
+   edge-node1   Ready    <none>      4h30m   v1.18.9
+   edge-node2   Ready    <none>      4h34m   v1.18.9
+   master       Ready    master      3d16h   v1.18.9
    ```
    >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
 
@@ -112,8 +117,8 @@
    ```shell
    $ vi values.yaml
    operator:
-     connectorPublicAddresses: 10.20.8.28  
-     connectorSubnets: 10.96.0.0/12  
+     connectorPublicAddresses: 39.103.209.74
+     connectorSubnets: 10.96.0.0/16
      edgeLabels: openyurt.io/is-edge-worker=true
      masqOutgoing: true
      enableProxy: false
