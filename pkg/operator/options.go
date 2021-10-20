@@ -40,6 +40,7 @@ import (
 	connectorctl "github.com/fabedge/fabedge/pkg/operator/controllers/connector"
 	"github.com/fabedge/fabedge/pkg/operator/controllers/ipamblockmonitor"
 	proxyctl "github.com/fabedge/fabedge/pkg/operator/controllers/proxy"
+	"github.com/fabedge/fabedge/pkg/operator/routines"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
@@ -372,6 +373,18 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		Store:   opts.Store,
 	}); err != nil {
 		log.Error(err, "failed to add cluster controller to manager")
+		return err
+	}
+
+	reporter := &routines.LocalClusterReporter{
+		Cluster:      opts.Cluster,
+		GetConnector: getConnectorEndpoint,
+		SyncInterval: 10 * time.Second,
+		Client:       opts.Manager.GetClient(),
+		Log:          opts.Manager.GetLogger().WithName("LocalClusterReporter"),
+	}
+	if err = opts.Manager.Add(reporter); err != nil {
+		log.Error(err, "failed to add local cluster reporter to manager")
 		return err
 	}
 
