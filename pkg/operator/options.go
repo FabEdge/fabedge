@@ -35,6 +35,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
+	clusterctl "github.com/fabedge/fabedge/pkg/operator/controllers/cluster"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
 	connectorctl "github.com/fabedge/fabedge/pkg/operator/controllers/connector"
 	"github.com/fabedge/fabedge/pkg/operator/controllers/ipamblockmonitor"
@@ -364,6 +365,14 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 			log.Error(err, "failed to add proxy controller to manager")
 			return err
 		}
+	}
+
+	if err = clusterctl.AddToManager(clusterctl.Config{
+		Manager: opts.Manager,
+		Store:   opts.Store,
+	}); err != nil {
+		log.Error(err, "failed to add cluster controller to manager")
+		return err
 	}
 
 	return nil
