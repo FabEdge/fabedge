@@ -37,5 +37,7 @@ func init() {
 	SchemeBuilder.Register(
 		&Community{},
 		&CommunityList{},
+		&Cluster{},
+		&ClusterList{},
 	)
 }

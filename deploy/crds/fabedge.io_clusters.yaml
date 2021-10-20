@@ -76,9 +76,6 @@ spec:
                     type: string
                 type: object
               type: array
-            name:
-              description: The name of a cluster
-              type: string
             token:
               description: Token is used by child cluster to access root cluster's
                 apiserver

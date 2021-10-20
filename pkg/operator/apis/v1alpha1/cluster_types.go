@@ -17,8 +17,6 @@ type TunnelEndpoint struct {
 }
 
 type ClusterSpec struct {
-	// The name of a cluster
-	Name string `json:"name,omitempty"`
 	// Token is used by child cluster to access root cluster's apiserver
 	Token string `json:"token,omitempty"`
 	// Endpoints of connector and exported edge nodes of a cluster
