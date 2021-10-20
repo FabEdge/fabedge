@@ -9,9 +9,7 @@ rules:
       - communities
       - clusters
     verbs:
-      - get
-      - list
-      - watch
+      - "*"
   - apiGroups:
       - ""
     resources:
