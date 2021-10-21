@@ -177,8 +177,7 @@ var _ = Describe("Controller", func() {
 		conf := getNetworkConf()
 		cep := getConnectorEndpoint()
 		Expect(conf.Endpoint).To(Equal(cep))
-		Expect(conf.Peers).To(ContainElement(edge1Endpoint))
-		Expect(conf.Peers).To(ContainElement(edge2Endpoint))
+		Expect(conf.Peers).To(ConsistOf(edge1Endpoint, edge2Endpoint))
 
 		By("remove edge2 endpoint")
 		store.DeleteEndpoint(edge2Endpoint.Name)
@@ -190,9 +189,7 @@ var _ = Describe("Controller", func() {
 
 		conf = getNetworkConf()
 		Expect(conf.Endpoint).To(Equal(getConnectorEndpoint()))
-		Expect(conf.Peers).To(ContainElement(edge1Endpoint))
-
-		Expect(conf.Peers).NotTo(ContainElement(edge2Endpoint))
+		Expect(conf.Peers).To(ConsistOf(edge1Endpoint))
 	})
 })
 
