@@ -17,6 +17,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"net"
 	"regexp"
 	"strings"
@@ -33,7 +34,6 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
 	clusterctl "github.com/fabedge/fabedge/pkg/operator/controllers/cluster"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
@@ -418,7 +418,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 
 	for _, node := range nodes.Items {
 		ep := opts.NewEndpoint(node)
-		if !ep.IsValid() {
+		if len(ep.PublicAddresses) == 0 || len(ep.Subnets) == 0 || len(ep.NodeSubnets) == 0 {
 			continue
 		}
 

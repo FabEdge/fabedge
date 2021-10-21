@@ -1,26 +1,33 @@
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "github.com/fabedge/fabedge/pkg/common/netconf"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
-type TunnelEndpoint struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-	// Public addresses can be IP, DNS
-	PublicAddresses []string `json:"publicAddresses,omitempty"`
-	// PodCIDRs, ServiceCIDR
-	Subnets []string `json:"subnets,omitempty"`
-	// Internal IPs of kubernetes node
-	NodeSubnets []string `json:"nodeSubnets,omitempty"`
-	// Type of endpoints: Connector or EdgeNode
-	Type netconf.EndpointType `json:"type,omitempty"`
+type EndpointType string
+
+const (
+	Connector EndpointType = "Connector"
+	EdgeNode  EndpointType = "EdgeNode"
+)
+
+type Endpoint struct {
+	ID   string `yaml:"id,omitempty" json:"id,omitempty"`
+	Name string `yaml:"name,omitempty" json:"name,omitempty"`
+	// public addresses can be IP, DNS
+	PublicAddresses []string `yaml:"publicAddresses,omitempty" json:"publicAddresses,omitempty"`
+	// pod subnets
+	Subnets []string `yaml:"subnets,omitempty" json:"subnets,omitempty"`
+	// internal IPs of kubernetes node
+	NodeSubnets []string     `yaml:"nodeSubnets,omitempty" json:"nodeSubnets,omitempty"`
+	Type        EndpointType `yaml:"type,omitempty" json:"type,omitempty"`
 }
 
 type ClusterSpec struct {
 	// Token is used by child cluster to access root cluster's apiserver
 	Token string `json:"token,omitempty"`
 	// Endpoints of connector and exported edge nodes of a cluster
-	EndPoints []TunnelEndpoint `json:"endPoints,omitempty"`
+	EndPoints []Endpoint `json:"endPoints,omitempty"`
 }
 
 // Cluster is used to represent a cluster's endpoints of connector and edge nodes

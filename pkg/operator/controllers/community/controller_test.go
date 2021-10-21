@@ -27,9 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
-	"github.com/fabedge/fabedge/pkg/operator/types"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
@@ -77,19 +76,19 @@ var _ = Describe("Controller", func() {
 			Expect(mgr.Start(ctx)).NotTo(HaveOccurred())
 		}()
 
-		store.SaveEndpoint(types.Endpoint{
+		store.SaveEndpoint(apis.Endpoint{
 			ID:              "1",
 			Name:            "edge1",
 			PublicAddresses: []string{"192.168.1.1"},
 			Subnets:         []string{"2.2.2.1/26"},
 		})
-		store.SaveEndpoint(types.Endpoint{
+		store.SaveEndpoint(apis.Endpoint{
 			ID:              "2",
 			Name:            "edge2",
 			PublicAddresses: []string{"192.168.1.2"},
 			Subnets:         []string{"2.2.2.65/26"},
 		})
-		store.SaveEndpoint(types.Endpoint{
+		store.SaveEndpoint(apis.Endpoint{
 			ID:              "4",
 			Name:            "edge4",
 			PublicAddresses: []string{"192.168.1.4"},

@@ -17,14 +17,15 @@ package store
 import (
 	"sync"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	"github.com/jjeffery/stringset"
 )
 
 type Interface interface {
-	SaveEndpoint(ep types.Endpoint)
-	GetEndpoint(name string) (types.Endpoint, bool)
-	GetEndpoints(names ...string) []types.Endpoint
+	SaveEndpoint(ep apis.Endpoint)
+	GetEndpoint(name string) (apis.Endpoint, bool)
+	GetEndpoints(names ...string) []apis.Endpoint
 	GetAllEndpointNames() stringset.Set
 	DeleteEndpoint(name string)
 
@@ -37,7 +38,7 @@ type Interface interface {
 var _ Interface = &store{}
 
 type store struct {
-	endpoints             map[string]types.Endpoint
+	endpoints             map[string]apis.Endpoint
 	communities           map[string]types.Community
 	endpointToCommunities map[string]stringset.Set
 
@@ -46,20 +47,20 @@ type store struct {
 
 func NewStore() Interface {
 	return &store{
-		endpoints:             make(map[string]types.Endpoint),
+		endpoints:             make(map[string]apis.Endpoint),
 		communities:           make(map[string]types.Community),
 		endpointToCommunities: make(map[string]stringset.Set),
 	}
 }
 
-func (s *store) SaveEndpoint(ep types.Endpoint) {
+func (s *store) SaveEndpoint(ep apis.Endpoint) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
 	s.endpoints[ep.Name] = ep
 }
 
-func (s *store) GetEndpoint(name string) (types.Endpoint, bool) {
+func (s *store) GetEndpoint(name string) (apis.Endpoint, bool) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
@@ -67,11 +68,11 @@ func (s *store) GetEndpoint(name string) (types.Endpoint, bool) {
 	return ep, ok
 }
 
-func (s *store) GetEndpoints(names ...string) []types.Endpoint {
+func (s *store) GetEndpoints(names ...string) []apis.Endpoint {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	endpoints := make([]types.Endpoint, 0, len(names))
+	endpoints := make([]apis.Endpoint, 0, len(names))
 	for _, name := range names {
 		ep, ok := s.endpoints[name]
 		if !ok {

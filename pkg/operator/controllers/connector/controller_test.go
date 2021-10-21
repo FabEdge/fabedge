@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -36,8 +37,8 @@ import (
 
 var _ = Describe("Controller", func() {
 	var (
-		edge1Endpoint types.Endpoint
-		edge2Endpoint types.Endpoint
+		edge1Endpoint apis.Endpoint
+		edge2Endpoint apis.Endpoint
 		store         storepkg.Interface
 		ctx           context.Context
 		cancel        context.CancelFunc
@@ -55,14 +56,14 @@ var _ = Describe("Controller", func() {
 		namespace = "default"
 		interval = 2 * time.Second
 
-		edge1Endpoint = types.Endpoint{
+		edge1Endpoint = apis.Endpoint{
 			ID:              "edge1",
 			Name:            "edge1",
 			PublicAddresses: []string{"10.20.40.181"},
 			Subnets:         []string{"2.2.0.1/26"},
 			NodeSubnets:     []string{"10.20.40.181"},
 		}
-		edge2Endpoint = types.Endpoint{
+		edge2Endpoint = apis.Endpoint{
 			ID:              "edge2",
 			Name:            "edge2",
 			PublicAddresses: []string{"10.20.40.182"},
@@ -95,7 +96,7 @@ var _ = Describe("Controller", func() {
 			Manager: mgr,
 			Store:   store,
 
-			Endpoint: types.Endpoint{
+			Endpoint: apis.Endpoint{
 				ID:              "cloud-connector",
 				Name:            "cloud-connector",
 				PublicAddresses: []string{"192.168.1.1"},
@@ -124,7 +125,7 @@ var _ = Describe("Controller", func() {
 		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
 		Expect(cep.Subnets).Should(ConsistOf(config.ProvidedSubnets[0], nodeutil.GetPodCIDRs(node1)[0]))
 		Expect(cep.NodeSubnets).Should(ConsistOf(nodeutil.GetIP(node1)))
-		Expect(cep.Type).Should(Equal(netconf.Connector))
+		Expect(cep.Type).Should(Equal(apis.Connector))
 
 		By("create node2 and node3")
 		node2 := newNormalNode("192.168.1.3", "10.10.10.128/26")
@@ -175,9 +176,9 @@ var _ = Describe("Controller", func() {
 
 		conf := getNetworkConf()
 		cep := getConnectorEndpoint()
-		Expect(conf.TunnelEndpoint).To(Equal(cep.ConvertToTunnelEndpoint()))
-		Expect(conf.Peers).To(ContainElement(edge1Endpoint.ConvertToTunnelEndpoint()))
-		Expect(conf.Peers).To(ContainElement(edge2Endpoint.ConvertToTunnelEndpoint()))
+		Expect(conf.Endpoint).To(Equal(cep))
+		Expect(conf.Peers).To(ContainElement(edge1Endpoint))
+		Expect(conf.Peers).To(ContainElement(edge2Endpoint))
 
 		By("remove edge2 endpoint")
 		store.DeleteEndpoint(edge2Endpoint.Name)
@@ -188,10 +189,10 @@ var _ = Describe("Controller", func() {
 		Expect(k8sClient.Get(context.Background(), key, &cm)).ShouldNot(HaveOccurred())
 
 		conf = getNetworkConf()
-		Expect(conf.TunnelEndpoint).To(Equal(getConnectorEndpoint().ConvertToTunnelEndpoint()))
-		Expect(conf.Peers).To(ContainElement(edge1Endpoint.ConvertToTunnelEndpoint()))
+		Expect(conf.Endpoint).To(Equal(getConnectorEndpoint()))
+		Expect(conf.Peers).To(ContainElement(edge1Endpoint))
 
-		Expect(conf.Peers).NotTo(ContainElement(edge2Endpoint.ConvertToTunnelEndpoint()))
+		Expect(conf.Peers).NotTo(ContainElement(edge2Endpoint))
 	})
 })
 

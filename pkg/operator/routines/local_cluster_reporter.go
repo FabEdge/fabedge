@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
@@ -55,14 +55,8 @@ func (ctl *LocalClusterReporter) report(ctx context.Context) {
 			},
 			Spec: apis.ClusterSpec{
 				Token: "",
-				EndPoints: []apis.TunnelEndpoint{
-					{
-						ID:              connector.ID,
-						Name:            connector.Name,
-						PublicAddresses: connector.PublicAddresses,
-						Subnets:         connector.Subnets,
-						NodeSubnets:     connector.Subnets,
-					},
+				EndPoints: []apis.Endpoint{
+					connector,
 				},
 			},
 		}
@@ -73,14 +67,8 @@ func (ctl *LocalClusterReporter) report(ctx context.Context) {
 		return
 	}
 
-	endpoints := []apis.TunnelEndpoint{
-		{
-			ID:              connector.ID,
-			Name:            connector.Name,
-			PublicAddresses: connector.PublicAddresses,
-			Subnets:         connector.Subnets,
-			NodeSubnets:     connector.Subnets,
-		},
+	endpoints := []apis.Endpoint{
+		connector,
 	}
 
 	if reflect.DeepEqual(endpoints, cluster.Spec.EndPoints) {

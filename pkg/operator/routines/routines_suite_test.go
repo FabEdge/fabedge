@@ -1,6 +1,7 @@
 package routines
 
 import (
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"path/filepath"
 	"testing"
 
@@ -11,7 +12,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 

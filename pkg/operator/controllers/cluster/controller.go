@@ -14,9 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
-	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
 const (
@@ -93,7 +92,7 @@ func (ctl *controller) Reconcile(ctx context.Context, request reconcile.Request)
 			continue
 		}
 
-		ctl.Store.SaveEndpoint(convertTunnelEndpoint(endpoint))
+		ctl.Store.SaveEndpoint(endpoint)
 		nameSet.Insert(endpoint.Name)
 	}
 
@@ -126,15 +125,4 @@ func (ctl *controller) pruneEndpoints(clusterName string) {
 		ctl.Store.DeleteEndpoint(epName)
 	}
 	delete(ctl.clusterCache, clusterName)
-}
-
-func convertTunnelEndpoint(endpoint apis.TunnelEndpoint) types.Endpoint {
-	return types.Endpoint{
-		ID:              endpoint.ID,
-		Name:            endpoint.Name,
-		Type:            endpoint.Type,
-		PublicAddresses: endpoint.PublicAddresses,
-		Subnets:         endpoint.Subnets,
-		NodeSubnets:     endpoint.NodeSubnets,
-	}
 }

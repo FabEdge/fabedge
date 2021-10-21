@@ -16,73 +16,17 @@ package types_test
 
 import (
 	"fmt"
+
 	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
-
-var _ = Describe("Endpoint", func() {
-	It("should equal if all fields are equal", func() {
-		e1 := types.Endpoint{
-			ID:              "test",
-			Name:            "edge2",
-			PublicAddresses: []string{"192.168.0.1"},
-			Subnets:         []string{"2.2.0.0/64"},
-			NodeSubnets:     []string{"192.168.0.1"},
-		}
-
-		e2 := types.Endpoint{
-			ID:              "test",
-			Name:            "edge2",
-			PublicAddresses: []string{"192.168.0.1"},
-			Subnets:         []string{"2.2.0.0/64"},
-			NodeSubnets:     []string{"192.168.0.1"},
-		}
-
-		Expect(e1.Equal(e2)).Should(BeTrue())
-	})
-
-	DescribeTable("isValid should return false",
-		func(ep types.Endpoint) {
-			Expect(ep.IsValid()).Should(BeFalse())
-		},
-
-		Entry("with invalid subnets", types.Endpoint{
-			PublicAddresses: []string{"2.2.2.255"},
-			Subnets:         []string{"2.2.0.0/33"},
-			NodeSubnets:     []string{"2.2.2.255"},
-		}),
-
-		Entry("with invalid node subnets", types.Endpoint{
-			PublicAddresses: []string{"2.2.2.2", "www.google.com"},
-			Subnets:         []string{"2.2.0.0/26"},
-			NodeSubnets:     []string{"2.2.0.0/33"},
-		}),
-
-		Entry("with empty ip", types.Endpoint{
-			PublicAddresses: nil,
-			Subnets:         []string{"2.2.0.0/26"},
-			NodeSubnets:     []string{"2.2.2.1/26"},
-		}),
-		Entry("with empty subnets", types.Endpoint{
-			PublicAddresses: []string{"2.2.2.2"},
-			Subnets:         nil,
-			NodeSubnets:     []string{"2.2.2.1/26"},
-		}),
-		Entry("with empty ip", types.Endpoint{
-			PublicAddresses: []string{"2.2.2.2"},
-			Subnets:         []string{"2.2.0.0/26"},
-			NodeSubnets:     nil,
-		}),
-	)
-})
 
 var _ = Describe("GenerateNewEndpointFunc", func() {
 	getEndpointName := func(nodeName string) string {
@@ -122,6 +66,6 @@ var _ = Describe("GenerateNewEndpointFunc", func() {
 	})
 
 	It("should mark endpoint as EdgeNode", func() {
-		Expect(endpoint.Type).Should(Equal(netconf.EdgeNode))
+		Expect(endpoint.Type).Should(Equal(apis.EdgeNode))
 	})
 })

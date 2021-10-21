@@ -32,7 +32,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
@@ -63,7 +63,7 @@ var (
 )
 
 func init() {
-	_ = v1alpha1.AddToScheme(scheme.Scheme)
+	_ = apis.AddToScheme(scheme.Scheme)
 	rand.Seed(time.Now().Unix())
 	serviceCloudNginx = getName(serviceCloudNginx)
 	serviceEdgeNginx = getName(serviceEdgeNginx)
@@ -151,11 +151,11 @@ func addAllEdgesToCommunity(cli client.Client) {
 		framework.Failf("no edge nodes are available")
 	}
 
-	community := v1alpha1.Community{
+	community := apis.Community{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: communityName,
 		},
-		Spec: v1alpha1.CommunitySpec{},
+		Spec: apis.CommunitySpec{},
 	}
 
 	for _, node := range edgeNodes {
