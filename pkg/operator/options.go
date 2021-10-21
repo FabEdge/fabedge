@@ -369,6 +369,7 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 	}
 
 	if err = clusterctl.AddToManager(clusterctl.Config{
+		Cluster: opts.Cluster,
 		Manager: opts.Manager,
 		Store:   opts.Store,
 	}); err != nil {

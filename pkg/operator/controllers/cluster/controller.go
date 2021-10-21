@@ -64,19 +64,21 @@ func AddToManager(config Config) error {
 }
 
 func (ctl *controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	log := ctl.log.WithValues("request", request)
 	if request.Name == ctl.Cluster {
+		log.V(5).Info("This cluster is local cluster, skip it")
 		return reconcile.Result{}, nil
 	}
 
 	var cluster apis.Cluster
 	if err := ctl.client.Get(ctx, request.NamespacedName, &cluster); err != nil {
 		if errors.IsNotFound(err) {
-			ctl.log.Info("cluster is deleted, clearing its endpoints from store", "req", request)
+			log.Info("cluster is deleted, clearing its endpoints from store")
 			ctl.pruneEndpoints(request.Name)
 			return reconcile.Result{}, nil
 		}
 
-		ctl.log.Error(err, "failed to get cluster", "req", request)
+		log.Error(err, "failed to get cluster")
 		return reconcile.Result{}, err
 	}
 
