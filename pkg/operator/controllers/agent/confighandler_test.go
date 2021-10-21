@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2/klogr"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -38,7 +39,7 @@ var _ = Describe("ConfigHandler", func() {
 
 		node corev1.Node
 
-		connectorEndpoint, edge2Endpoint types.Endpoint
+		connectorEndpoint, edge2Endpoint apis.Endpoint
 		testCommunity                    types.Community
 
 		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
@@ -61,13 +62,13 @@ var _ = Describe("ConfigHandler", func() {
 
 		nodeName := getNodeName()
 		connectorEndpoint = getConnectorEndpoint()
-		edge2Endpoint = types.Endpoint{
+		edge2Endpoint = apis.Endpoint{
 			ID:              "C=CN, O=StrongSwan, CN=edge2",
 			Name:            "edge2",
 			PublicAddresses: []string{"10.20.8.141"},
 			Subnets:         []string{"2.2.1.65/26"},
 			NodeSubnets:     []string{"10.20.8.141"},
-			Type:            netconf.EdgeNode,
+			Type:            apis.EdgeNode,
 		}
 		testCommunity = types.Community{
 			Name:    "test",
@@ -100,15 +101,15 @@ var _ = Describe("ConfigHandler", func() {
 		Expect(yaml.Unmarshal([]byte(configData), &conf)).ShouldNot(HaveOccurred())
 
 		expectedConf := netconf.NetworkConf{
-			TunnelEndpoint: newEndpoint(node).ConvertToTunnelEndpoint(),
-			Peers: []netconf.TunnelEndpoint{
-				connectorEndpoint.ConvertToTunnelEndpoint(),
-				edge2Endpoint.ConvertToTunnelEndpoint(),
+			Endpoint: newEndpoint(node),
+			Peers: []apis.Endpoint{
+				connectorEndpoint,
+				edge2Endpoint,
 			},
 		}
 		Expect(conf).Should(Equal(expectedConf))
-		Expect(conf.Peers[0].Type).Should(Equal(netconf.Connector))
-		Expect(conf.Peers[1].Type).Should(Equal(netconf.EdgeNode))
+		Expect(conf.Peers[0].Type).Should(Equal(apis.Connector))
+		Expect(conf.Peers[1].Type).Should(Equal(apis.EdgeNode))
 	})
 
 	It("Do should update agent configmap when any endpoint changed", func() {
@@ -140,10 +141,10 @@ var _ = Describe("ConfigHandler", func() {
 		Expect(yaml.Unmarshal([]byte(configData), &conf)).ShouldNot(HaveOccurred())
 
 		expectedConf := netconf.NetworkConf{
-			TunnelEndpoint: newEndpoint(node).ConvertToTunnelEndpoint(),
-			Peers: []netconf.TunnelEndpoint{
-				connectorEndpoint.ConvertToTunnelEndpoint(),
-				edge2Endpoint.ConvertToTunnelEndpoint(),
+			Endpoint: newEndpoint(node),
+			Peers: []apis.Endpoint{
+				connectorEndpoint,
+				edge2Endpoint,
 			},
 		}
 		Expect(conf).Should(Equal(expectedConf))
@@ -159,13 +160,13 @@ var _ = Describe("ConfigHandler", func() {
 	})
 })
 
-func getConnectorEndpoint() types.Endpoint {
-	return types.Endpoint{
+func getConnectorEndpoint() apis.Endpoint {
+	return apis.Endpoint{
 		ID:              "C=CN, O=StrongSwan, CN=cloud-connector",
 		Name:            "cloud-connector",
 		PublicAddresses: []string{"192.168.1.1"},
 		Subnets:         []string{"2.2.1.1/26"},
 		NodeSubnets:     []string{"192.168.1.0/24"},
-		Type:            netconf.Connector,
+		Type:            apis.Connector,
 	}
 }

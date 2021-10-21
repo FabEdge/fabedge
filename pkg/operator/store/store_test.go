@@ -19,6 +19,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
@@ -31,14 +32,14 @@ var _ = Describe("Store", func() {
 	})
 
 	It("can support endpoint CRUD operations", func() {
-		e1 := types.Endpoint{
+		e1 := apis.Endpoint{
 			ID:              "edge1",
 			Name:            "edge1",
 			PublicAddresses: []string{"10.40.20.181"},
 			Subnets:         []string{"2.2.0.0/26"},
 		}
 
-		e2 := types.Endpoint{
+		e2 := apis.Endpoint{
 			ID:              "edge2",
 			Name:            "edge2",
 			PublicAddresses: []string{"10.40.20.182"},

@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -50,7 +51,7 @@ type Node struct {
 }
 
 type Config struct {
-	Endpoint        types.Endpoint
+	Endpoint        apis.Endpoint
 	ProvidedSubnets []string
 	GetPodCIDRs     types.PodCIDRsGetter
 
@@ -135,8 +136,8 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 
 	connectorEndpoint := ctl.getConnectorEndpoint()
 	conf := netconf.NetworkConf{
-		TunnelEndpoint: connectorEndpoint.ConvertToTunnelEndpoint(),
-		Peers:          ctl.getPeers(),
+		Endpoint: connectorEndpoint,
+		Peers:    ctl.getPeers(),
 	}
 
 	confBytes, err := yaml.Marshal(conf)
@@ -184,13 +185,13 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	}
 }
 
-func (ctl *controller) getPeers() []netconf.TunnelEndpoint {
+func (ctl *controller) getPeers() []apis.Endpoint {
 	nameSet := ctl.Store.GetAllEndpointNames()
 	endpoints := ctl.Store.GetEndpoints(nameSet.Values()...)
 
-	peers := make([]netconf.TunnelEndpoint, 0, len(endpoints))
+	peers := make([]apis.Endpoint, 0, len(endpoints))
 	for _, ep := range endpoints {
-		peers = append(peers, ep.ConvertToTunnelEndpoint())
+		peers = append(peers, ep)
 	}
 
 	return peers
@@ -295,10 +296,10 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 
 	ctl.Endpoint.Subnets = subnets
 	ctl.Endpoint.NodeSubnets = nodeSubnets
-	ctl.Endpoint.Type = netconf.Connector
+	ctl.Endpoint.Type = apis.Connector
 }
 
-func (ctl *controller) getConnectorEndpoint() types.Endpoint {
+func (ctl *controller) getConnectorEndpoint() apis.Endpoint {
 	ctl.mux.RLock()
 	defer ctl.mux.RUnlock()
 

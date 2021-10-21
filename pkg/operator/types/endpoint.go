@@ -15,55 +15,21 @@
 package types
 
 import (
-	"net"
-	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/fabedge/fabedge/pkg/common/netconf"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 )
 
 type IDFunc func(nodeName string) string
 type NamingFunc func(nodeName string) string
-type NewEndpointFunc func(node corev1.Node) Endpoint
+type NewEndpointFunc func(node corev1.Node) apis.Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
-type EndpointGetter func() Endpoint
-
-type Endpoint netconf.TunnelEndpoint
-
-func (e Endpoint) Equal(o Endpoint) bool {
-	return reflect.DeepEqual(e, o)
-}
-
-func (e Endpoint) IsValid() bool {
-	if len(e.PublicAddresses) == 0 || len(e.NodeSubnets) == 0 || len(e.Subnets) == 0 {
-		return false
-	}
-
-	for _, subnet := range e.Subnets {
-		_, _, err := net.ParseCIDR(subnet)
-		if err != nil {
-			return false
-		}
-	}
-
-	for _, subnet := range e.NodeSubnets {
-		_, _, err := net.ParseCIDR(subnet)
-		if err != nil {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (e Endpoint) ConvertToTunnelEndpoint() netconf.TunnelEndpoint {
-	return netconf.TunnelEndpoint(e)
-}
+type EndpointGetter func() apis.Endpoint
 
 func GenerateNewEndpointFunc(idFormat string, getName NamingFunc, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
-	return func(node corev1.Node) Endpoint {
+	return func(node corev1.Node) apis.Endpoint {
 		var nodeSubnets []string
 		for _, addr := range node.Status.Addresses {
 			if addr.Type == corev1.NodeInternalIP {
@@ -72,18 +38,18 @@ func GenerateNewEndpointFunc(idFormat string, getName NamingFunc, getPodCIDRs Po
 		}
 
 		if node.Name == "" {
-			return Endpoint{}
+			return apis.Endpoint{}
 		}
 
 		name := getName(node.Name)
-		return Endpoint{
+		return apis.Endpoint{
 			ID:   GetID(idFormat, name),
 			Name: name,
 			// todo: get public address from annotations or labels
 			PublicAddresses: nodeSubnets,
 			Subnets:         getPodCIDRs(node),
 			NodeSubnets:     nodeSubnets,
-			Type:            netconf.EdgeNode,
+			Type:            apis.EdgeNode,
 		}
 	}
 }

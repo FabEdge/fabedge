@@ -28,6 +28,7 @@ import (
 	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
@@ -397,7 +398,7 @@ func (m *Manager) getConnectorSubnets() (subnets []string, err error) {
 	}
 
 	for _, peer := range conf.Peers {
-		if peer.Type == netconf.Connector {
+		if peer.Type == apis.Connector {
 			subnets = append(subnets, peer.Subnets...)
 		}
 	}

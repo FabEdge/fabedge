@@ -16,6 +16,7 @@ package community
 
 import (
 	"context"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 
 	"github.com/go-logr/logr"
 	"github.com/jjeffery/stringset"
@@ -27,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )

@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -109,18 +110,18 @@ func (handler *configHandler) buildNetworkConf(nodeName string) netconf.NetworkC
 	peerEndpoints := handler.getPeers(epName)
 
 	conf := netconf.NetworkConf{
-		TunnelEndpoint: endpoint.ConvertToTunnelEndpoint(),
-		Peers:          make([]netconf.TunnelEndpoint, 0, len(peerEndpoints)),
+		Endpoint: endpoint,
+		Peers:    make([]apis.Endpoint, 0, len(peerEndpoints)),
 	}
 
 	for _, ep := range peerEndpoints {
-		conf.Peers = append(conf.Peers, ep.ConvertToTunnelEndpoint())
+		conf.Peers = append(conf.Peers, ep)
 	}
 
 	return conf
 }
 
-func (handler *configHandler) getPeers(name string) []types.Endpoint {
+func (handler *configHandler) getPeers(name string) []apis.Endpoint {
 	store := handler.store
 	nameSet := stringset.New()
 
@@ -129,7 +130,7 @@ func (handler *configHandler) getPeers(name string) []types.Endpoint {
 	}
 	nameSet.Remove(name)
 
-	endpoints := make([]types.Endpoint, 0, len(nameSet)+1)
+	endpoints := make([]apis.Endpoint, 0, len(nameSet)+1)
 	// always put connector endpoint first
 	endpoints = append(endpoints, handler.getConnectorEndpoint())
 	endpoints = append(endpoints, store.GetEndpoints(nameSet.Values()...)...)

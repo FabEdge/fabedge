@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
@@ -73,7 +73,7 @@ var _ = Describe("Controller", func() {
 			},
 			Spec: apis.ClusterSpec{
 				Token: "test",
-				EndPoints: []apis.TunnelEndpoint{
+				EndPoints: []apis.Endpoint{
 					{
 						Name: "root.connector",
 						PublicAddresses: []string{
@@ -123,12 +123,12 @@ var _ = Describe("Controller", func() {
 
 			ep2, ok := ctrl.Store.GetEndpoint(ep.Name)
 			Expect(ok).Should(BeTrue())
-			Expect(ep2).Should(Equal(convertTunnelEndpoint(ep)))
+			Expect(ep2).Should(Equal(ep))
 		}
 	})
 
 	It("should update endpoints of cluster to store when cluster is updated", func() {
-		cluster.Spec.EndPoints = []apis.TunnelEndpoint{
+		cluster.Spec.EndPoints = []apis.Endpoint{
 			{
 				Name: "root.connector",
 				PublicAddresses: []string{
@@ -157,7 +157,7 @@ var _ = Describe("Controller", func() {
 
 		ep := cluster.Spec.EndPoints[0]
 		ep2, _ := ctrl.Store.GetEndpoint("root.connector")
-		Expect(ep2).Should(Equal(convertTunnelEndpoint(ep)))
+		Expect(ep2).Should(Equal(ep))
 	})
 
 	It("should delete endpoints from store when cluster is deleted", func() {
@@ -182,7 +182,7 @@ var _ = Describe("Controller", func() {
 			},
 			Spec: apis.ClusterSpec{
 				Token: "test",
-				EndPoints: []apis.TunnelEndpoint{
+				EndPoints: []apis.Endpoint{
 					{
 						Name: "test.connector",
 						PublicAddresses: []string{

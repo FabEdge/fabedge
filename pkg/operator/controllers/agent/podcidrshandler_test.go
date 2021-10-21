@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/klog/v2/klogr"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -116,7 +117,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 		It("should reallocate a subnet to a edge node if this node's subnet is not match to record in store", func() {
 			nodeName := getNodeName()
-			handler.store.SaveEndpoint(types.Endpoint{
+			handler.store.SaveEndpoint(apis.Endpoint{
 				Name:            nodeName,
 				PublicAddresses: nil,
 				Subnets:         []string{"2.2.2.2/26"},

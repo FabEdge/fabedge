@@ -15,13 +15,13 @@
 package operator
 
 import (
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	flag "github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/v1alpha1"
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
