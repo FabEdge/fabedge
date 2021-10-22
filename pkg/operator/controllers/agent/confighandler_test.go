@@ -42,14 +42,17 @@ var _ = Describe("ConfigHandler", func() {
 		connectorEndpoint, edge2Endpoint apis.Endpoint
 		testCommunity                    types.Community
 
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
-		newNode     = newNodePodCIDRsInAnnotations
+		getEndpointName types.GetNameFunc
+		newEndpoint     types.NewEndpointFunc
+		newNode         = newNodePodCIDRsInAnnotations
 
 		handler *configHandler
 		store   storepkg.Interface
 	)
 
 	BeforeEach(func() {
+		getEndpointName, _, newEndpoint = types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
+
 		store = storepkg.NewStore()
 		handler = &configHandler{
 			namespace:            namespace,

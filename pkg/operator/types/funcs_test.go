@@ -15,8 +15,6 @@
 package types_test
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -28,12 +26,8 @@ import (
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
-var _ = Describe("GenerateNewEndpointFunc", func() {
-	getEndpointName := func(nodeName string) string {
-		return fmt.Sprintf("cluster.%s", nodeName)
-	}
-
-	newEndpoint := types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
+var _ = Describe("EndpointFuncs", func() {
+	_, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",

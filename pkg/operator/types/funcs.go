@@ -15,6 +15,7 @@
 package types
 
 import (
+	"fmt"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -22,14 +23,22 @@ import (
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 )
 
-type IDFunc func(nodeName string) string
-type NamingFunc func(nodeName string) string
+type GetIDFunc func(nodeName string) string
+type GetNameFunc func(nodeName string) string
 type NewEndpointFunc func(node corev1.Node) apis.Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
 type EndpointGetter func() apis.Endpoint
 
-func GenerateNewEndpointFunc(idFormat string, getName NamingFunc, getPodCIDRs PodCIDRsGetter) NewEndpointFunc {
-	return func(node corev1.Node) apis.Endpoint {
+func NewEndpointFuncs(namePrefix, idFormat string, getPodCIDRs PodCIDRsGetter) (GetNameFunc, GetIDFunc, NewEndpointFunc) {
+	getName := func(name string) string {
+		return fmt.Sprintf("%s.%s", namePrefix, name)
+	}
+
+	getID := func(name string) string {
+		return strings.ReplaceAll(idFormat, "{node}", getName(name))
+	}
+
+	newEndpoint := func(node corev1.Node) apis.Endpoint {
 		var nodeSubnets []string
 		for _, addr := range node.Status.Addresses {
 			if addr.Type == corev1.NodeInternalIP {
@@ -41,19 +50,15 @@ func GenerateNewEndpointFunc(idFormat string, getName NamingFunc, getPodCIDRs Po
 			return apis.Endpoint{}
 		}
 
-		name := getName(node.Name)
 		return apis.Endpoint{
-			ID:   GetID(idFormat, name),
-			Name: name,
-			// todo: get public address from annotations or labels
+			ID:              getID(node.Name),
+			Name:            getName(node.Name),
 			PublicAddresses: nodeSubnets,
 			Subnets:         getPodCIDRs(node),
 			NodeSubnets:     nodeSubnets,
 			Type:            apis.EdgeNode,
 		}
 	}
-}
 
-func GetID(format, nodeName string) string {
-	return strings.ReplaceAll(format, "{node}", nodeName)
+	return getName, getID, newEndpoint
 }

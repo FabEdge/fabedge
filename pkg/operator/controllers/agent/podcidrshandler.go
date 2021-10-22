@@ -35,7 +35,7 @@ type allocatablePodCIDRsHandler struct {
 	allocator       allocator.Interface
 	store           storepkg.Interface
 	newEndpoint     types.NewEndpointFunc
-	getEndpointName types.NamingFunc
+	getEndpointName types.GetNameFunc
 	log             logr.Logger
 }
 
@@ -133,7 +133,7 @@ var _ Handler = &rawPodCIDRsHandler{}
 
 type rawPodCIDRsHandler struct {
 	store           storepkg.Interface
-	getEndpointName types.NamingFunc
+	getEndpointName types.GetNameFunc
 	newEndpoint     types.NewEndpointFunc
 }
 
