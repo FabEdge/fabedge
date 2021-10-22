@@ -6,21 +6,21 @@
 
 <img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="40%">  
 
-FabEdge is a secure edge networking solution based on Kubernetes. It enables cloud-edge, edge-edge collaboration and solves the problems including complex  configuration management, network isolation, lack of topology-aware routing etc.
+FabEdge is a secure edge networking solution based on Kubernetes. It enables cloud-edge, edge-edge collaboration and solves the problems including complex  configuration management, network isolation, lack of topology-aware routing, etc.
 
-FabEdge supports weak network environments, such as 4/5G, WiFi，LoRa, etc. It is suitable for scenarios such as IoT (Internet of Things),  IoV (Internet of Vehicles), etc.
+FabEdge supports weak transport network, such as 4/5G, WiFi，LoRa, etc. It is suitable for scenarios such as IoT (Internet of Things),  IoV (Internet of Vehicles), etc.
 
 # Features
 * **Kubernetes Native**: Compatible with Kubernetes, transparent to applications.  
-* **Automatic Address Management**：Management of the subnets allocation and ip address assignment for edge containers.  
+* **Automatic Address Management**：Management of the subnets allocation and IP address assignment for edge containers.  
 * **Cloud-Edge/Edge-Edge Collaboration**: Secure tunnels between cloud-edge, edge-edge nodes for synergy.  
-* **Edge Community Control**:  Use CRD of “community” to control which edge nodes can communicate with each others.  
+* **Edge Node Community Control**:  Use CRD of “community” to control which edge nodes can communicate with each others.  
 * **Topology-aware service**: Improve service latency by giving higher priority to local endpoints, while still able to access endpoints in remote cloud.  
 
 # Advantages
-* **Standard**: fully compatible with k8s API, support any k8s cluster, plug and plan.  
-* **Secure**: all communication over secure IPSec tunnel with certificate based authentication.  
-* **Easy to use**: designed using operator pattern , minimized ongoing operation effort.  
+* **Standard**: fully compatible with Kubernetes, support any cluster, any application, plug and play.  
+* **Secure**: all communication over secure IPSec tunnels with certificate based authentication.  
+* **Easy to use**: designed using operator pattern, minimized ongoing operation effort.  
 
 # How it works
 <img src="docs/images/fabedge-arch-v2.jpeg" alt="fabedge-arch-v2" style="zoom:48%;" />
