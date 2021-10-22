@@ -58,8 +58,7 @@ Regular Community Meeting
 
 | Beijing Time | Tencent Meeting Link | Status |
 | :---- | :---- |:---- |
-| 2021.09.09 15:00-16:00 | Meeting ID 341 406 062 or https://meeting.tencent.com/dm/ZmnDlW6IRMj3?rs=25 | End |
-| 2021.09.23 15:00-16:00 | TBD | TBD |
+| 2021.10.14 15:00-16:00 | Meeting ID：693 876 874  or https://meeting.tencent.com/dm/WBIsGl7S9WfO | End |
 
 
 Resources:
