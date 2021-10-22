@@ -43,13 +43,15 @@ Fabedge is different from generic Kubernetes network plug-ins such as Calico/Fla
 See  [the docs](docs/).
 
 # Meeting
-Regular community meeting at  2nd and 4th Thursday of every month
-Resources:
-[Meeting notes and agenda](https://shimo.im/docs/Wwt9TdGqgVvpDHJt)  
-[Meeting recordings：bilibili channel](https://space.bilibili.com/524926244?spm_id_from=333.1007.0.0)
+Regular community meeting at  2nd and 4th Thursday of every month  
+
+Resources:  
+[Meeting notes and agenda](https://shimo.im/docs/Wwt9TdGqgVvpDHJt)    
+[Meeting recordings：bilibili channel](https://space.bilibili.com/524926244?spm_id_from=333.1007.0.0)  
 
 # Contact
 Any question, feel free to reach us in the following ways:
+
 · Email: fabedge@beyondcent.com  
 · Scan the QR code to join WeChat Group
 
