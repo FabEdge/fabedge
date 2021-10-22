@@ -69,7 +69,6 @@ type Options struct {
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
 	NewEndpoint  types.NewEndpointFunc
-	GetPodCIDRs  types.PodCIDRsGetter
 	Manager      manager.Manager
 }
 
@@ -128,29 +127,27 @@ func (opts *Options) Complete() (err error) {
 	}
 	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
 
-	getEndpointName := func(nodeName string) string {
-		return fmt.Sprintf("%s.%s", opts.Cluster, nodeName)
-	}
+	var getPodCIDRs types.PodCIDRsGetter
 	switch opts.CNIType {
 	case constants.CNICalico:
 		opts.PodCIDRStore = types.NewPodCIDRStore()
-		opts.GetPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
+		getPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
 		if opts.Agent.EnableEdgeIPAM {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
+			getPodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
 			if err != nil {
 				log.Error(err, "failed to create allocator")
 				return err
 			}
-		} else {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, opts.GetPodCIDRs)
 		}
 	case constants.CNIFlannel:
-		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, getEndpointName, nodeutil.GetPodCIDRs)
-		opts.GetPodCIDRs = nodeutil.GetPodCIDRs
+		getPodCIDRs = nodeutil.GetPodCIDRs
 	default:
 		return fmt.Errorf("unknown CNI: %s", opts.CNIType)
 	}
+
+	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getPodCIDRs)
+	opts.NewEndpoint = newEndpoint
 
 	cfg, err := config.GetConfig()
 	if err != nil {
@@ -195,9 +192,9 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.ConfigMapKey.Namespace = opts.Namespace
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
-	opts.Connector.GetPodCIDRs = opts.GetPodCIDRs
+	opts.Connector.GetPodCIDRs = getPodCIDRs
 	opts.Connector.Endpoint.Name = getEndpointName("connector")
-	opts.Connector.Endpoint.ID = types.GetID(opts.EndpointIDFormat, opts.Connector.Endpoint.Name)
+	opts.Connector.Endpoint.ID = getEndpointID("connector")
 
 	opts.Proxy.AgentNamespace = opts.Namespace
 	opts.Proxy.Manager = opts.Manager

@@ -56,15 +56,12 @@ var _ = Describe("AgentController", func() {
 		certManager certutil.Manager
 		newNode     = newNodePodCIDRsInAnnotations
 		edgeNameSet *types.SafeStringSet
-
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation)
 	)
 
 	BeforeEach(func() {
-		ctx, cancel = context.WithCancel(context.Background())
+		getName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 
 		store = storepkg.NewStore()
-
 		alloc, _ = allocator.New("2.2.0.0/16")
 
 		caCertDER, caKeyDER, _ := certutil.NewSelfSignedCA(certutil.Config{
@@ -87,7 +84,7 @@ var _ = Describe("AgentController", func() {
 			AgentImage:           agentImage,
 			StrongswanImage:      strongswanImage,
 			CertManager:          certManager,
-			GetEndpointName:      getEndpointName,
+			GetEndpointName:      getName,
 			CertOrganization:     certutil.DefaultOrganization,
 			CertValidPeriod:      365,
 			Allocator:            alloc,
@@ -119,6 +116,7 @@ var _ = Describe("AgentController", func() {
 		)
 		Expect(err).ShouldNot(HaveOccurred())
 
+		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
 			defer GinkgoRecover()
 			Expect(mgr.Start(ctx)).To(Succeed())

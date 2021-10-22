@@ -41,11 +41,12 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 		store := storepkg.NewStore()
 		alloc, _ := allocator.New("2.2.0.0/16")
 
+		getEndpointName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 		handler = &allocatablePodCIDRsHandler{
 			store:           store,
 			allocator:       alloc,
 			getEndpointName: getEndpointName,
-			newEndpoint:     types.GenerateNewEndpointFunc("C=CN, O=fabedge.io, CN={node}", getEndpointName, nodeutil.GetPodCIDRsFromAnnotation),
+			newEndpoint:     newEndpoint,
 			client:          k8sClient,
 			log:             klogr.New().WithName("podCIDRsHandler"),
 		}
@@ -66,7 +67,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
-			epName := getEndpointName(nodeName)
+			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
@@ -85,7 +86,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			epName := getEndpointName(nodeName)
+			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
@@ -105,7 +106,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			epName := getEndpointName(nodeName)
+			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
@@ -130,7 +131,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			epName := getEndpointName(nodeName)
+			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
@@ -149,7 +150,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
 			Expect(handler.Do(context.TODO(), node)).Should(Succeed())
 
-			epName := getEndpointName(nodeName)
+			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).Should(BeTrue())
 
@@ -175,11 +176,12 @@ var _ = Describe("rawPodCIDRsHandler", func() {
 
 	BeforeEach(func() {
 		store := storepkg.NewStore()
+		getName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRs)
 
 		handler = &rawPodCIDRsHandler{
 			store:           store,
-			getEndpointName: getEndpointName,
-			newEndpoint:     types.GenerateNewEndpointFunc("C=CN, O=fabedge.io, CN={node}", getEndpointName, nodeutil.GetPodCIDRs),
+			getEndpointName: getName,
+			newEndpoint:     newEndpoint,
 		}
 	})
 
@@ -193,7 +195,7 @@ var _ = Describe("rawPodCIDRsHandler", func() {
 
 		Expect(handler.Do(context.TODO(), node)).Should(Succeed())
 
-		epName := getEndpointName(nodeName)
+		epName := handler.getEndpointName(nodeName)
 		ep, ok := handler.store.GetEndpoint(epName)
 		Expect(ok).To(BeTrue())
 		Expect(len(ep.Subnets)).Should(Equal(1))

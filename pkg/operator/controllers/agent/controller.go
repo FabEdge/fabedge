@@ -72,7 +72,7 @@ type Config struct {
 
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
-	GetEndpointName      types.NamingFunc
+	GetEndpointName      types.GetNameFunc
 
 	CertManager      certutil.Manager
 	CertOrganization string

@@ -36,7 +36,7 @@ var _ Handler = &certHandler{}
 type certHandler struct {
 	namespace string
 
-	getEndpointName  types.NamingFunc
+	getEndpointName  types.GetNameFunc
 	certManager      certutil.Manager
 	certOrganization string
 	certValidPeriod  int64

@@ -37,7 +37,8 @@ var _ = Describe("CertHandler", func() {
 		certManager certutil.Manager
 		handler     *certHandler
 
-		newNode = newNodePodCIDRsInAnnotations
+		newNode         = newNodePodCIDRsInAnnotations
+		getEndpointName = func(nodeName string) string { return nodeName }
 	)
 
 	BeforeEach(func() {

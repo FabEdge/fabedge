@@ -38,7 +38,7 @@ var _ Handler = &configHandler{}
 type configHandler struct {
 	namespace            string
 	store                storepkg.Interface
-	getEndpointName      types.NamingFunc
+	getEndpointName      types.GetNameFunc
 	getConnectorEndpoint types.EndpointGetter
 	client               client.Client
 	log                  logr.Logger
