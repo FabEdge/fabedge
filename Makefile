@@ -2,7 +2,7 @@ OUTPUT_DIR := _output
 BINARIES := agent connector operator cert
 IMAGES := $(addsuffix -image, agent connector operator cert)
 
-VERSION := v0.2.0
+VERSION := v0.3.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fabedge/pkg/common/about
@@ -68,7 +68,7 @@ else
 endif
 
 e2e-test:
-	go test -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
+	go test ${LDFLAGS} -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:

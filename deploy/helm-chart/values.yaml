@@ -10,7 +10,7 @@ operator:
   edgePodCIDR: 10.10.0.0/16
 
   # enable masquerade when edge pods access Internet
-  masqOutgoing: false
+  masqOutgoing: true
 
   # enable fabedge ipvs loadbalancer function
   enableProxy: true
@@ -21,13 +21,15 @@ operator:
   # CIDR used by pod & service in the cloud k8s cluster
   connectorSubnets: 10.233.64.0/18,10.233.0.0/18
 
+  edgeLabels: node-role.kubernetes.io/edge
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: node-role.kubernetes.io/edge
-                operator: DoesNotExist
+              - key: node-role.kubernetes.io/connector
+                operator: Exists
 
   ## Ref: http://kubernetes.io/docs/user-guide/compute-resources/
   #resources: {}

@@ -16,11 +16,25 @@ package node
 
 import (
 	"strings"
+	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 )
+
+var once sync.Once
+var edgeNodeLabels map[string]string
+
+func SetEdgeNodeLabels(labels map[string]string) {
+	once.Do(func() {
+		edgeNodeLabels = labels
+	})
+}
+
+func GetEdgeNodeLabels() map[string]string {
+	return edgeNodeLabels
+}
 
 func GetIP(node corev1.Node) string {
 	var ip string
@@ -54,11 +68,20 @@ func GetPodCIDRsFromAnnotation(node corev1.Node) []string {
 }
 
 func IsEdgeNode(node corev1.Node) bool {
-	labels := node.GetLabels()
-	if labels == nil {
+	if len(edgeNodeLabels) == 0 {
 		return false
 	}
 
-	_, ok := labels["node-role.kubernetes.io/edge"]
-	return ok
+	labels := node.GetLabels()
+	if len(labels) == 0 {
+		return false
+	}
+
+	for key, value := range edgeNodeLabels {
+		if v, exist := labels[key]; !exist || v != value {
+			return false
+		}
+	}
+
+	return true
 }

@@ -21,11 +21,13 @@ import (
 )
 
 type TunnelEndpoint struct {
-	ID              string   `yaml:"id,omitempty"`
-	Name            string   `yaml:"name,omitempty"`
+	ID   string `yaml:"id,omitempty"`
+	Name string `yaml:"name,omitempty"`
+	// public addresses can be IP, DNS
 	PublicAddresses []string `yaml:"publicAddresses,omitempty"`
-	// only pod subnets are allowed
-	Subnets     []string `yaml:"subnets,omitempty"`
+	// pod subnets
+	Subnets []string `yaml:"subnets,omitempty"`
+	// internal IPs of kubernetes node
 	NodeSubnets []string `yaml:"nodeSubnets,omitempty"`
 }
 

@@ -27,32 +27,20 @@ func NewCalicoRouter() *CalicoRouter {
 	return &CalicoRouter{}
 }
 
-func (c *CalicoRouter) SyncRoutes(active bool, connections []tunnel.ConnConfig) error {
-	switch active {
-	case true:
-		if err := EnsureDummyDevice(dummyInfName); err != nil {
-			return err
-		}
-
-		if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
-			return err
-		}
-
-		if err := addAllEdgeRoutes(connections, TableStrongswan); err != nil {
-			return err
-		}
-
-		if err := addAllEdgeRoutesIntoMainTable(connections, dummyInfName); err != nil {
-			return err
-		}
-
-	case false:
-		if err := c.CleanRoutes(connections); err != nil {
-			return err
-		}
+func (c *CalicoRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
+	if err := EnsureDummyDevice(dummyInfName); err != nil {
+		return err
 	}
 
-	return nil
+	if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
+		return err
+	}
+
+	if err := addAllEdgeRoutes(connections, TableStrongswan); err != nil {
+		return err
+	}
+
+	return addAllEdgeRoutesIntoMainTable(connections, dummyInfName)
 }
 
 func (c *CalicoRouter) CleanRoutes(conns []tunnel.ConnConfig) error {

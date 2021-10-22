@@ -208,6 +208,7 @@ fabedge-cert verify --secret edge --ca-secret=fabedge-ca --namespace=fabedge
 	rootCmd.AddCommand(
 		genCmd,
 		saveCaCmd,
+		verifyCmd,
 		versionCmd,
 	)
 

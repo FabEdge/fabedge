@@ -16,10 +16,14 @@ package framework
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/onsi/ginkgo/config"
 	"k8s.io/client-go/tools/clientcmd"
+
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
 type PreserveResourcesMode string
@@ -32,6 +36,7 @@ const (
 
 type Context struct {
 	KubeConfig        string
+	EdgeLabels        string
 	GenReport         bool
 	ReportFile        string
 	WaitTimeout       int64
@@ -63,6 +68,8 @@ func RegisterAndHandleFlags() {
 		"The net-tool image")
 	flag.BoolVar(&TestContext.ShowExecError, "show-exec-error", false,
 		"display error of executing curl or ping")
+	flag.StringVar(&TestContext.EdgeLabels, "edge-labels", "node-role.kubernetes.io/edge",
+		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
 	flag.Parse()
 	// Turn on verbose by default to get spec names
@@ -77,23 +84,48 @@ func RegisterAndHandleFlags() {
 
 	if TestContext.WaitTimeout <= 0 {
 		fatalf("wait-timeout is too small")
-		os.Exit(1)
 	}
 
 	if TestContext.PingTimeout <= 0 {
 		fatalf("ping-timeout is too small")
-		os.Exit(1)
 	}
 
 	if TestContext.CurlTimeout <= 0 {
 		fatalf("curl-timeout is too small")
-		os.Exit(1)
 	}
 
 	_, err := LoadConfig()
 	if err != nil {
 		fatalf("cannot create kube client: %s", err)
 	}
+
+	parsedEdgeLabels, err := parseLabels(TestContext.EdgeLabels)
+	if err != nil {
+		fatalf("invalid edge labels: %s", err)
+	}
+	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
+}
+
+func parseLabels(labels string) (map[string]string, error) {
+	labels = strings.TrimSpace(labels)
+
+	parsedEdgeLabels := make(map[string]string)
+	for _, label := range strings.Split(labels, ",") {
+		parts := strings.Split(label, "=")
+		switch len(parts) {
+		case 1:
+			parsedEdgeLabels[parts[0]] = ""
+		case 2:
+			if parts[0] == "" {
+				return nil, fmt.Errorf("label's key must not be empty")
+			}
+			parsedEdgeLabels[parts[0]] = parts[1]
+		default:
+			return nil, fmt.Errorf("wrong edge label format: %s", strings.Join(parts, "="))
+		}
+	}
+
+	return parsedEdgeLabels, nil
 }
 
 func fatalf(format string, args ...interface{}) {

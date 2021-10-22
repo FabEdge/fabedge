@@ -2,6 +2,7 @@
 # node-role.kubernetes.io/edge
 - name: Patch calico-node
   shell: kubectl -n kube-system patch daemonsets calico-node --patch "{{ lookup('template', 'calico-node.patch.j2') }}"
+  when: kube_network_plugin == 'calico'
 
 # node-role.kubernetes.io/edge
 - name: Patch kube-proxy
@@ -21,10 +22,13 @@
     name: calico-kube-controllers
     namespace: kube-system
   register: _calico_kube_controllers
+  when: kube_network_plugin == 'calico'
 
 - name: Patch calico-kube-controllers
   shell: kubectl -n kube-system patch deployments coredns --patch "{{ lookup('template', 'calico-kube-controllers.patch.j2') }}"
-  when: _calico_kube_controllers.resources | length > 0
+  when:
+    - kube_network_plugin == 'calico'
+    - _calico_kube_controllers.resources | length > 0
 
 - name: Disable dns-autoscaler
   shell: kubectl scale deployment --replicas=0 dns-autoscaler --namespace=kube-system

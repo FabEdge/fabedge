@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
@@ -52,9 +51,10 @@ type Handler interface {
 var _ reconcile.Reconciler = &agentController{}
 
 type agentController struct {
-	handlers []Handler
-	client   client.Client
-	log      logr.Logger
+	handlers    []Handler
+	client      client.Client
+	log         logr.Logger
+	edgeNameSet *types.SafeStringSet
 }
 
 type Config struct {
@@ -77,7 +77,10 @@ type Config struct {
 	CertOrganization string
 	CertValidPeriod  int64
 
-	EnableProxy bool
+	EnableProxy          bool
+	EnableFlannelMocking bool
+
+	EnableEdgeIPAM bool
 }
 
 func AddToManager(cnf Config) error {
@@ -87,9 +90,10 @@ func AddToManager(cnf Config) error {
 	cli := mgr.GetClient()
 
 	reconciler := &agentController{
-		log:      log,
-		client:   cli,
-		handlers: initHandlers(cnf, cli, log),
+		log:         log,
+		client:      cli,
+		edgeNameSet: types.NewSafeStringSet(),
+		handlers:    initHandlers(cnf, cli, log),
 	}
 	c, err := controller.New(
 		controllerName,
@@ -105,7 +109,6 @@ func AddToManager(cnf Config) error {
 	return c.Watch(
 		&source.Kind{Type: &corev1.Node{}},
 		&handlerpkg.EnqueueRequestForObject{},
-		predicates.EdgeNodePredicate(),
 	)
 }
 
@@ -123,6 +126,13 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		handlers = append(handlers, &rawPodCIDRsHandler{
 			store:       cnf.Store,
 			newEndpoint: cnf.NewEndpoint,
+		})
+	}
+
+	if cnf.EnableFlannelMocking {
+		handlers = append(handlers, &flannelNodeMocker{
+			client: cli,
+			log:    log,
 		})
 	}
 
@@ -157,6 +167,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		useXfrm:         cnf.UseXfrm,
 		masqOutgoing:    cnf.MasqOutgoing,
 		enableProxy:     cnf.EnableProxy,
+		enableIPAM:      cnf.EnableEdgeIPAM,
 	})
 
 	return handlers
@@ -168,7 +179,6 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 	var node corev1.Node
 	if err := ctl.client.Get(ctx, request.NamespacedName, &node); err != nil {
 		if errors.IsNotFound(err) {
-			log.Info("edge node is deleted, clear resources allocated to this node")
 			return reconcile.Result{}, ctl.clearAllocatedResourcesForEdgeNode(ctx, request.Name)
 		}
 
@@ -176,8 +186,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, err
 	}
 
-	if node.DeletionTimestamp != nil {
-		ctl.log.Info("edge node is terminating, clear resources allocated to this node")
+	if node.DeletionTimestamp != nil || !nodeutil.IsEdgeNode(node) {
 		return reconcile.Result{}, ctl.clearAllocatedResourcesForEdgeNode(ctx, request.Name)
 	}
 
@@ -186,6 +195,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, nil
 	}
 
+	ctl.edgeNameSet.Add(node.Name)
 	for _, handler := range ctl.handlers {
 		if err := handler.Do(ctx, node); err != nil {
 			return reconcile.Result{}, err
@@ -203,11 +213,17 @@ func (ctl *agentController) shouldSkip(node corev1.Node) bool {
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
+	if !ctl.edgeNameSet.Contains(nodeName) {
+		return nil
+	}
+
+	ctl.log.Info("clear resources allocated to this node", "nodeName", nodeName)
 	for i := len(ctl.handlers) - 1; i >= 0; i-- {
 		if err := ctl.handlers[i].Undo(ctx, nodeName); err != nil {
 			return err
 		}
 	}
 
+	ctl.edgeNameSet.Remove(nodeName)
 	return nil
 }

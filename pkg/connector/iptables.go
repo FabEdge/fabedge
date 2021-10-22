@@ -31,7 +31,7 @@ const (
 	ChainFabEdgeInput       = "FABEDGE-INPUT"
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	IPSetEdgeNodeIP         = "FABEDGE-EDGE-NODE-IP"
+	IPSetEdgeNodeCIDR       = "FABEDGE-EDGE-NODE-CIDR"
 	IPSetCloudPodCIDR       = "FABEDGE-CLOUD-POD-CIDR"
 	IPSetCloudNodeCIDR      = "FABEDGE-CLOUD-NODE-CIDR"
 	IPSetEdgePodCIDR        = "FABEDGE-EDGE-POD-CIDR"
@@ -76,39 +76,38 @@ func (m *Manager) ensureForwardIPTablesRules() (err error) {
 }
 
 func (m *Manager) ensureNatIPTablesRules() (err error) {
-	if err = m.ipt.AppendUnique(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting); err != nil {
+	if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+		return err
+	}
+	exists, err := m.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	if err != nil {
 		return err
 	}
 
-	for _, c := range m.connections {
-		for _, addr := range c.LocalAddress {
-			existRule, err := m.ipt.Exists(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr)
-			if err != nil {
-				return err
-			}
-
-			if !existRule {
-				// TODO: fixed connector.IP update issue.
-				// now c.LocalAddress contains only one connector.IP,
-				// and if there are more than one connector.IP in c.LocalAddress,
-				// the processing logic here is going to be problematic
-				if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
-					return err
-				}
-			}
-
-			if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "SNAT", "--to", addr); err != nil {
-				return err
-			}
-
+	if !exists {
+		if err = m.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+			return err
 		}
 	}
 
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeIP, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-m", "set", "--match-set", IPSetEdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	return nil
+	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+		return err
+	}
+
+	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
+	return m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE")
+
 }
 
 func (m *Manager) ensureInputIPTablesRules() (err error) {
@@ -132,32 +131,39 @@ func (m *Manager) ensureInputIPTablesRules() (err error) {
 	return nil
 }
 
-func (m *Manager) syncEdgeNodeIPSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeIP, ipset.HashIP)
+func (m *Manager) syncEdgeNodeCIDRSet() error {
+	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeCIDR, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
-	allEdgeNodeIPs := m.getAllEdgeNodeIPs()
+	allEdgeNodeCIDRs := m.getAllEdgeNodeCIDRs()
 
-	oldEdgeNodeIPs, err := m.getOldEdgeNodeIPs()
+	oldEdgeNodeCIDRs, err := m.getOldEdgeNodeCIDRs()
 	if err != nil {
 		return err
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeIPs, oldEdgeNodeIPs, ipset.HashIP)
+	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeCIDRs, oldEdgeNodeCIDRs, ipset.HashNet)
 }
 
-func (m *Manager) getAllEdgeNodeIPs() sets.String {
-	ips := sets.NewString()
+func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
+	cidrs := sets.NewString()
 	for _, c := range m.connections {
-		ips.Insert(c.RemoteAddress...)
+		for _, subnet := range c.RemoteNodeSubnets {
+			// translate the IP address to CIDR is needed
+			// because FABEDGE-EDGE-NODE-CIDR ipset type is hash:net
+			if _, _, err := net.ParseCIDR(subnet); err != nil {
+				subnet = m.ipset.ConvertIPToCIDR(subnet)
+			}
+			cidrs.Insert(subnet)
+		}
 	}
-	return ips
+	return cidrs
 }
 
-func (m *Manager) getOldEdgeNodeIPs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetEdgeNodeIP, ipset.HashIP)
+func (m *Manager) getOldEdgeNodeCIDRs() (sets.String, error) {
+	return m.ipset.ListEntries(IPSetEdgeNodeCIDR, ipset.HashNet)
 }
 
 func (m *Manager) syncCloudPodCIDRSet() error {

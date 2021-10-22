@@ -25,3 +25,8 @@ const (
 
 	ConnectorConfigFileName = "tunnels.yaml"
 )
+
+const (
+	CNIFlannel = "flannel"
+	CNICalico  = "calico"
+)

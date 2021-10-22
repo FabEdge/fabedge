@@ -103,10 +103,16 @@ func (m *Manager) Start() {
 			klog.Errorf("failed to get tunnel manager status: %s", err)
 			return
 		}
-		err = m.router.SyncRoutes(active, m.connections)
-		if err != nil {
-			klog.Errorf("failed to sync routes: %s", err)
-			return
+		if active {
+			if err = m.router.SyncRoutes(m.connections); err != nil {
+				klog.Errorf("failed to sync routes: %s", err)
+				return
+			}
+		} else {
+			if err = m.router.CleanRoutes(m.connections); err != nil {
+				klog.Errorf("failed to clean routes: %s", err)
+				return
+			}
 		}
 
 		klog.Info("routes are synced")
@@ -141,10 +147,10 @@ func (m *Manager) Start() {
 	}
 
 	ipsetTaskFn := func() {
-		if err := m.syncEdgeNodeIPSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeIP, err)
+		if err := m.syncEdgeNodeCIDRSet(); err != nil {
+			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeCIDR, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgeNodeIP)
+			klog.Infof("ipset %s are synced", IPSetEdgeNodeCIDR)
 		}
 
 		if err := m.syncCloudPodCIDRSet(); err != nil {
@@ -167,7 +173,9 @@ func (m *Manager) Start() {
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
-	m.clearFabedgeIptablesChains()
+	if err := m.clearFabedgeIptablesChains(); err != nil {
+		klog.Errorf("failed to clean iptables: %s", err)
+	}
 
 	// repeats regular tasks periodically
 	go runTasks(m.SyncPeriod, tasks...)
@@ -177,7 +185,7 @@ func (m *Manager) Start() {
 
 	about.DisplayVersion()
 	klog.Info("manager started")
-	klog.V(5).Infof("current config:%+v", m.Config)
+	klog.V(5).Infof("config:%+v", m.Config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)

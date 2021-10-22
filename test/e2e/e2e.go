@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
 
@@ -44,13 +45,8 @@ const (
 	instanceNetTool     = "net-tool"
 	instanceHostNetTool = "host-net-tool"
 
-	nodeStatusNotReady    = "node.kubernetes.io/not-ready"
-	nodeStatusUnreachable = "node.kubernetes.io/unreachable"
-	nodeRoleEdge          = "node-role.kubernetes.io/edge"
-
 	labelKeyApp      = "app"
 	labelKeyInstance = "instance"
-	labelKeyNetwork  = "network"
 
 	// add a random label, prevent kubeedge to cache it
 	labelKeyRand = "random"
@@ -139,12 +135,19 @@ func addAllEdgesToCommunity(cli client.Client) {
 	framework.Logf("add all edge nodes to community %s", communityName)
 
 	var nodes corev1.NodeList
-	err := cli.List(context.TODO(), &nodes, client.HasLabels{"node-role.kubernetes.io/edge"})
+	err := cli.List(context.TODO(), &nodes)
 	if err != nil {
 		framework.Failf("failed to get edge nodes: %s", err)
 	}
 
-	if len(nodes.Items) == 0 {
+	var edgeNodes []corev1.Node
+	for _, node := range nodes.Items {
+		if nodeutil.IsEdgeNode(node) {
+			edgeNodes = append(edgeNodes, node)
+		}
+	}
+
+	if len(edgeNodes) == 0 {
 		framework.Failf("no edge nodes are available")
 	}
 
@@ -155,7 +158,7 @@ func addAllEdgesToCommunity(cli client.Client) {
 		Spec: apis.CommunitySpec{},
 	}
 
-	for _, node := range nodes.Items {
+	for _, node := range edgeNodes {
 		community.Spec.Members = append(community.Spec.Members, node.Name)
 	}
 
@@ -194,7 +197,7 @@ func preparePodOnEachNode(cli client.Client) {
 
 	for _, node := range nodes.Items {
 		serviceName := serviceCloudNginx
-		if _, isEdgeNode := node.Labels[nodeRoleEdge]; isEdgeNode {
+		if nodeutil.IsEdgeNode(node) {
 			serviceName = serviceEdgeNginx
 		}
 
@@ -214,7 +217,7 @@ func prepareHostNetworkPodOnEachNode(cli client.Client) {
 
 	for _, node := range nodes.Items {
 		serviceName := serviceHostCloudNginx
-		if _, isEdgeNode := node.Labels[nodeRoleEdge]; isEdgeNode {
+		if nodeutil.IsEdgeNode(node) {
 			serviceName = serviceHostEdgeNginx
 		}
 
@@ -343,19 +346,8 @@ func podSpec(nodeName string) corev1.PodSpec {
 		},
 		Tolerations: []corev1.Toleration{
 			{
-				Key:      nodeStatusNotReady,
+				Key:      "",
 				Operator: corev1.TolerationOpExists,
-				Effect:   corev1.TaintEffectNoExecute,
-			},
-			{
-				Key:      nodeStatusUnreachable,
-				Operator: corev1.TolerationOpExists,
-				Effect:   corev1.TaintEffectNoExecute,
-			},
-			{
-				Key:      nodeRoleEdge,
-				Operator: corev1.TolerationOpExists,
-				Effect:   corev1.TaintEffectNoSchedule,
 			},
 		},
 	}

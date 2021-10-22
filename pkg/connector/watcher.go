@@ -48,25 +48,21 @@ func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 	for {
 		select {
 		case event, _ := <-watcher.Events:
-			klog.Infof("network configuration may changed. event: %s", event)
 			switch {
-			case eventOpIs(event, fsnotify.Create):
-				fallthrough
-			case eventOpIs(event, fsnotify.Write):
-				fallthrough
-			case eventOpIs(event, fsnotify.Rename):
-				for _, c := range callbacks {
-					debounced(c)
+			case eventOpIs(event, fsnotify.Remove):
+				klog.Infof("file removed, add it back. event: %s", event)
+				if err = watcher.Add(fileToWatch); err != nil {
+					klog.Errorf("failed to watch %s. Error: %s", fileToWatch, err)
 				}
 			default:
-				// fsnotify monitors the inode, but vi change the inode.
-				// try to add it back, after removed/renamed
-				time.Sleep(1 * time.Second) // wait fs to ready, maybe not needed
-				if err = watcher.Add(fileToWatch); err != nil {
-					klog.Errorf("failed to monitor %s. Error: %s", fileToWatch, err)
-					return
-				}
+				klog.Infof("file changed, start to sync. event: %s", event)
+				debounced(func() {
+					for _, c := range callbacks {
+						c()
+					}
+				})
 			}
+
 		case err, _ = <-watcher.Errors:
 			klog.Errorf("fsnotify has an error: %s", err)
 			// not encounter it so far, hope it can be recovered after some time

@@ -33,11 +33,6 @@ import (
 
 var _ Handler = &agentPodHandler{}
 
-const installCNIScript = `set -ex
-find /etc/cni/net.d/ -type f -not -name fabedge.conf -exec rm {} \;
-cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin
-`
-
 type agentPodHandler struct {
 	namespace string
 
@@ -48,6 +43,7 @@ type agentPodHandler struct {
 	useXfrm         bool
 	masqOutgoing    bool
 	enableProxy     bool
+	enableIPAM      bool
 
 	client client.Client
 	log    logr.Logger
@@ -112,36 +108,8 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 			RestartPolicy:                corev1.RestartPolicyAlways,
 			Tolerations: []corev1.Toleration{
 				{
-					Key:    "node-role.kubernetes.io/edge",
-					Effect: corev1.TaintEffectNoSchedule,
-				},
-			},
-			InitContainers: []corev1.Container{
-				{
-					Name:            "install-cni",
-					Image:           handler.agentImage,
-					ImagePullPolicy: corev1.PullIfNotPresent,
-					Command: []string{
-						"/bin/sh",
-					},
-					Args: []string{
-						"-c",
-						installCNIScript,
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{
-							Name:      "cni-bin",
-							MountPath: "/opt/cni/bin",
-						},
-						{
-							Name:      "cni-cache",
-							MountPath: "/var/lib/cni/cache",
-						},
-						{
-							Name:      "cni-config",
-							MountPath: "/etc/cni/net.d",
-						},
-					},
+					Key:      "",
+					Operator: corev1.TolerationOpExists,
 				},
 			},
 			Containers: []corev1.Container{
@@ -157,6 +125,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						"--local-cert",
 						"tls.crt",
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
+						fmt.Sprintf("--enable-ipam=%t", handler.enableIPAM),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
@@ -173,10 +142,6 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						{
 							Name:      "var-run",
 							MountPath: "/var/run/",
-						},
-						{
-							Name:      "cni-config",
-							MountPath: "/etc/cni/net.d",
 						},
 						{
 							Name:      "lib-modules",
@@ -222,15 +187,6 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name: "var-run",
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
-					},
-				},
-				{
-					Name: "cni-config",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/etc/cni/net.d",
-							Type: &hostPathDirectoryOrCreate,
-						},
 					},
 				},
 				{
@@ -291,30 +247,83 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						},
 					},
 				},
-				{
-					Name: "cni-bin",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/opt/cni/bin",
-							Type: &hostPathDirectoryOrCreate,
-						},
-					},
-				},
-				{
-					Name: "cni-cache",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/var/lib/cni/cache",
-							Type: &hostPathDirectoryOrCreate,
-						},
-					},
-				},
 			},
 		},
 	}
 
+	if handler.enableIPAM {
+		container := handler.buildEnvPrepareContainer()
+		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
+
+		cniVolumes := []corev1.Volume{
+			{
+				Name: "cni-config",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/etc/cni/net.d",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+			{
+				Name: "cni-bin",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/cni/bin",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+			{
+				Name: "cni-cache",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/var/lib/cni/cache",
+						Type: &hostPathDirectoryOrCreate,
+					},
+				},
+			},
+		}
+		pod.Spec.Volumes = append(pod.Spec.Volumes, cniVolumes...)
+
+		volMount := corev1.VolumeMount{
+			Name:      "cni-config",
+			MountPath: "/etc/cni/net.d",
+		}
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, volMount)
+	}
+
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)
 	return pod
+}
+
+func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
+	privileged := true
+	return corev1.Container{
+		Name:            "environment-prepare",
+		Image:           handler.agentImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"env_prepare.sh",
+		},
+		SecurityContext: &corev1.SecurityContext{
+			Privileged: &privileged,
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "cni-bin",
+				MountPath: "/opt/cni/bin",
+			},
+			{
+				Name:      "cni-cache",
+				MountPath: "/var/lib/cni/cache",
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
+			},
+		},
+	}
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {

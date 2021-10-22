@@ -1,35 +1,31 @@
-# FabEdge部署
+# KubeEdge和FabEdge集成
 
-FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础上构建的容器网络方案，主要包含以下组件：
+[KubeEdge](https://github.com/kubeedge/kubeedge/blob/master/README_zh.md) 是一个开源的系统，可将本机容器化应用编排和管理扩展到边缘端设备。 它基于Kubernetes构建，为网络和应用程序提供核心基础架构支持，并在云端和边缘端部署应用，同步元数据。KubeEdge 还支持 MQTT 协议，允许开发人员编写客户逻辑，并在边缘端启用设备通信的资源约束。KubeEdge 包含云端和边缘端两部分。
 
-- **Operator**， 运行在云端任何节点，监听节点，服务等相关资源变化，自动为Agent维护配置，并管理Agent生命周期。
-- **Connector**，运行在云端选定节点，负责管理到边缘节点的隧道，路由等。
-- **Agent**，运行在每个边缘节点，负责管理本节点的隧道，负载均衡，路由等。
+[FabEdge](https://github.com/FabEdge/fabedge)是一个专门针对边缘计算场景设计的，基于kubernetes的容器网络方案，它符合CNI规范，可以无缝集成任何K8S环境，解决边缘计算场景下云边协同，边边协同，服务发现等难题。
 
+## 前置条件
 
+- Kubernetes (v1.19.7)
 
-## 前提条件
+- Calico (v3.16.5)
 
-- [kubernetes (v1.19.7+,  使用calico网络插件)](https://github.com/kubernetes-sigs/kubespray )
+- KubeEdge (v1.8.0)
 
-- [Kubeedge (v1.5.0+, 至少有一个边缘节点)](https://kubeedge.io/en/docs/)  
+也可以[快速部署一个测试集群](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)
 
-  也可以参照[文档](https://github.com/FabEdge/fabedge/blob/main/docs/install_k8s.md)快速部署一个演示集群
-
-
-
-## 部署前准备
+## 环境准备
 
 1. 确保所有边缘节点能够访问云端connector
 
-    - 如果有防火墙或安全组，必须允许协议ESP，UDP/500，UDP/4500
+    - 如果有防火墙或安全组，必须允许ESP(50)，UDP/500，UDP/4500
     
 2. 确认**所有边缘节点**上[nodelocaldns](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/)正常运行
 
     ```shell
     $ kubectl get po -n kube-system -o wide -l "k8s-app=nodelocaldns"
-    nodelocaldns-4m2jx                              1/1     Running     0          25m    10.22.45.30    master           
-    nodelocaldns-p5h9k                              1/1     Running     0          35m    10.22.45.26    edge1      
+    nodelocaldns-4m2jx                   1/1     Running     0    25m    10.22.45.30    master           
+    nodelocaldns-p5h9k                   1/1     Running     0    35m    10.22.45.26    edge1      
     ```
 
 3. 确认**所有边缘节点**上**没有**运行**任何**calico的组件
@@ -39,19 +35,27 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     calico-node-cxbd9                               1/1     Running     0          7d18h   10.22.45.30     master1   <none>           <none>
     ```
     
-4. 获取当前集群配置信息，供后面使用
+4. 安装helm
 
     ```shell
-    $ curl http://116.62.127.76/get_cluster_info.sh | bash -
+    $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
+    $ tar -xf helm-v3.6.3-linux-amd64.tar.gz
+    $ cp linux-amd64/helm /usr/bin/helm 
+    ```
+    
+5. 获取当前集群配置信息，供后面使用
+
+    ```shell
+    $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
     This may take some time. Please wait.
-    edgecore clusterDNS   : 169.254.25.10
-    edgecore clusterDomain: root-cluster
-    helm connectorSubnets : 10.233.64.0/18,10.233.0.0/18
+    
+    clusterDNS               : 169.254.25.10
+    clusterDomain            : root-cluster
+    cluster-cidr             : 10.233.64.0/18
+    service-cluster-ip-range : 10.233.0.0/18
     ```
 
-
-
-## 部署步骤
+## 安装部署
 
 ### 配置calico
 
@@ -71,7 +75,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
       ipipMode: Always
     ```
 
-    > **cidr**是一个用户自己选定的大网段，每个边缘节点会从中分配一个小网段，不能和云端pod或service的网段冲突。
+    > **cidr**是一个用户自己选定的大网段，每个边缘节点会从中分配一个小网段，不能和get_cluster_info脚本输出的cluster-cidr或service-cluster-ip-range冲突。
 
 2. 创建calico pool
 
@@ -82,18 +86,17 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     default-pool   10.231.64.0/18   all()      
     fabedge        10.10.0.0/16     all()
     
-    # 如果提示没有calicoctl.sh命令，请执行以下指令
+    # 如果提示没有calicoctl.sh命令，请尝试以下指令
     $ export DATASTORE_TYPE=kubernetes
     $ export KUBECONFIG=/etc/kubernetes/admin.conf
+    $ calicoctl create --filename=ippool.yaml
     $ calicoctl get pool    # 如果有fabedge的pool说明创建成功
     NAME           CIDR             SELECTOR   
     default-pool   10.231.64.0/18   all()      
     fabedge        10.10.0.0/16     all()
     ```
 
-
-
-### 部署fabedge
+### 部署FabEdge
 
 1. 在云端选取一个运行connector的节点，并为节点做标记。以master为例，
 
@@ -105,45 +108,50 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
      edge1   Ready    agent,edge              108m   v1.19.3-kubeedge    
      master  Ready    connector,master,node   118m   v1.19.7     
    ```
-
-2. 准备helm values.yaml文件
+   >选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
+2. 为**所有边缘节点**添加一个标签
 
     ```shell
-    $ vim values.yaml
+    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+    ```
+    
+3. 准备helm values.yaml文件
+
+    ```shell
+    $ vi values.yaml
     operator:
       edgePodCIDR: 10.10.0.0/16   
-      connectorPublicAddresses: 10.22.46.48   
-      connectorSubnets: 10.233.64.0/18,10.233.0.0/18  
-    
+      connectorPublicAddresses: 10.22.46.48 
+      connectorSubnets: 10.233.0.0/18
+      edgeLabels: node-role.kubernetes.io/edge
+      enableProxy: true
+      
     cniType: calico 
     ```
-    
+
     > 说明：
     >
-    >   **edgePodCIDR**：使用上面创建的calico pool的cidr。
+    > **edgePodCIDR**：使用上面创建的calico pool的cidr。
     >
-    >   **connectorPublicAddresses**: 运行connector的节点的公网地址，确保能够被边缘节点访问。
+    > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
     >
-    >   **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的connectorSubnets。
+    > **connectorSubnets**: 云端集群中的pod和service cidr，get_cluster_info脚本输出的service-cluster-ip-range。
     >
-    >   **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
-    
-3.  安装helm（如果已经安装，可跳过本步骤）
+    > **edgeLables**：前面为边缘节点添加的标签，默认是node-role.kubernetes.io/edge
+    >
+    > **cniType**: 云端集群中使用的cni插件类型，当前支持calico。
+
+4. 安装FabEdge
 
     ```shell
-    $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
-    $ tar -xf helm-v3.6.3-linux-amd64.tar.gz
-    $ cp linux-amd64/helm /usr/bin/helm 
+    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.3.0.tgz
     ```
-
-4.  安装fabedge 
-
-    ```shell
-    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.2.0.tgz
-    ```
-
-
-
+   > 如果出现错误：“Error: cannot re-use a name that is still in use”，是因为fabedge helm chart已经安装，使用以下命令卸载后重试。
+   >```shell
+   >$ helm uninstall -n fabedge fabedge
+   >release "fabedge" uninstalled
+   >```
+   
 ### 配置边缘节点
 
 1. 在**每个边缘节点**上修改edgecore配置文件
@@ -162,9 +170,9 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
         cniConfDir: /etc/cni/net.d
         networkPluginName: cni
         networkPluginMTU: 1500
-        # get_cluster_info脚本输出的edgecore clusterDNS
+        # get_cluster_info脚本输出的clusterDNS
         clusterDNS: "169.254.25.10"
-        # get_cluster_info脚本输出的edgecore clusterDomain
+        # get_cluster_info脚本输出的clusterDomain
         clusterDomain: "root-cluster"
     ```
 
@@ -173,8 +181,6 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     ```shell
     $ systemctl restart edgecore
     ```
-
-
 
 ## 部署后验证
 
@@ -187,7 +193,7 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
       master  Ready    connector,master,node   135m   v1.19.7
     ```
 
-2. 在**管理节点**上确认服务正常启动
+2. 在**管理节点**上确认FabEdge服务正常启动
 
     ```shell
     $ kubectl get po -n fabedge
@@ -197,8 +203,6 @@ FabEdge是一个专门针对边缘计算场景的，在kubernetes/kubeedge基础
     fabedge-agent-edge1                2/2     Running   0          22s
     fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
     ```
-
-
 
 ## 常见问题
 

@@ -34,7 +34,6 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
-	"github.com/fabedge/fabedge/pkg/operator/predicates"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
@@ -53,7 +52,7 @@ type Node struct {
 type Config struct {
 	Endpoint        types.Endpoint
 	ProvidedSubnets []string
-	CollectPodCIDRs bool
+	GetPodCIDRs     types.PodCIDRsGetter
 
 	ConfigMapKey client.ObjectKey
 	SyncInterval time.Duration
@@ -111,7 +110,6 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	return ctl.getConnectorEndpoint, c.Watch(
 		&source.Kind{Type: &corev1.Node{}},
 		&handler.EnqueueRequestForObject{},
-		predicates.NonEdgeNodePredicate(),
 	)
 }
 
@@ -212,7 +210,7 @@ func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Requ
 		return reconcile.Result{}, err
 	}
 
-	if node.DeletionTimestamp != nil {
+	if node.DeletionTimestamp != nil || nodeutil.IsEdgeNode(node) {
 		ctl.removeNode(request.Name)
 		return reconcile.Result{}, nil
 	}
@@ -223,14 +221,10 @@ func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Requ
 }
 
 func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
-	ip, podCIDRs := nodeutil.GetIP(node), nodeutil.GetPodCIDRs(node)
+	ip, podCIDRs := nodeutil.GetIP(node), ctl.GetPodCIDRs(node)
 	if len(ip) == 0 || len(podCIDRs) == 0 {
 		ctl.log.V(5).Info("this node has no IP or PodCIDRs, skip adding it", "nodeName", node.Name)
 		return
-	}
-
-	if !ctl.CollectPodCIDRs {
-		podCIDRs = nil
 	}
 
 	ctl.mux.Lock()
@@ -254,6 +248,10 @@ func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
 func (ctl *controller) removeNode(nodeName string) {
 	ctl.mux.Lock()
 	defer ctl.mux.Unlock()
+
+	if !ctl.nodeNameSet.Contains(nodeName) {
+		return
+	}
 
 	ctl.nodeNameSet.Remove(nodeName)
 	delete(ctl.nodeCache, nodeName)
