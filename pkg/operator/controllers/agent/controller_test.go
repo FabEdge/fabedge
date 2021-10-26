@@ -70,7 +70,7 @@ var _ = Describe("AgentController", func() {
 			IsCA:           true,
 			ValidityPeriod: timeutil.Days(365),
 		})
-		certManager, _ = certutil.NewManger(caCertDER, caKeyDER)
+		certManager, _ = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(365))
 
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
@@ -86,7 +86,6 @@ var _ = Describe("AgentController", func() {
 			CertManager:          certManager,
 			GetEndpointName:      getName,
 			CertOrganization:     certutil.DefaultOrganization,
-			CertValidPeriod:      365,
 			Allocator:            alloc,
 			Store:                store,
 			NewEndpoint:          newEndpoint,

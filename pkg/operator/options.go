@@ -17,7 +17,6 @@ package operator
 import (
 	"context"
 	"fmt"
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"net"
 	"regexp"
 	"strings"
@@ -32,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
@@ -46,6 +46,7 @@ import (
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
 
@@ -59,10 +60,11 @@ type Options struct {
 	EdgeLabels       []string
 	CNIType          string
 
-	CASecretName string
-	Agent        agentctl.Config
-	Connector    connectorctl.Config
-	Proxy        proxyctl.Config
+	CASecretName    string
+	CertValidPeriod int64
+	Agent           agentctl.Config
+	Connector       connectorctl.Config
+	Proxy           proxyctl.Config
 
 	ManagerOpts manager.Options
 
@@ -96,7 +98,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.Agent.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
-	flag.Int64Var(&opts.Agent.CertValidPeriod, "cert-validity-period", 365, "The validity period for agent's cert")
+	flag.Int64Var(&opts.CertValidPeriod, "cert-validity-period", 3650, "The validity period for agent's cert")
 
 	flag.StringVar(&opts.Proxy.IPVSScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 
@@ -173,7 +175,7 @@ func (opts *Options) Complete() (err error) {
 	certManager, err := createCertManager(kubeClient, client.ObjectKey{
 		Name:      opts.CASecretName,
 		Namespace: opts.Namespace,
-	})
+	}, timeutil.Days(opts.CertValidPeriod))
 	if err != nil {
 		log.Error(err, "failed to create cert manager")
 		return err
@@ -273,7 +275,7 @@ func (opts Options) Validate() (err error) {
 	return nil
 }
 
-func createCertManager(cli client.Client, key client.ObjectKey) (certutil.Manager, error) {
+func createCertManager(cli client.Client, key client.ObjectKey, validPeriod time.Duration) (certutil.Manager, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -295,7 +297,7 @@ func createCertManager(cli client.Client, key client.ObjectKey) (certutil.Manage
 		return nil, err
 	}
 
-	return certutil.NewManger(certDER, keyDER)
+	return certutil.NewManger(certDER, keyDER, validPeriod)
 }
 
 func (opts Options) RunManager() error {

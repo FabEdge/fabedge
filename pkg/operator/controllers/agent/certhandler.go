@@ -28,7 +28,6 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
-	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 var _ Handler = &certHandler{}
@@ -39,7 +38,6 @@ type certHandler struct {
 	getEndpointName  types.GetNameFunc
 	certManager      certutil.Manager
 	certOrganization string
-	certValidPeriod  int64
 
 	client client.Client
 	log    logr.Logger
@@ -97,12 +95,15 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 }
 
 func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
-	certDER, keyDER, err := handler.certManager.SignCert(certutil.Config{
-		CommonName:     handler.getEndpointName(node.Name),
-		Organization:   []string{handler.certOrganization},
-		ValidityPeriod: timeutil.Days(handler.certValidPeriod),
-		Usages:         certutil.ExtKeyUsagesServerAndClient,
+	keyDER, csr, err := certutil.NewCertRequest(certutil.Request{
+		CommonName:   handler.getEndpointName(node.Name),
+		Organization: []string{handler.certOrganization},
 	})
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+
+	certDER, err := handler.certManager.SignCert(csr)
 	if err != nil {
 		return corev1.Secret{}, err
 	}

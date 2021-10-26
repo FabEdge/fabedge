@@ -48,13 +48,12 @@ var _ = Describe("CertHandler", func() {
 			IsCA:           true,
 			ValidityPeriod: timeutil.Days(365),
 		})
-		certManager, _ = certutil.NewManger(caCertDER, caKeyDER)
+		certManager, _ = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(365))
 		handler = &certHandler{
 			namespace:        namespace,
 			client:           k8sClient,
 			certManager:      certManager,
 			getEndpointName:  getEndpointName,
-			certValidPeriod:  365,
 			certOrganization: certutil.DefaultOrganization,
 			log:              klogr.New().WithName("configHandler"),
 		}
@@ -76,7 +75,7 @@ var _ = Describe("CertHandler", func() {
 		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
 
 		By("Changing TLS secret with expired cert")
-		certDER, keyDER, _ := certManager.SignCert(certutil.Config{
+		certDER, keyDER, _ := certManager.NewCertKey(certutil.Config{
 			CommonName:     getEndpointName(node.Name),
 			ValidityPeriod: time.Second,
 		})
