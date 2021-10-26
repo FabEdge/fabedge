@@ -76,7 +76,6 @@ type Config struct {
 
 	CertManager      certutil.Manager
 	CertOrganization string
-	CertValidPeriod  int64
 
 	EnableProxy          bool
 	EnableFlannelMocking bool
@@ -155,7 +154,6 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		certManager:      cnf.CertManager,
 		getEndpointName:  cnf.GetEndpointName,
 		certOrganization: cnf.CertOrganization,
-		certValidPeriod:  cnf.CertValidPeriod,
 
 		log: log.WithName("certHandler"),
 	})

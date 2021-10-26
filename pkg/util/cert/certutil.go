@@ -57,6 +57,13 @@ type Config struct {
 	IsCA           bool
 }
 
+type Request struct {
+	CommonName   string
+	Organization []string
+	DNSNames     []string
+	IPs          []net.IP
+}
+
 // NewSelfSignedCA create a CA cert/key pair
 func NewSelfSignedCA(cfg Config) ([]byte, []byte, error) {
 	caKey, err := rsa.GenerateKey(rand.Reader, 4096)
@@ -112,6 +119,30 @@ func NewCertFromCA(caCert *x509.Certificate, caKey *rsa.PrivateKey, cfg Config) 
 	}
 
 	return certDER, privateKeyDER, nil
+}
+
+func NewCertRequest(req Request) ([]byte, []byte, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	template := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:   req.CommonName,
+			Country:      []string{DefaultCountry},
+			Organization: req.Organization,
+		},
+		IPAddresses: req.IPs,
+		DNSNames:    req.DNSNames,
+	}
+	csr, err := x509.CreateCertificateRequest(rand.Reader, template, privateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	keyDER := x509.MarshalPKCS1PrivateKey(privateKey)
+	return keyDER, csr, nil
 }
 
 func buildCertTemplate(cfg Config) (*x509.Certificate, error) {

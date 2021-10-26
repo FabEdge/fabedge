@@ -54,7 +54,7 @@ var _ = Describe("Certutil", func() {
 		caDER, caKey, err := certutil.NewSelfSignedCA(caCfg)
 		Expect(err).ShouldNot(HaveOccurred())
 
-		manager, err := certutil.NewManger(caDER, caKey)
+		manager, err := certutil.NewManger(caDER, caKey, 24*time.Hour)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		edgeCfg := certutil.Config{
@@ -64,7 +64,7 @@ var _ = Describe("Certutil", func() {
 			Usages:         []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 			ValidityPeriod: 24 * time.Hour,
 		}
-		edgeDER, _, err := manager.SignCert(edgeCfg)
+		edgeDER, _, err := manager.NewCertKey(edgeCfg)
 		Expect(err).ShouldNot(HaveOccurred())
 
 		cert, err := x509.ParseCertificate(edgeDER)
@@ -81,5 +81,28 @@ var _ = Describe("Certutil", func() {
 
 		Expect(manager.VerifyCert(cert, edgeCfg.Usages)).Should(Succeed())
 		Expect(manager.VerifyCertInPEM(certutil.EncodeCertPEM(edgeDER), edgeCfg.Usages)).Should(Succeed())
+	})
+
+	It("support create private key and certificate request", func() {
+		req := certutil.Request{
+			CommonName:   "test",
+			Organization: []string{"test"},
+			IPs:          []net.IP{net.ParseIP("2.2.2.2")},
+			DNSNames:     []string{"www.test.com"},
+		}
+
+		keyDER, csr, err := certutil.NewCertRequest(req)
+		Expect(err).Should(BeNil())
+
+		privateKey, err := x509.ParsePKCS1PrivateKey(keyDER)
+		Expect(err).Should(BeNil())
+
+		cr, err := x509.ParseCertificateRequest(csr)
+		Expect(err).Should(BeNil())
+		Expect(cr.Subject.CommonName).Should(Equal(req.CommonName))
+		Expect(cr.Subject.Organization).Should(Equal(req.Organization))
+		Expect(cr.IPAddresses[0].Equal(req.IPs[0])).Should(BeTrue())
+		Expect(cr.DNSNames).Should(Equal(req.DNSNames))
+		Expect(cr.PublicKey).Should(Equal(privateKey.Public()))
 	})
 })
