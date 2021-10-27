@@ -258,3 +258,7 @@ func EncodeCertPEM(certDER []byte) []byte {
 func EncodePrivateKeyPEM(privateKeyDER []byte) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: keyutil.RSAPrivateKeyBlockType, Bytes: privateKeyDER})
 }
+
+func EncodeCertRequestPEM(crs []byte) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: certutil.CertificateRequestBlockType, Bytes: crs})
+}
