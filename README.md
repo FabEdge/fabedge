@@ -26,7 +26,7 @@ FabEdge supports weak transport network, such as 4/5G, WiFi，LoRa, etc. It is s
 <img src="docs/images/fabedge-arch-v2.jpeg" alt="fabedge-arch-v2" style="zoom:48%;" />
 
 * The cloud can be any Kubernetes cluster with supported CNI network plug-in, including Calico, Flannel, etc.
-* FabEdge builds a layer 3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, etc.
+* FabEdge builds a layer 3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
 * Fabedge consists of three key components: **Operators, Connector and Agent**
 * Operator monitors k8s resources such as node, service, and endpoint in the cloud, and creates a configmap for each edge node, which contains the  configuration information such as the subnet, tunnel, and load balancing rules. The operator is also responsible to manage the life cycle of agent pod for each edge node.  
 * Connector is responsible to terminate the tunnels from edge nodes, and forward traffic between the cloud and the edge. It relies on the cloud CNI plug-in to forward traffic to other non-connector nodes in the cloud.
