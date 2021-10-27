@@ -29,6 +29,7 @@ type Manager interface {
 	SignCert(csr []byte) ([]byte, error)
 	VerifyCert(cert *x509.Certificate, usages []x509.ExtKeyUsage) error
 	VerifyCertInPEM(certPEM []byte, usages []x509.ExtKeyUsage) error
+	GetCACert() *x509.Certificate
 	GetCACertPEM() []byte
 }
 
@@ -65,6 +66,10 @@ func NewManger(caDER, caKeyDER []byte, validPeriod time.Duration) (Manager, erro
 
 func (m manager) GetCACertPEM() []byte {
 	return m.caCertPEM
+}
+
+func (m manager) GetCACert() *x509.Certificate {
+	return m.caCert
 }
 
 func (m manager) NewCertKey(cfg Config) ([]byte, []byte, error) {

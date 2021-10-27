@@ -41,8 +41,27 @@ spec:
             - --connector-subnets=10.233.0.0/18
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
+            # 集群名称，必须配置，建议跟集群的domain name保持一致
+            - --cluster=fabedge
+            # 仅根集群需要配置
+            #- --api-server-cert-file=/etc/fabedge/tls.crt
+            #- --api-server-key-file=/etc/fabedge/tls.key
             - -v=5
-      hostNetwork: true
+          ports:
+            - containerPort: 3030
+              name: apiserver
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/fabedge/
+          readinessProbe:
+            httpGet:
+              port: 3030
+              scheme: HTTPS
+              path: "/api/ca-cert"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
       serviceAccountName: fabedge-operator
       affinity:
         nodeAffinity:
@@ -52,3 +71,12 @@ spec:
                   # 根据选择的边缘系统来配置，避免把operator部署到边缘节点
                   - key: node-role.kubernetes.io/edge
                     operator: DoesNotExist
+      volumes:
+        - name: tls
+            secret:
+              items:
+                  - key: tls.crt
+                    path: tls.crt
+                  - key: tls.crt
+                    path: tls.crt
+              secretName: api-server-tls

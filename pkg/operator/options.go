@@ -18,6 +18,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ import (
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
+	"github.com/fabedge/fabedge/pkg/operator/apiserver"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
 	clusterctl "github.com/fabedge/fabedge/pkg/operator/controllers/cluster"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
@@ -68,10 +71,15 @@ type Options struct {
 
 	ManagerOpts manager.Options
 
+	APIServerCertFile string
+	APIServerKeyFile  string
+	APIServerAddr     string
+
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
 	NewEndpoint  types.NewEndpointFunc
 	Manager      manager.Manager
+	APIServer    *http.Server
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -107,6 +115,10 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
 	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
 	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
+
+	flag.StringVar(&opts.APIServerAddr, "api-server-address", "0.0.0.0:3030", "The address on which for api server to listen")
+	flag.StringVar(&opts.APIServerCertFile, "api-server-cert-file", "", "The cert file path for api server")
+	flag.StringVar(&opts.APIServerKeyFile, "api-server-key-file", "", "The key file path for api server")
 }
 
 func (opts *Options) Complete() (err error) {
@@ -202,6 +214,18 @@ func (opts *Options) Complete() (err error) {
 	opts.Proxy.Manager = opts.Manager
 	opts.Proxy.CheckInterval = 5 * time.Second
 
+	opts.APIServer, err = apiserver.New(apiserver.Config{
+		Addr:        opts.APIServerAddr,
+		CertManager: certManager,
+		Store:       opts.Store,
+		Client:      opts.Manager.GetClient(),
+		Log:         log.WithName("apiserver"),
+	})
+	if err != nil {
+		log.Error(err, "failed to create api server")
+		return err
+	}
+
 	return nil
 }
 
@@ -272,6 +296,15 @@ func (opts Options) Validate() (err error) {
 		return fmt.Errorf("retryPeriod must be greater than 1 second")
 	}
 
+	if opts.APIServerCertFile != "" || opts.APIServerKeyFile != "" {
+		if !fileExists(opts.APIServerCertFile) {
+			return fmt.Errorf("cert file %s not found", opts.APIServerCertFile)
+		}
+
+		if !fileExists(opts.APIServerKeyFile) {
+			return fmt.Errorf("cert file %s not found", opts.APIServerKeyFile)
+		}
+	}
 	return nil
 }
 
@@ -306,9 +339,43 @@ func (opts Options) RunManager() error {
 		return err
 	}
 
+	if err := opts.Manager.Add(manager.RunnableFunc(opts.runAPIServer)); err != nil {
+		log.Error(err, "failed to add api server runnable")
+		return err
+	}
+
 	err := opts.Manager.Start(signals.SetupSignalHandler())
 	if err != nil {
 		log.Error(err, "failed to start controller manager")
+	}
+
+	return err
+}
+
+func (opts Options) runAPIServer(ctx context.Context) error {
+	errChan := make(chan error)
+
+	go func() {
+		var err error
+		if opts.APIServerCertFile == "" && opts.APIServerKeyFile == "" {
+			err = opts.APIServer.ListenAndServe()
+		} else {
+			err = opts.APIServer.ListenAndServeTLS(opts.APIServerCertFile, opts.APIServerKeyFile)
+		}
+
+		if err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	var err error
+	select {
+	case err = <-errChan:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		err = ctx.Err()
 	}
 
 	return err
@@ -460,4 +527,12 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
 }
