@@ -38,6 +38,8 @@ tokenxxxxxx
 ```
 2. 安装node，在内网服务器执行
 ```shell
+#安装docker
+curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
 #使用token加入集群，并去除flannel组件
 curl -sfL http://rancher-mirror.cnrancher.com/k3s/k3s-install.sh | INSTALL_K3S_MIRROR=cn  INSTALL_K3S_EXEC='--docker --flannel-backend none' K3S_URL=https://publicip:6443 K3S_TOKEN=tokenxxxxxx sh -
 #加入集群成功之后
