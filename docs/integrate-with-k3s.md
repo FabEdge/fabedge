@@ -128,3 +128,4 @@ fabedge-operator-5b97448c9b-zl5zg   1/1     Running     0          3m1s
 fabedge-agent-nodename              2/2     Running     0          2m58s
 connector-6fffdbbc64-4wz86          2/2     Running     0          3m1s
 ```
+2. 注意部署业务pod之前，需要配置好FabEdge，之前创建的pod需要删除重建才能联通
