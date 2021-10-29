@@ -95,4 +95,4 @@ spec:
             items:
               - key: ipsec.secrets
                 path: ipsec.secrets
-            secretName: cloud-connector
+            secretName: connector-tls

@@ -33,8 +33,6 @@ spec:
             - --agent-masq-outgoing=false
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
-            # connector组件所用的configmap名称
-            - --connector-config=connector-config
             # 边缘节点可访问的connector的IP地址或域名，多个地址用逗号分割
             - --connector-public-addresses=10.10.10.10
             # 请提供Service ClusterIP所属的网段

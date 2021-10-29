@@ -24,6 +24,8 @@ const (
 	AppOperator   = "fabedge-operator"
 
 	ConnectorConfigFileName = "tunnels.yaml"
+	ConnectorConfigName     = "connector-config"
+	ConnectorTLSName        = "connector-tls"
 )
 
 const (

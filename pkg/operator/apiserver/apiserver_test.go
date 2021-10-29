@@ -187,8 +187,7 @@ var _ = Describe("APIServer", func() {
 		Expect(certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
 	})
 
-
-	Context("API update endpoints", func(){
+	Context("API update endpoints", func() {
 		It("can update endpoints of requesting cluster", func() {
 			endpoints := []apis.Endpoint{
 				childConnector,

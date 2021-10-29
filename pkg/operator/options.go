@@ -63,11 +63,12 @@ type Options struct {
 	EdgeLabels       []string
 	CNIType          string
 
-	CASecretName    string
-	CertValidPeriod int64
-	Agent           agentctl.Config
-	Connector       connectorctl.Config
-	Proxy           proxyctl.Config
+	CASecretName     string
+	CertValidPeriod  int64
+	CertOrganization string
+	Agent            agentctl.Config
+	Connector        connectorctl.Config
+	Proxy            proxyctl.Config
 
 	ManagerOpts manager.Options
 
@@ -92,7 +93,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
-	flag.StringVar(&opts.Connector.ConfigMapKey.Name, "connector-config", "connector-config", "The name of configmap for connector")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
 
 	flag.StringVar(&opts.Agent.AgentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
@@ -105,7 +105,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.EnableEdgeIPAM, "agent-enable-edge-ipam", true, "Let FabEdge to manage edge pod allocation")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
-	flag.StringVar(&opts.Agent.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
+	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
 	flag.Int64Var(&opts.CertValidPeriod, "cert-validity-period", 3650, "The validity period for agent's cert")
 
 	flag.StringVar(&opts.Proxy.IPVSScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
@@ -202,8 +202,11 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.NewEndpoint = opts.NewEndpoint
 	opts.Agent.GetEndpointName = getEndpointName
 	opts.Agent.EnableFlannelMocking = opts.CNIType == constants.CNIFlannel
+	opts.Agent.CertOrganization = opts.CertOrganization
 
-	opts.Connector.ConfigMapKey.Namespace = opts.Namespace
+	opts.Connector.Namespace = opts.Namespace
+	opts.Connector.CertOrganization = opts.CertOrganization
+	opts.Connector.CertManager = certManager
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
 	opts.Connector.GetPodCIDRs = getPodCIDRs
@@ -240,10 +243,6 @@ func (opts Options) Validate() (err error) {
 
 	if !dns1123Reg.MatchString(opts.Connector.Endpoint.Name) {
 		return fmt.Errorf("invalid connector name")
-	}
-
-	if !dns1123Reg.MatchString(opts.Connector.ConfigMapKey.Name) {
-		return fmt.Errorf("invalid connector config name")
 	}
 
 	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
