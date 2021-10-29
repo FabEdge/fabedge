@@ -16,6 +16,7 @@ package connector
 
 import (
 	"context"
+	"crypto/x509"
 	"strings"
 	"time"
 
@@ -31,7 +32,10 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -48,6 +52,7 @@ var _ = Describe("Controller", func() {
 		node1, edge1  corev1.Node
 
 		getConnectorEndpoint types.EndpointGetter
+		certManager          certutil.Manager
 	)
 
 	BeforeEach(func() {
@@ -80,6 +85,14 @@ var _ = Describe("Controller", func() {
 		Expect(k8sClient.Create(context.Background(), &node1)).To(Succeed())
 		Expect(k8sClient.Create(context.Background(), &edge1)).To(Succeed())
 
+		caCertDER, caKeyDER, _ := certutil.NewSelfSignedCA(certutil.Config{
+			CommonName:     certutil.DefaultCAName,
+			Organization:   []string{certutil.DefaultOrganization},
+			IsCA:           true,
+			ValidityPeriod: timeutil.Days(365),
+		})
+		certManager, _ = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(365))
+
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
 			HealthProbeBindAddress: "0",
@@ -93,21 +106,20 @@ var _ = Describe("Controller", func() {
 		mgr.GetCache().WaitForCacheSync(ctx)
 
 		config = Config{
-			Manager: mgr,
-			Store:   store,
-
+			Manager:          mgr,
+			Store:            store,
+			CertManager:      certManager,
+			CertOrganization: certutil.DefaultOrganization,
 			Endpoint: apis.Endpoint{
 				ID:              "cloud-connector",
 				Name:            "cloud-connector",
 				PublicAddresses: []string{"192.168.1.1"},
 			},
-			GetPodCIDRs:     nodeutil.GetPodCIDRs,
+			GetPodCIDRs: nodeutil.GetPodCIDRs,
+
 			ProvidedSubnets: []string{"10.10.10.1/26"},
-			ConfigMapKey: client.ObjectKey{
-				Name:      "connector-config",
-				Namespace: namespace,
-			},
-			SyncInterval: interval,
+			Namespace:       namespace,
+			SyncInterval:    interval,
 		}
 		getConnectorEndpoint, err = AddToManager(config)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -162,7 +174,10 @@ var _ = Describe("Controller", func() {
 	It("should synchronize connector configmap according to endpoints in store", func() {
 		time.Sleep(interval + time.Second)
 
-		key := config.ConfigMapKey
+		key := client.ObjectKey{
+			Name:      constants.ConnectorConfigName,
+			Namespace: config.Namespace,
+		}
 		var cm corev1.ConfigMap
 		Expect(k8sClient.Get(context.Background(), key, &cm)).ShouldNot(HaveOccurred())
 
@@ -190,6 +205,48 @@ var _ = Describe("Controller", func() {
 		conf = getNetworkConf()
 		Expect(conf.Endpoint).To(Equal(getConnectorEndpoint()))
 		Expect(conf.Peers).To(ConsistOf(edge1Endpoint))
+	})
+
+	It("should create a tls secret for connector", func() {
+		time.Sleep(interval + time.Second)
+
+		key := client.ObjectKey{
+			Name:      constants.ConnectorTLSName,
+			Namespace: config.Namespace,
+		}
+		var secret corev1.Secret
+		Expect(k8sClient.Get(context.Background(), key, &secret)).Should(Succeed())
+
+		By("Checking TLS secret")
+		caCertPEM, certPEM := secretutil.GetCACert(secret), secretutil.GetCert(secret)
+		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
+
+		certDER, err := certutil.DecodePEM(certPEM)
+		Expect(err).Should(BeNil())
+
+		cert, err := x509.ParseCertificate(certDER)
+		Expect(err).Should(BeNil())
+		Expect(cert.Subject.Organization[0]).To(Equal(config.CertOrganization))
+		Expect(cert.Subject.CommonName).To(Equal(getConnectorEndpoint().Name))
+
+		By("Changing TLS secret with expired cert")
+		certDER, keyDER, _ := certManager.NewCertKey(certutil.Config{
+			CommonName:     getConnectorEndpoint().Name,
+			ValidityPeriod: time.Second,
+		})
+		secret.Data[corev1.TLSCertKey] = certutil.EncodeCertPEM(certDER)
+		secret.Data[corev1.TLSPrivateKeyKey] = certutil.EncodePrivateKeyPEM(keyDER)
+		Expect(k8sClient.Update(context.Background(), &secret)).Should(Succeed())
+
+		time.Sleep(2 * interval)
+
+		By("Checking if TLS secret updated")
+		secret = corev1.Secret{}
+		Expect(k8sClient.Get(context.Background(), key, &secret)).Should(Succeed())
+		caCertPEM, certPEM = secretutil.GetCACert(secret), secretutil.GetCert(secret)
+		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
 	})
 })
 

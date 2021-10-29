@@ -37,7 +37,9 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
+	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
 const (
@@ -51,12 +53,14 @@ type Node struct {
 }
 
 type Config struct {
+	Namespace       string
 	Endpoint        apis.Endpoint
 	ProvidedSubnets []string
 	GetPodCIDRs     types.PodCIDRsGetter
+	CertManager     certutil.Manager
 
-	ConfigMapKey client.ObjectKey
-	SyncInterval time.Duration
+	CertOrganization string
+	SyncInterval     time.Duration
 
 	Store   storepkg.Interface
 	Manager manager.Manager
@@ -118,10 +122,12 @@ func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
 	tick := time.NewTicker(ctl.SyncInterval)
 
 	ctl.updateConfigMapIfNeeded()
+	ctl.generateCertIfNeeded()
 	for {
 		select {
 		case <-tick.C:
 			ctl.updateConfigMapIfNeeded()
+			ctl.generateCertIfNeeded()
 		case <-ctx.Done():
 			return nil
 		}
@@ -129,7 +135,11 @@ func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
 }
 
 func (ctl *controller) updateConfigMapIfNeeded() {
-	log := ctl.log.WithValues("key", ctl.ConfigMapKey)
+	key := client.ObjectKey{
+		Name:      constants.ConnectorConfigName,
+		Namespace: ctl.Namespace,
+	}
+	log := ctl.log.WithValues("key", key)
 
 	ctx, cancel := context.WithTimeout(context.Background(), ctl.SyncInterval)
 	defer cancel()
@@ -149,7 +159,7 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	configData := string(confBytes)
 
 	var cm corev1.ConfigMap
-	err = ctl.client.Get(ctx, ctl.ConfigMapKey, &cm)
+	err = ctl.client.Get(ctx, key, &cm)
 	if err != nil && !errors.IsNotFound(err) {
 		log.Error(err, "failed to get connector configmap")
 		return
@@ -160,8 +170,8 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 
 		cm = corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      ctl.ConfigMapKey.Name,
-				Namespace: ctl.ConfigMapKey.Namespace,
+				Name:      key.Name,
+				Namespace: key.Namespace,
 			},
 			Data: map[string]string{
 				constants.ConnectorConfigFileName: configData,
@@ -183,6 +193,81 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	if err = ctl.client.Update(ctx, &cm); err != nil {
 		log.Error(err, "failed to update connector configmap")
 	}
+}
+
+func (ctl *controller) generateCertIfNeeded() {
+	key := client.ObjectKey{
+		Name:      constants.ConnectorTLSName,
+		Namespace: ctl.Namespace,
+	}
+	log := ctl.log.WithValues("key", key)
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctl.SyncInterval)
+	defer cancel()
+
+	var secret corev1.Secret
+	err := ctl.client.Get(ctx, key, &secret)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			ctl.log.Error(err, "failed to get secret")
+			return
+		}
+
+		log.V(5).Info("TLS secret for connector is not found, generate it now")
+		secret, err = ctl.buildCertAndKeySecret(key)
+		if err != nil {
+			log.Error(err, "failed to create cert and key for connector")
+			return
+		}
+
+		err = ctl.client.Create(ctx, &secret)
+		if err != nil {
+			log.Error(err, "failed to create secret")
+		}
+		return
+	}
+
+	certPEM := secretutil.GetCert(secret)
+	err = ctl.CertManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	if err == nil {
+		log.V(5).Info("cert is verified")
+		return
+	}
+
+	log.Error(err, "failed to verify cert, need to regenerate a cert for connector")
+	secret, err = ctl.buildCertAndKeySecret(key)
+	if err != nil {
+		log.Error(err, "failed to recreate cert and key for connector")
+		return
+	}
+
+	err = ctl.client.Update(ctx, &secret)
+	if err != nil {
+		log.Error(err, "failed to save secret")
+	}
+}
+
+func (ctl *controller) buildCertAndKeySecret(key client.ObjectKey) (corev1.Secret, error) {
+	keyDER, csr, err := certutil.NewCertRequest(certutil.Request{
+		CommonName:   ctl.Endpoint.Name,
+		Organization: []string{ctl.CertOrganization},
+	})
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+
+	certDER, err := ctl.CertManager.SignCert(csr)
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+
+	return secretutil.TLSSecret().
+		Name(key.Name).
+		Namespace(key.Namespace).
+		EncodeCert(certDER).
+		EncodeKey(keyDER).
+		CACertPEM(ctl.CertManager.GetCACertPEM()).
+		Label(constants.KeyCreatedBy, constants.AppOperator).Build(), nil
 }
 
 func (ctl *controller) getPeers() []apis.Endpoint {
