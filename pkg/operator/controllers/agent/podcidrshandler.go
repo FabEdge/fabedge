@@ -47,7 +47,7 @@ func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.N
 			return err
 		}
 	} else {
-		handler.store.SaveEndpoint(currentEndpoint)
+		handler.store.SaveEndpointAsLocal(currentEndpoint)
 	}
 
 	return nil
@@ -100,7 +100,7 @@ func (handler *allocatablePodCIDRsHandler) allocateSubnet(ctx context.Context, n
 		return err
 	}
 
-	handler.store.SaveEndpoint(handler.newEndpoint(node))
+	handler.store.SaveEndpointAsLocal(handler.newEndpoint(node))
 	return nil
 }
 
@@ -139,7 +139,7 @@ type rawPodCIDRsHandler struct {
 
 func (handler *rawPodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
 	endpoint := handler.newEndpoint(node)
-	handler.store.SaveEndpoint(endpoint)
+	handler.store.SaveEndpointAsLocal(endpoint)
 	return nil
 }
 

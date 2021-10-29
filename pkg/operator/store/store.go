@@ -24,9 +24,11 @@ import (
 
 type Interface interface {
 	SaveEndpoint(ep apis.Endpoint)
+	SaveEndpointAsLocal(ep apis.Endpoint)
 	GetEndpoint(name string) (apis.Endpoint, bool)
 	GetEndpoints(names ...string) []apis.Endpoint
 	GetAllEndpointNames() stringset.Set
+	GetLocalEndpointNames() stringset.Set
 	DeleteEndpoint(name string)
 
 	SaveCommunity(ep types.Community)
@@ -38,6 +40,7 @@ type Interface interface {
 var _ Interface = &store{}
 
 type store struct {
+	localNameSet          stringset.Set
 	endpoints             map[string]apis.Endpoint
 	communities           map[string]types.Community
 	endpointToCommunities map[string]stringset.Set
@@ -47,6 +50,7 @@ type store struct {
 
 func NewStore() Interface {
 	return &store{
+		localNameSet:          stringset.New(),
 		endpoints:             make(map[string]apis.Endpoint),
 		communities:           make(map[string]types.Community),
 		endpointToCommunities: make(map[string]stringset.Set),
@@ -58,6 +62,14 @@ func (s *store) SaveEndpoint(ep apis.Endpoint) {
 	defer s.mux.Unlock()
 
 	s.endpoints[ep.Name] = ep
+}
+
+func (s *store) SaveEndpointAsLocal(ep apis.Endpoint) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	s.endpoints[ep.Name] = ep
+	s.localNameSet.Add(ep.Name)
 }
 
 func (s *store) GetEndpoint(name string) (apis.Endpoint, bool) {
@@ -96,11 +108,24 @@ func (s *store) GetAllEndpointNames() stringset.Set {
 	return names
 }
 
+func (s *store) GetLocalEndpointNames() stringset.Set {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
+	nameSet := stringset.New()
+	for name := range s.localNameSet {
+		nameSet.Add(name)
+	}
+
+	return nameSet
+}
+
 func (s *store) DeleteEndpoint(name string) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
 	delete(s.endpoints, name)
+	s.localNameSet.Remove(name)
 }
 
 func (s *store) SaveCommunity(c types.Community) {

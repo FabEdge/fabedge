@@ -271,7 +271,16 @@ func (ctl *controller) buildCertAndKeySecret(key client.ObjectKey) (corev1.Secre
 }
 
 func (ctl *controller) getPeers() []apis.Endpoint {
-	nameSet := ctl.Store.GetAllEndpointNames()
+	connectorName := ctl.Endpoint.Name
+
+	nameSet := ctl.Store.GetLocalEndpointNames()
+	for _, community := range ctl.Store.GetCommunitiesByEndpoint(connectorName) {
+		for name := range community.Members {
+			nameSet.Add(name)
+		}
+	}
+	nameSet.Remove(connectorName)
+
 	endpoints := ctl.Store.GetEndpoints(nameSet.Values()...)
 
 	peers := make([]apis.Endpoint, 0, len(endpoints))
@@ -382,6 +391,7 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 	ctl.Endpoint.Subnets = subnets
 	ctl.Endpoint.NodeSubnets = nodeSubnets
 	ctl.Endpoint.Type = apis.Connector
+	ctl.Store.SaveEndpointAsLocal(ctl.Endpoint)
 }
 
 func (ctl *controller) getConnectorEndpoint() apis.Endpoint {
