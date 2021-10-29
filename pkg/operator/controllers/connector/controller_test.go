@@ -17,6 +17,7 @@ package connector
 import (
 	"context"
 	"crypto/x509"
+	"github.com/jjeffery/stringset"
 	"strings"
 	"time"
 
@@ -41,15 +42,13 @@ import (
 
 var _ = Describe("Controller", func() {
 	var (
-		edge1Endpoint apis.Endpoint
-		edge2Endpoint apis.Endpoint
-		store         storepkg.Interface
-		ctx           context.Context
-		cancel        context.CancelFunc
-		namespace     string
-		interval      time.Duration
-		config        Config
-		node1, edge1  corev1.Node
+		store        storepkg.Interface
+		ctx          context.Context
+		cancel       context.CancelFunc
+		namespace    string
+		interval     time.Duration
+		config       Config
+		node1, edge1 corev1.Node
 
 		getConnectorEndpoint types.EndpointGetter
 		certManager          certutil.Manager
@@ -61,24 +60,7 @@ var _ = Describe("Controller", func() {
 		namespace = "default"
 		interval = 2 * time.Second
 
-		edge1Endpoint = apis.Endpoint{
-			ID:              "edge1",
-			Name:            "edge1",
-			PublicAddresses: []string{"10.20.40.181"},
-			Subnets:         []string{"2.2.0.1/26"},
-			NodeSubnets:     []string{"10.20.40.181"},
-		}
-		edge2Endpoint = apis.Endpoint{
-			ID:              "edge2",
-			Name:            "edge2",
-			PublicAddresses: []string{"10.20.40.182"},
-			Subnets:         []string{"2.2.0.65/26"},
-			NodeSubnets:     []string{"10.20.40.182"},
-		}
-
 		store = storepkg.NewStore()
-		store.SaveEndpoint(edge1Endpoint)
-		store.SaveEndpoint(edge2Endpoint)
 
 		node1 = newNormalNode("192.168.1.2", "10.10.10.64/26")
 		edge1 = newEdgeNode("10.20.40.183", "2.2.0.65/26")
@@ -130,7 +112,8 @@ var _ = Describe("Controller", func() {
 	})
 
 	It("build connector endpoint when node events come", func() {
-		cep := getConnectorEndpoint()
+		cep, ok := store.GetEndpoint(config.Endpoint.Name)
+		Expect(ok).Should(BeTrue())
 
 		Expect(cep.PublicAddresses).Should(Equal(config.Endpoint.PublicAddresses))
 		Expect(cep.ID).Should(Equal(config.Endpoint.ID))
@@ -146,7 +129,8 @@ var _ = Describe("Controller", func() {
 		Expect(k8sClient.Create(context.Background(), &node3)).To(Succeed())
 		time.Sleep(time.Second)
 
-		cep = getConnectorEndpoint()
+		cep, ok = store.GetEndpoint(config.Endpoint.Name)
+		Expect(ok).Should(BeTrue())
 		Expect(cep.PublicAddresses).Should(Equal(config.Endpoint.PublicAddresses))
 		Expect(cep.ID).Should(Equal(config.Endpoint.ID))
 		Expect(cep.Name).Should(Equal(config.Endpoint.Name))
@@ -157,7 +141,8 @@ var _ = Describe("Controller", func() {
 		Expect(k8sClient.Delete(context.Background(), &node2)).To(Succeed())
 		time.Sleep(time.Second)
 
-		cep = getConnectorEndpoint()
+		cep, ok = store.GetEndpoint(config.Endpoint.Name)
+		Expect(ok).Should(BeTrue())
 		Expect(cep.Subnets).ShouldNot(ContainElements(nodeutil.GetPodCIDRs(node2)[0]))
 		Expect(cep.NodeSubnets).ShouldNot(ContainElements(nodeutil.GetIP(node2)))
 
@@ -166,12 +151,43 @@ var _ = Describe("Controller", func() {
 		Expect(k8sClient.Update(context.Background(), &node3)).To(Succeed())
 		time.Sleep(time.Second)
 
-		cep = getConnectorEndpoint()
+		cep, ok = store.GetEndpoint(config.Endpoint.Name)
+		Expect(ok).Should(BeTrue())
 		Expect(cep.Subnets).ShouldNot(ContainElements(nodeutil.GetPodCIDRs(node3)[0]))
 		Expect(cep.NodeSubnets).ShouldNot(ContainElements(nodeutil.GetIP(node3)))
 	})
 
 	It("should synchronize connector configmap according to endpoints in store", func() {
+		localEdge1 := apis.Endpoint{
+			ID:              "edge1",
+			Name:            "edge1",
+			PublicAddresses: []string{"10.20.40.181"},
+			Subnets:         []string{"2.2.0.1/26"},
+			NodeSubnets:     []string{"10.20.40.181"},
+		}
+		localEdge2 := apis.Endpoint{
+			ID:              "edge2",
+			Name:            "edge2",
+			PublicAddresses: []string{"10.20.40.182"},
+			Subnets:         []string{"2.2.0.65/26"},
+			NodeSubnets:     []string{"10.20.40.182"},
+		}
+		alienConnector := apis.Endpoint{
+			ID:              "alien.connector",
+			Name:            "alien.connector",
+			PublicAddresses: []string{"10.30.40.182"},
+			Subnets:         []string{"2.3.0.65/26"},
+			NodeSubnets:     []string{"10.30.40.182"},
+		}
+
+		store.SaveEndpointAsLocal(localEdge1)
+		store.SaveEndpointAsLocal(localEdge2)
+		store.SaveEndpoint(alienConnector)
+		store.SaveCommunity(types.Community{
+			Name:    "connectors",
+			Members: stringset.New(alienConnector.Name, config.Endpoint.Name),
+		})
+
 		time.Sleep(interval + time.Second)
 
 		key := client.ObjectKey{
@@ -192,10 +208,10 @@ var _ = Describe("Controller", func() {
 		conf := getNetworkConf()
 		cep := getConnectorEndpoint()
 		Expect(conf.Endpoint).To(Equal(cep))
-		Expect(conf.Peers).To(ConsistOf(edge1Endpoint, edge2Endpoint))
+		Expect(conf.Peers).To(ConsistOf(alienConnector, localEdge1, localEdge2))
 
 		By("remove edge2 endpoint")
-		store.DeleteEndpoint(edge2Endpoint.Name)
+		store.DeleteEndpoint(localEdge2.Name)
 
 		time.Sleep(2 * interval)
 
@@ -204,7 +220,7 @@ var _ = Describe("Controller", func() {
 
 		conf = getNetworkConf()
 		Expect(conf.Endpoint).To(Equal(getConnectorEndpoint()))
-		Expect(conf.Peers).To(ConsistOf(edge1Endpoint))
+		Expect(conf.Peers).To(ConsistOf(alienConnector, localEdge1))
 	})
 
 	It("should create a tls secret for connector", func() {
