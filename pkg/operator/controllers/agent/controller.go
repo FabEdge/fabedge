@@ -210,9 +210,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 
 func (ctl *agentController) shouldSkip(node corev1.Node) bool {
 	ip := nodeutil.GetIP(node)
-	cidrs := nodeutil.GetPodCIDRs(node)
-
-	return len(ip) == 0 || len(cidrs) == 0
+	return len(ip) == 0
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
