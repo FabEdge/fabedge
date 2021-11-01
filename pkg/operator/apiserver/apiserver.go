@@ -2,6 +2,7 @@ package apiserver
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -32,6 +33,7 @@ const (
 
 type Config struct {
 	Addr        string
+	PublicKey   *rsa.PublicKey
 	CertManager certutil.Manager
 	Client      client.Client
 	Log         logr.Logger
@@ -185,12 +187,9 @@ func (cfg Config) verifyAuthorization(next http.Handler) http.Handler {
 			return
 		}
 
+		var claims jwt.StandardClaims
 		// tokenString has a prefix "bearer " which is 7 chars long
-		token, err := jwt.Parse(tokenString[7:], func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("wrong sign method")
-			}
-
+		token, err := jwt.ParseWithClaims(tokenString[7:], &claims, func(token *jwt.Token) (interface{}, error) {
 			return cfg.CertManager.GetCACert().PublicKey, nil
 		})
 		if err != nil {
@@ -203,13 +202,7 @@ func (cfg Config) verifyAuthorization(next http.Handler) http.Handler {
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			cfg.response(w, http.StatusBadRequest, "no cluster found in token")
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), keyCluster, claims[keyCluster])
+		ctx := context.WithValue(r.Context(), keyCluster, claims.Subject)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

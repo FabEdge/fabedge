@@ -5,22 +5,22 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
-	"github.com/fabedge/fabedge/pkg/operator/types"
-	"github.com/jjeffery/stringset"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/jjeffery/stringset"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2/klogr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/apiserver"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
@@ -90,8 +90,8 @@ var _ = Describe("APIServer", func() {
 		certManager, err = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(1))
 		Expect(err).Should(BeNil())
 
-		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-			"cluster": clusterName,
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.StandardClaims{
+			Subject: clusterName,
 		})
 
 		clusterToken, err = token.SignedString(privateKey)
