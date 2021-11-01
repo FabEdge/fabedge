@@ -2,8 +2,11 @@ package cluster
 
 import (
 	"context"
+	"crypto/rsa"
 	"sync"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -34,9 +37,11 @@ type controller struct {
 }
 
 type Config struct {
-	Cluster string
-	Store   storepkg.Interface
-	Manager manager.Manager
+	Cluster       string
+	TokenDuration time.Duration
+	PrivateKey    *rsa.PrivateKey
+	Store         storepkg.Interface
+	Manager       manager.Manager
 }
 
 func AddToManager(config Config) error {
@@ -87,6 +92,37 @@ func (ctl *controller) Reconcile(ctx context.Context, request reconcile.Request)
 		return reconcile.Result{}, nil
 	}
 
+	if err := ctl.generateTokenIfNeeded(ctx, cluster); err != nil {
+		ctl.log.Error(err, "failed to assign token for cluster", "cluster", cluster.Name)
+		return reconcile.Result{}, err
+	}
+
+	// for now, endpoints will contain only connector of every cluster
+	ctl.syncEndpoints(cluster)
+
+	return reconcile.Result{}, nil
+}
+
+func (ctl *controller) generateTokenIfNeeded(ctx context.Context, cluster apis.Cluster) error {
+	if len(cluster.Spec.Token) != 0 {
+		return nil
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.StandardClaims{
+		Subject:   cluster.Name,
+		ExpiresAt: time.Now().Add(ctl.TokenDuration).Unix(),
+	})
+
+	tokenString, err := token.SignedString(ctl.PrivateKey)
+	if err != nil {
+		return err
+	}
+
+	cluster.Spec.Token = tokenString
+	return ctl.client.Update(ctx, &cluster)
+}
+
+func (ctl *controller) syncEndpoints(cluster apis.Cluster) {
 	// for now, endpoints will contain only connector of every cluster
 	nameSet := sets.NewString()
 	for _, endpoint := range cluster.Spec.EndPoints {
@@ -104,14 +140,12 @@ func (ctl *controller) Reconcile(ctx context.Context, request reconcile.Request)
 	ctl.mux.Unlock()
 
 	if !ok {
-		return reconcile.Result{}, nil
+		return
 	}
 
 	for name := range oldNameSet.Difference(nameSet) {
 		ctl.Store.DeleteEndpoint(name)
 	}
-
-	return reconcile.Result{}, nil
 }
 
 func (ctl *controller) pruneEndpoints(clusterName string) {

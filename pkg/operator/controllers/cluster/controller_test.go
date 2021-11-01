@@ -2,8 +2,10 @@ package cluster
 
 import (
 	"context"
+	"crypto/x509"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,8 +18,10 @@ import (
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 var _ = Describe("Controller", func() {
@@ -27,10 +31,20 @@ var _ = Describe("Controller", func() {
 		cancel   context.CancelFunc
 		cluster  apis.Cluster
 		ctrl     *controller
+		cert     *x509.Certificate
 	)
 
 	BeforeEach(func() {
 		ctx, cancel = context.WithCancel(context.Background())
+
+		caCertDER, caKeyDER, err := certutil.NewSelfSignedCA(certutil.Config{
+			CommonName:     certutil.DefaultCAName,
+			Organization:   []string{certutil.DefaultOrganization},
+			ValidityPeriod: timeutil.Days(1),
+			IsCA:           true,
+		})
+		privateKey, _ := x509.ParsePKCS1PrivateKey(caKeyDER)
+		cert, _ = x509.ParseCertificate(caCertDER)
 
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
@@ -40,8 +54,10 @@ var _ = Describe("Controller", func() {
 
 		ctrl = &controller{
 			Config: Config{
-				Cluster: "test",
-				Store:   storepkg.NewStore(),
+				Cluster:       "test",
+				Store:         storepkg.NewStore(),
+				PrivateKey:    privateKey,
+				TokenDuration: time.Hour,
 			},
 			clusterCache: make(map[string]EndpointNameSet),
 			client:       mgr.GetClient(),
@@ -72,7 +88,6 @@ var _ = Describe("Controller", func() {
 				Name: "root",
 			},
 			Spec: apis.ClusterSpec{
-				Token: "test",
 				EndPoints: []apis.Endpoint{
 					{
 						Name: "root.connector",
@@ -104,6 +119,11 @@ var _ = Describe("Controller", func() {
 		}
 
 		Expect(k8sClient.Create(context.Background(), &cluster)).To(Succeed())
+		// create
+		Eventually(requests, 5*time.Second).Should(ReceiveKey(client.ObjectKey{
+			Name: cluster.Name,
+		}))
+		// update
 		Eventually(requests, 5*time.Second).Should(ReceiveKey(client.ObjectKey{
 			Name: cluster.Name,
 		}))
@@ -112,6 +132,22 @@ var _ = Describe("Controller", func() {
 	AfterEach(func() {
 		cancel()
 		Expect(k8sClient.Delete(context.Background(), &cluster))
+	})
+
+	It("generate token if token is blank", func() {
+		err := k8sClient.Get(context.Background(), client.ObjectKey{Name: cluster.Name}, &cluster)
+		Expect(err).Should(BeNil())
+
+		Expect(cluster.Spec.Token).ShouldNot(BeEmpty())
+
+		var claims jwt.StandardClaims
+		token, err := jwt.ParseWithClaims(cluster.Spec.Token, &claims, func(token *jwt.Token) (interface{}, error) {
+			return cert.PublicKey, nil
+		})
+		Expect(err).Should(BeNil())
+		Expect(token.Valid).Should(BeTrue())
+		Expect(claims.Subject).Should(Equal(cluster.Name))
+		Expect(claims.ExpiresAt).Should(BeNumerically(">", time.Now().Unix()))
 	})
 
 	It("should save endpoints of cluster to store when a new cluster is created", func() {
@@ -128,6 +164,9 @@ var _ = Describe("Controller", func() {
 	})
 
 	It("should update endpoints of cluster to store when cluster is updated", func() {
+		err := k8sClient.Get(context.Background(), client.ObjectKey{Name: cluster.Name}, &cluster)
+		Expect(err).Should(BeNil())
+
 		cluster.Spec.EndPoints = []apis.Endpoint{
 			{
 				Name: "root.connector",

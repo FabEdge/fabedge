@@ -16,6 +16,8 @@ package operator
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -75,12 +77,14 @@ type Options struct {
 	APIServerCertFile string
 	APIServerKeyFile  string
 	APIServerAddr     string
+	TokenValidPeriod  time.Duration
 
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
 	NewEndpoint  types.NewEndpointFunc
 	Manager      manager.Manager
 	APIServer    *http.Server
+	PrivateKey   *rsa.PrivateKey
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -119,6 +123,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.APIServerAddr, "api-server-address", "0.0.0.0:3030", "The address on which for api server to listen")
 	flag.StringVar(&opts.APIServerCertFile, "api-server-cert-file", "", "The cert file path for api server")
 	flag.StringVar(&opts.APIServerKeyFile, "api-server-key-file", "", "The key file path for api server")
+	flag.DurationVar(&opts.TokenValidPeriod, "token-valid-period", 12*time.Hour, "The validity duration of token for child cluster to initialize")
 }
 
 func (opts *Options) Complete() (err error) {
@@ -184,7 +189,7 @@ func (opts *Options) Complete() (err error) {
 		return err
 	}
 
-	certManager, err := createCertManager(kubeClient, client.ObjectKey{
+	certManager, privateKey, err := createCertManager(kubeClient, client.ObjectKey{
 		Name:      opts.CASecretName,
 		Namespace: opts.Namespace,
 	}, timeutil.Days(opts.CertValidPeriod))
@@ -192,6 +197,7 @@ func (opts *Options) Complete() (err error) {
 		log.Error(err, "failed to create cert manager")
 		return err
 	}
+	opts.PrivateKey = privateKey
 
 	opts.Store = storepkg.NewStore()
 
@@ -304,10 +310,11 @@ func (opts Options) Validate() (err error) {
 			return fmt.Errorf("cert file %s not found", opts.APIServerKeyFile)
 		}
 	}
+
 	return nil
 }
 
-func createCertManager(cli client.Client, key client.ObjectKey, validPeriod time.Duration) (certutil.Manager, error) {
+func createCertManager(cli client.Client, key client.ObjectKey, validPeriod time.Duration) (certutil.Manager, *rsa.PrivateKey, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -315,21 +322,27 @@ func createCertManager(cli client.Client, key client.ObjectKey, validPeriod time
 	err := cli.Get(ctx, key, &secret)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	certPEM, keyPEM := secretutil.GetCA(secret)
 
 	certDER, err := certutil.DecodePEM(certPEM)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	keyDER, err := certutil.DecodePEM(keyPEM)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return certutil.NewManger(certDER, keyDER, validPeriod)
+	privateKey, err := x509.ParsePKCS1PrivateKey(keyDER)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certManager, err := certutil.NewManger(certDER, keyDER, validPeriod)
+	return certManager, privateKey, err
 }
 
 func (opts Options) RunManager() error {
@@ -434,9 +447,11 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 	}
 
 	if err = clusterctl.AddToManager(clusterctl.Config{
-		Cluster: opts.Cluster,
-		Manager: opts.Manager,
-		Store:   opts.Store,
+		Cluster:       opts.Cluster,
+		Manager:       opts.Manager,
+		PrivateKey:    opts.PrivateKey,
+		TokenDuration: opts.TokenValidPeriod,
+		Store:         opts.Store,
 	}); err != nil {
 		log.Error(err, "failed to add cluster controller to manager")
 		return err
