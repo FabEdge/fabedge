@@ -3,11 +3,14 @@ package apiserver_test
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/jjeffery/stringset"
@@ -29,12 +32,13 @@ var _ = Describe("APIServer", func() {
 	var (
 		store                         storepkg.Interface
 		certManager                   certutil.Manager
-		clusterName, clusterToken     string
+		clusterName                   string
 		server                        *http.Server
 		rootEndpoint, rootConnector   apis.Endpoint
 		childEndpoint, childConnector apis.Endpoint
 		community                     apis.Community
 		cluster                       apis.Cluster
+		privateKey                    *rsa.PrivateKey
 	)
 
 	BeforeEach(func() {
@@ -84,17 +88,10 @@ var _ = Describe("APIServer", func() {
 		})
 		Expect(err).Should(BeNil())
 
-		privateKey, err := x509.ParsePKCS1PrivateKey(caKeyDER)
+		privateKey, err = x509.ParsePKCS1PrivateKey(caKeyDER)
 		Expect(err).Should(BeNil())
 
 		certManager, err = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(1))
-		Expect(err).Should(BeNil())
-
-		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.StandardClaims{
-			Subject: clusterName,
-		})
-
-		clusterToken, err = token.SignedString(privateKey)
 		Expect(err).Should(BeNil())
 
 		cluster = apis.Cluster{
@@ -102,7 +99,6 @@ var _ = Describe("APIServer", func() {
 				Name: "cluster1",
 			},
 			Spec: apis.ClusterSpec{
-				Token: clusterToken,
 				EndPoints: []apis.Endpoint{
 					childConnector, childEndpoint,
 				},
@@ -139,55 +135,88 @@ var _ = Describe("APIServer", func() {
 		Expect(k8sClient.Delete(context.Background(), &community)).Should(Succeed())
 	})
 
-	It("can get endpoints and communities needed for a cluster", func() {
-		req, _ := http.NewRequest("GET", apiserver.URLGetEndpointsAndCommunities, nil)
-		req.Header.Add("Authorization", "bearer "+clusterToken)
+	Context("With token", func() {
+		var clusterToken string
 
-		resp := executeRequest(req, server)
-		Expect(resp.Code).Should(Equal(http.StatusOK))
+		BeforeEach(func() {
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.StandardClaims{
+				Subject: clusterName,
+			})
 
-		content, err := ioutil.ReadAll(resp.Body)
-		Expect(err).Should(BeNil())
-
-		var ea apiserver.EndpointsAndCommunity
-		Expect(json.Unmarshal(content, &ea)).Should(Succeed())
-		Expect(ea.Endpoints).Should(ConsistOf(rootConnector))
-		Expect(ea.Communities[community.Name]).Should(ConsistOf(rootConnector.Name, childConnector.Name))
-	})
-
-	It("can sign cert for child cluster", func() {
-		keyDER, csr, err := certutil.NewCertRequest(certutil.Request{
-			CommonName:   "test",
-			Organization: []string{"test"},
+			var err error
+			clusterToken, err = token.SignedString(privateKey)
+			Expect(err).Should(BeNil())
 		})
-		Expect(err).Should(BeNil())
 
-		privateKey, _ := x509.ParsePKCS1PrivateKey(keyDER)
+		It("can sign cert for child cluster", func() {
+			keyDER, csr, err := certutil.NewCertRequest(certutil.Request{
+				CommonName:   "test",
+				Organization: []string{"test"},
+			})
+			Expect(err).Should(BeNil())
 
-		reqBody := bytes.NewBuffer(certutil.EncodeCertRequestPEM(csr))
-		req, _ := http.NewRequest("POST", apiserver.URLSignCERT, reqBody)
-		req.Header.Add("Authorization", "bearer "+clusterToken)
+			privateKey, _ := x509.ParsePKCS1PrivateKey(keyDER)
 
-		resp := executeRequest(req, server)
-		Expect(resp.Code).Should(Equal(http.StatusOK))
+			reqBody := bytes.NewBuffer(certutil.EncodeCertRequestPEM(csr))
+			req, _ := http.NewRequest("POST", apiserver.URLSignCERT, reqBody)
+			req.Header.Add("Authorization", "bearer "+clusterToken)
 
-		content, err := ioutil.ReadAll(resp.Body)
-		Expect(err).Should(BeNil())
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusOK))
 
-		certDER, err := certutil.DecodePEM(content)
-		Expect(err).Should(BeNil())
+			content, err := ioutil.ReadAll(resp.Body)
+			Expect(err).Should(BeNil())
 
-		cert, err := x509.ParseCertificate(certDER)
-		Expect(err).Should(BeNil())
+			certDER, err := certutil.DecodePEM(content)
+			Expect(err).Should(BeNil())
 
-		Expect(cert.IsCA).Should(BeFalse())
-		Expect(cert.Subject.CommonName).Should(Equal("test"))
-		Expect(cert.Subject.Organization).Should(ConsistOf("test"))
-		Expect(cert.PublicKey).Should(Equal(privateKey.Public()))
-		Expect(certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+			cert, err := x509.ParseCertificate(certDER)
+			Expect(err).Should(BeNil())
+
+			Expect(cert.IsCA).Should(BeFalse())
+			Expect(cert.Subject.CommonName).Should(Equal("test"))
+			Expect(cert.Subject.Organization).Should(ConsistOf("test"))
+			Expect(cert.PublicKey).Should(Equal(privateKey.Public()))
+			Expect(certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+		})
 	})
 
-	Context("API update endpoints", func() {
+	Context("With client certificate", func() {
+		var connectionState *tls.ConnectionState
+
+		BeforeEach(func() {
+			certDER, _, err := certManager.NewCertKey(certutil.Config{
+				CommonName:     "client",
+				Organization:   []string{certutil.DefaultOrganization},
+				ValidityPeriod: time.Hour,
+			})
+			Expect(err).Should(BeNil())
+
+			cert, err := x509.ParseCertificate(certDER)
+			Expect(err).Should(BeNil())
+
+			connectionState = &tls.ConnectionState{
+				PeerCertificates: []*x509.Certificate{cert},
+			}
+		})
+
+		It("can get endpoints and communities needed for a cluster", func() {
+			req, _ := http.NewRequest("GET", apiserver.URLGetEndpointsAndCommunities, nil)
+			req.TLS = connectionState
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusOK))
+
+			content, err := ioutil.ReadAll(resp.Body)
+			Expect(err).Should(BeNil())
+
+			var ea apiserver.EndpointsAndCommunity
+			Expect(json.Unmarshal(content, &ea)).Should(Succeed())
+			Expect(ea.Endpoints).Should(ConsistOf(rootConnector))
+			Expect(ea.Communities[community.Name]).Should(ConsistOf(rootConnector.Name, childConnector.Name))
+		})
+
 		It("can update endpoints of requesting cluster", func() {
 			endpoints := []apis.Endpoint{
 				childConnector,
@@ -198,7 +227,8 @@ var _ = Describe("APIServer", func() {
 
 			reqBody := bytes.NewBuffer(endpointsJson)
 			req, _ := http.NewRequest("PUT", apiserver.URLUpdateEndpoints, reqBody)
-			req.Header.Add("Authorization", "bearer "+clusterToken)
+			req.TLS = connectionState
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
 
 			resp := executeRequest(req, server)
 			Expect(resp.Code).Should(Equal(http.StatusNoContent))
@@ -207,6 +237,71 @@ var _ = Describe("APIServer", func() {
 			Expect(err).Should(BeNil())
 
 			Expect(cluster.Spec.EndPoints).Should(ConsistOf(childConnector))
+		})
+
+		It("can sign cert for child cluster", func() {
+			_, csr, err := certutil.NewCertRequest(certutil.Request{
+				CommonName:   "test",
+				Organization: []string{"test"},
+			})
+			Expect(err).Should(BeNil())
+
+			reqBody := bytes.NewBuffer(certutil.EncodeCertRequestPEM(csr))
+			req, _ := http.NewRequest("POST", apiserver.URLSignCERT, reqBody)
+			req.TLS = connectionState
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusOK))
+
+			content, err := ioutil.ReadAll(resp.Body)
+			Expect(err).Should(BeNil())
+
+			certDER, err := certutil.DecodePEM(content)
+			Expect(err).Should(BeNil())
+
+			cert, err := x509.ParseCertificate(certDER)
+			Expect(err).Should(BeNil())
+			Expect(certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+		})
+	})
+
+	Context("Without token or client certificate", func() {
+		It("response unauthorized for getEndpointsAndCommunities request", func() {
+			req, _ := http.NewRequest("GET", apiserver.URLGetEndpointsAndCommunities, nil)
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
+		})
+
+		It("response unauthorized for updateEndpoints request", func() {
+			endpoints := []apis.Endpoint{
+				childConnector,
+			}
+
+			endpointsJson, err := json.Marshal(endpoints)
+			Expect(err).Should(BeNil())
+
+			reqBody := bytes.NewBuffer(endpointsJson)
+			req, _ := http.NewRequest("PUT", apiserver.URLUpdateEndpoints, reqBody)
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
+		})
+
+		It("response unauthorized for signCert request", func() {
+			_, csr, err := certutil.NewCertRequest(certutil.Request{
+				CommonName:   "test",
+				Organization: []string{"test"},
+			})
+			Expect(err).Should(BeNil())
+
+			reqBody := bytes.NewBuffer(certutil.EncodeCertRequestPEM(csr))
+			req, _ := http.NewRequest("POST", apiserver.URLSignCERT, reqBody)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
 		})
 	})
 })
