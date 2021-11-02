@@ -1,7 +1,6 @@
 package apiserver
 
 import (
-	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -28,7 +27,7 @@ const (
 	URLUpdateEndpoints            = "/api/endpoints"
 	URLGetEndpointsAndCommunities = "/api/endpoints-and-communities"
 
-	keyCluster = "cluster"
+	HeaderClusterName = "X-FabEdge-Cluster"
 )
 
 type Config struct {
@@ -47,13 +46,12 @@ type EndpointsAndCommunity struct {
 
 func New(cfg Config) (*http.Server, error) {
 	r := chi.NewRouter()
-
 	r.Use(middleware.Recoverer)
 	r.Get(URLGetCA, cfg.getCACert)
+	r.Post(URLSignCERT, cfg.signCert)
 
 	r.Group(func(r chi.Router) {
-		r.Use(cfg.verifyAuthorization)
-		r.Post(URLSignCERT, cfg.signCert)
+		r.Use(cfg.verifyCert)
 		r.Put(URLUpdateEndpoints, cfg.updateEndpoints)
 		r.Get(URLGetEndpointsAndCommunities, cfg.getEndpointsAndCommunity)
 	})
@@ -73,6 +71,26 @@ func (cfg Config) getCACert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg Config) signCert(w http.ResponseWriter, r *http.Request) {
+	if r.TLS != nil && len(r.TLS.PeerCertificates) != 0 {
+		if err := cfg.CertManager.VerifyCert(r.TLS.PeerCertificates[0], certutil.ExtKeyUsagesServerAndClient); err != nil {
+			cfg.Log.Error(err, "client certificate is invalid")
+			cfg.response(w, http.StatusUnauthorized, fmt.Sprintf("invalid certificate: %s", err))
+			return
+		}
+
+		cfg.doSignCert(w, r)
+		return
+	}
+
+	if err := cfg.verifyAuthorization(r); err != nil {
+		cfg.response(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %s", err))
+		return
+	}
+
+	cfg.doSignCert(w, r)
+}
+
+func (cfg Config) doSignCert(w http.ResponseWriter, r *http.Request) {
 	csrPEM, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		cfg.response(w, http.StatusBadRequest, fmt.Sprintf("failed to read request body: %s", err))
@@ -89,6 +107,47 @@ func (cfg Config) signCert(w http.ResponseWriter, r *http.Request) {
 	certPEM := certutil.EncodeCertPEM(certDER)
 
 	w.Write(certPEM)
+}
+
+func (cfg Config) verifyAuthorization(r *http.Request) error {
+	tokenString := r.Header.Get("authorization")
+	if tokenString == "" {
+		return fmt.Errorf("invalid authorization token")
+	}
+
+	var claims jwt.StandardClaims
+	// tokenString has a prefix "bearer " which is 7 chars long
+	token, err := jwt.ParseWithClaims(tokenString[7:], &claims, func(token *jwt.Token) (interface{}, error) {
+		return cfg.CertManager.GetCACert().PublicKey, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if !token.Valid {
+		return fmt.Errorf("invalid authorization token")
+	}
+
+	return nil
+}
+
+func (cfg Config) verifyCert(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+			cfg.response(w, http.StatusUnauthorized, "a client certificate is required")
+			return
+		}
+
+		if err := cfg.CertManager.VerifyCert(r.TLS.PeerCertificates[0], certutil.ExtKeyUsagesServerAndClient); err != nil {
+			cfg.Log.Error(err, "client certificate is invalid")
+			cfg.response(w, http.StatusUnauthorized, fmt.Sprintf("invalid certificate: %s", err))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}
+
+	return http.HandlerFunc(fn)
 }
 
 func (cfg Config) updateEndpoints(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +168,7 @@ func (cfg Config) updateEndpoints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clusterName := r.Context().Value(keyCluster).(string)
+	clusterName := cfg.getCluster(r)
 	var cluster apis.Cluster
 	err = cfg.Client.Get(r.Context(), client.ObjectKey{Name: clusterName}, &cluster)
 	if err != nil {
@@ -133,7 +192,7 @@ func (cfg Config) updateEndpoints(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg Config) getEndpointsAndCommunity(w http.ResponseWriter, r *http.Request) {
-	clusterName := r.Context().Value(keyCluster).(string)
+	clusterName := cfg.getCluster(r)
 
 	var cluster apis.Cluster
 	err := cfg.Client.Get(r.Context(), client.ObjectKey{Name: clusterName}, &cluster)
@@ -179,38 +238,14 @@ func (cfg Config) getEndpointsAndCommunity(w http.ResponseWriter, r *http.Reques
 	w.Write(content)
 }
 
-func (cfg Config) verifyAuthorization(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("authorization")
-		if tokenString == "" {
-			cfg.response(w, http.StatusUnauthorized, "Invalid authorization token")
-			return
-		}
-
-		var claims jwt.StandardClaims
-		// tokenString has a prefix "bearer " which is 7 chars long
-		token, err := jwt.ParseWithClaims(tokenString[7:], &claims, func(token *jwt.Token) (interface{}, error) {
-			return cfg.CertManager.GetCACert().PublicKey, nil
-		})
-		if err != nil {
-			cfg.response(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-
-		if !token.Valid {
-			cfg.response(w, http.StatusUnauthorized, "Invalid authorization token")
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), keyCluster, claims.Subject)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
 func (cfg Config) response(w http.ResponseWriter, statusCode int, msg string) {
 	w.WriteHeader(statusCode)
 	_, err := w.Write([]byte(msg))
 	if err != nil {
 		cfg.Log.Error(err, "failed to write http response")
 	}
+}
+
+func (cfg Config) getCluster(r *http.Request) string {
+	return r.Header.Get(HeaderClusterName)
 }

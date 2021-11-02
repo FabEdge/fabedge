@@ -17,11 +17,11 @@ package operator
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -235,6 +235,18 @@ func (opts *Options) Complete() (err error) {
 		return err
 	}
 
+	certPool := x509.NewCertPool()
+	certPool.AddCert(certManager.GetCACert())
+	cert, err := tls.LoadX509KeyPair(opts.APIServerCertFile, opts.APIServerKeyFile)
+	if err != nil {
+		return err
+	}
+	opts.APIServer.TLSConfig = &tls.Config{
+		ClientCAs:    certPool,
+		Certificates: []tls.Certificate{cert},
+		ClientAuth: tls.RequestClientCert,
+	}
+
 	return nil
 }
 
@@ -301,16 +313,6 @@ func (opts Options) Validate() (err error) {
 		return fmt.Errorf("retryPeriod must be greater than 1 second")
 	}
 
-	if opts.APIServerCertFile != "" || opts.APIServerKeyFile != "" {
-		if !fileExists(opts.APIServerCertFile) {
-			return fmt.Errorf("cert file %s not found", opts.APIServerCertFile)
-		}
-
-		if !fileExists(opts.APIServerKeyFile) {
-			return fmt.Errorf("cert file %s not found", opts.APIServerKeyFile)
-		}
-	}
-
 	return nil
 }
 
@@ -369,12 +371,7 @@ func (opts Options) runAPIServer(ctx context.Context) error {
 
 	go func() {
 		var err error
-		if opts.APIServerCertFile == "" && opts.APIServerKeyFile == "" {
-			err = opts.APIServer.ListenAndServe()
-		} else {
-			err = opts.APIServer.ListenAndServeTLS(opts.APIServerCertFile, opts.APIServerKeyFile)
-		}
-
+		err = opts.APIServer.ListenAndServeTLS("", "")
 		if err != http.ErrServerClosed {
 			errChan <- err
 		}
@@ -541,12 +538,4 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
 }
