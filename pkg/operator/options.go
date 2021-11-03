@@ -244,7 +244,7 @@ func (opts *Options) Complete() (err error) {
 	opts.APIServer.TLSConfig = &tls.Config{
 		ClientCAs:    certPool,
 		Certificates: []tls.Certificate{cert},
-		ClientAuth: tls.RequestClientCert,
+		ClientAuth:   tls.RequestClientCert,
 	}
 
 	return nil
