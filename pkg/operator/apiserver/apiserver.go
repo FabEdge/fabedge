@@ -27,7 +27,8 @@ const (
 	URLUpdateEndpoints            = "/api/endpoints"
 	URLGetEndpointsAndCommunities = "/api/endpoints-and-communities"
 
-	HeaderClusterName = "X-FabEdge-Cluster"
+	HeaderClusterName   = "X-FabEdge-Cluster"
+	HeaderAuthorization = "Authorization"
 )
 
 type Config struct {
