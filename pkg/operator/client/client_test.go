@@ -138,6 +138,55 @@ func TestClient_UpdateEndpoints(t *testing.T) {
 	g.Expect(receivedEndpoints).Should(Equal(endpoints))
 }
 
+func TestClient_GetEndpointsAndCommunities(t *testing.T) {
+	g := NewGomegaWithT(t)
+	mux, url, teardown := newServer()
+	defer teardown()
+
+	expectedEA := apiserver.EndpointsAndCommunity{
+		Communities: map[string][]string{
+			"connectors": []string{"cluster1.connector", "cluster2.connector"},
+			"mixed":      []string{"cluster1.connector", "cluster3.edge"},
+		},
+		Endpoints: []apis.Endpoint{
+			{
+				Name:            "cluster1.connector",
+				PublicAddresses: []string{"cluster1"},
+				Subnets:         []string{"2.2.0.0/16"},
+				NodeSubnets:     []string{"10.10.10.1/32"},
+			},
+			{
+				Name:            "cluster2.connector",
+				PublicAddresses: []string{"cluster2"},
+				Subnets:         []string{"2.5.0.0/16"},
+				NodeSubnets:     []string{"10.10.10.100/32"},
+			},
+			{
+				Name:            "cluster3.edge",
+				PublicAddresses: []string{"cluster3.edge"},
+				Subnets:         []string{"6.5.0.0/16"},
+				NodeSubnets:     []string{"192.168.1.1/32"},
+			},
+		},
+	}
+	var req *http.Request
+	mux.HandleFunc(apiserver.URLGetEndpointsAndCommunities, func(w http.ResponseWriter, r *http.Request) {
+		req = r
+
+		data, _ := json.Marshal(expectedEA)
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	})
+
+	cli, err := NewClient(url, nil)
+	g.Expect(err).Should(BeNil())
+
+	ea, err := cli.GetEndpointsAndCommunities()
+	g.Expect(err).Should(BeNil())
+	g.Expect(ea).Should(Equal(expectedEA))
+	g.Expect(req.Method).Should(Equal(http.MethodGet))
+}
+
 func newServer() (mux *http.ServeMux, url string, close func()) {
 	mux = http.NewServeMux()
 	server := httptest.NewServer(mux)
