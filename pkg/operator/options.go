@@ -29,6 +29,7 @@ import (
 	"github.com/jjeffery/stringset"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -39,6 +40,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	"github.com/fabedge/fabedge/pkg/operator/apiserver"
+	fclient "github.com/fabedge/fabedge/pkg/operator/client"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
 	clusterctl "github.com/fabedge/fabedge/pkg/operator/controllers/cluster"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
@@ -55,10 +57,21 @@ import (
 	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
 
+const (
+	RoleHost   = "host"
+	RoleMember = "member"
+
+	ClientTLSSecretName = "api-client-tls"
+)
+
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 type Options struct {
 	Cluster          string
+	// ClusterRole will determine how operator will be running:
+	// Host: operator will start an API server
+	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
+	ClusterRole      string
 	Namespace        string
 	EdgePodCIDR      string
 	EndpointIDFormat string
@@ -78,17 +91,20 @@ type Options struct {
 	APIServerKeyFile  string
 	APIServerAddr     string
 	TokenValidPeriod  time.Duration
+	InitToken         string
 
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
 	NewEndpoint  types.NewEndpointFunc
 	Manager      manager.Manager
 	APIServer    *http.Server
+	APIClient    fclient.Interface
 	PrivateKey   *rsa.PrivateKey
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster, must be distinct among all clusters")
+	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
@@ -120,9 +136,10 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
 	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
 
-	flag.StringVar(&opts.APIServerAddr, "api-server-address", "0.0.0.0:3030", "The address on which for api server to listen")
+	flag.StringVar(&opts.APIServerAddr, "api-server-address", "0.0.0.0:3030", "The address on which for api server to listen, when cluster role is member, this value will be used by api client")
 	flag.StringVar(&opts.APIServerCertFile, "api-server-cert-file", "", "The cert file path for api server")
 	flag.StringVar(&opts.APIServerKeyFile, "api-server-key-file", "", "The key file path for api server")
+	flag.StringVar(&opts.InitToken, "init-token", "", "The token used to initialize TLS cert for API client")
 	flag.DurationVar(&opts.TokenValidPeriod, "token-valid-period", 12*time.Hour, "The validity duration of token for child cluster to initialize")
 }
 
@@ -189,15 +206,40 @@ func (opts *Options) Complete() (err error) {
 		return err
 	}
 
-	certManager, privateKey, err := createCertManager(kubeClient, client.ObjectKey{
-		Name:      opts.CASecretName,
-		Namespace: opts.Namespace,
-	}, timeutil.Days(opts.CertValidPeriod))
-	if err != nil {
-		log.Error(err, "failed to create cert manager")
-		return err
+	var certManager certutil.Manager
+	if opts.ClusterRole == RoleHost {
+		certManager, opts.PrivateKey, err = createCertManager(kubeClient, client.ObjectKey{
+			Name:      opts.CASecretName,
+			Namespace: opts.Namespace,
+		}, timeutil.Days(opts.CertValidPeriod))
+		if err != nil {
+			log.Error(err, "failed to create cert manager")
+			return err
+		}
+	} else {
+		cacert, err := fclient.GetCertificate(opts.APIServerAddr)
+		if err != nil {
+			log.Error(err, "failed to get CA cert from host cluster")
+			return err
+		}
+
+		if err = opts.initAPIClient(kubeClient, cacert); err != nil {
+			return err
+		}
+
+		certManager, err = certutil.NewRemoteManager(cacert.DER, func(csr []byte) ([]byte, error) {
+			cert, innerErr := opts.APIClient.SignCert(csr)
+			if innerErr != nil {
+				return nil, innerErr
+			}
+
+			return cert.DER, nil
+		})
+		if err != nil {
+			log.Error(err, "failed to create certManager")
+			return err
+		}
 	}
-	opts.PrivateKey = privateKey
 
 	opts.Store = storepkg.NewStore()
 
@@ -223,28 +265,30 @@ func (opts *Options) Complete() (err error) {
 	opts.Proxy.Manager = opts.Manager
 	opts.Proxy.CheckInterval = 5 * time.Second
 
-	opts.APIServer, err = apiserver.New(apiserver.Config{
-		Addr:        opts.APIServerAddr,
-		CertManager: certManager,
-		Store:       opts.Store,
-		Client:      opts.Manager.GetClient(),
-		Log:         log.WithName("apiserver"),
-	})
-	if err != nil {
-		log.Error(err, "failed to create api server")
-		return err
-	}
+	if opts.ClusterRole == RoleHost {
+		opts.APIServer, err = apiserver.New(apiserver.Config{
+			Addr:        opts.APIServerAddr,
+			CertManager: certManager,
+			Store:       opts.Store,
+			Client:      opts.Manager.GetClient(),
+			Log:         log.WithName("apiserver"),
+		})
+		if err != nil {
+			log.Error(err, "failed to create api server")
+			return err
+		}
 
-	certPool := x509.NewCertPool()
-	certPool.AddCert(certManager.GetCACert())
-	cert, err := tls.LoadX509KeyPair(opts.APIServerCertFile, opts.APIServerKeyFile)
-	if err != nil {
-		return err
-	}
-	opts.APIServer.TLSConfig = &tls.Config{
-		ClientCAs:    certPool,
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequestClientCert,
+		certPool := x509.NewCertPool()
+		certPool.AddCert(certManager.GetCACert())
+		cert, err := tls.LoadX509KeyPair(opts.APIServerCertFile, opts.APIServerKeyFile)
+		if err != nil {
+			return err
+		}
+		opts.APIServer.TLSConfig = &tls.Config{
+			ClientCAs:    certPool,
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.RequestClientCert,
+		}
 	}
 
 	return nil
@@ -253,6 +297,14 @@ func (opts *Options) Complete() (err error) {
 func (opts Options) Validate() (err error) {
 	if len(opts.Cluster) == 0 {
 		return fmt.Errorf("cluster name is needed")
+	}
+
+	if opts.ClusterRole != RoleHost && opts.ClusterRole != RoleMember {
+		return fmt.Errorf("unknown cluster role: %s", opts.ClusterRole)
+	}
+
+	if opts.ClusterRole == RoleMember && len(opts.InitToken) == 0 {
+		return fmt.Errorf("initialization token is needed when cluster role is member")
 	}
 
 	if len(opts.EdgeLabels) == 0 {
@@ -353,9 +405,11 @@ func (opts Options) RunManager() error {
 		return err
 	}
 
-	if err := opts.Manager.Add(manager.RunnableFunc(opts.runAPIServer)); err != nil {
-		log.Error(err, "failed to add api server runnable")
-		return err
+	if opts.ClusterRole == RoleHost {
+		if err := opts.Manager.Add(manager.RunnableFunc(opts.runAPIServer)); err != nil {
+			log.Error(err, "failed to add api server runnable")
+			return err
+		}
 	}
 
 	err := opts.Manager.Start(signals.SetupSignalHandler())
@@ -454,16 +508,38 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		return err
 	}
 
-	reporter := &routines.LocalClusterReporter{
-		Cluster:      opts.Cluster,
-		GetConnector: getConnectorEndpoint,
-		SyncInterval: 10 * time.Second,
-		Client:       opts.Manager.GetClient(),
-		Log:          opts.Manager.GetLogger().WithName("LocalClusterReporter"),
-	}
-	if err = opts.Manager.Add(reporter); err != nil {
-		log.Error(err, "failed to add local cluster reporter to manager")
-		return err
+	if opts.ClusterRole == RoleHost {
+		reporter := &routines.LocalClusterReporter{
+			Cluster:      opts.Cluster,
+			GetConnector: getConnectorEndpoint,
+			SyncInterval: 10 * time.Second,
+			Client:       opts.Manager.GetClient(),
+			Log:          opts.Manager.GetLogger().WithName("LocalClusterReporter"),
+		}
+		if err = opts.Manager.Add(reporter); err != nil {
+			log.Error(err, "failed to add local cluster reporter to manager")
+			return err
+		}
+	} else {
+		err = opts.Manager.Add(routines.LoadEndpointsAndCommunities(
+			timeutil.Seconds(10),
+			opts.Store,
+			opts.APIClient.GetEndpointsAndCommunities,
+		))
+		if err != nil {
+			log.Error(err, "failed to start loadEndpointsAndCommunities routine")
+			return err
+		}
+
+		err = opts.Manager.Add(routines.ExportEndpoints(
+			timeutil.Seconds(10),
+			getConnectorEndpoint,
+			opts.APIClient.UpdateEndpoints,
+		))
+		if err != nil {
+			log.Error(err, "failed to start exportEndpoints routine")
+			return err
+		}
 	}
 
 	return nil
@@ -538,4 +614,71 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (opts Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
+	key := client.ObjectKey{
+		Name:      ClientTLSSecretName,
+		Namespace: opts.Namespace,
+	}
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(cacert.Raw)
+
+	var secret corev1.Secret
+	err := kubeClient.Get(context.Background(), key, &secret)
+	switch {
+	case err == nil:
+	case errors.IsNotFound(err):
+		secret, err = opts.createTLSSecretForClient(kubeClient, certPool, cacert)
+		if err != nil {
+			log.Error(err, "failed to create tls secret for API client")
+			return err
+		}
+	default:
+		log.Error(err, "failed to get tls secret for API client")
+		return err
+	}
+
+	certPEM, keyPEM := secretutil.GetCertAndKey(secret)
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		log.Error(err, "not able to create tls key pair")
+		return err
+	}
+
+	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:      certPool,
+			Certificates: []tls.Certificate{cert},
+		},
+	})
+
+	return err
+}
+
+func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool *x509.CertPool, cacert fclient.Certificate) (secret corev1.Secret, err error) {
+	keyDER, csrDER, err := certutil.NewCertRequest(certutil.Request{
+		CommonName:   fmt.Sprintf("%s.fabedge-client", opts.Cluster),
+		Organization: []string{opts.CertOrganization},
+	})
+	if err != nil {
+		return secret, err
+	}
+
+	cert, err := fclient.SignCertByToken(opts.APIServerAddr, opts.InitToken, csrDER, certPool)
+	if err != nil {
+		return secret, err
+	}
+
+	secret = secretutil.TLSSecret().
+		Name(ClientTLSSecretName).
+		Namespace(opts.Namespace).
+		EncodeKey(keyDER).
+		CertPEM(cert.PEM).
+		CACertPEM(cacert.PEM).
+		Label(constants.KeyCreatedBy, constants.AppOperator).Build()
+
+	err = kubeClient.Create(context.Background(), &secret)
+	return secret, err
 }
