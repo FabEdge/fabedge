@@ -19,6 +19,7 @@ import (
 const defaultTimeout = 5 * time.Second
 
 type Interface interface {
+	GetEndpointsAndCommunities() (apiserver.EndpointsAndCommunity, error)
 	UpdateEndpoints(endpoints []apis.Endpoint) error
 	SignCert(csr []byte) (Certificate, error)
 }
@@ -83,6 +84,23 @@ func (c *client) UpdateEndpoints(endpoints []apis.Endpoint) error {
 
 	_, err = handleResponse(resp)
 	return err
+}
+
+func (c *client) GetEndpointsAndCommunities() (ea apiserver.EndpointsAndCommunity, err error) {
+	req, err := http.NewRequest(http.MethodGet, join(c.baseURL, apiserver.URLGetEndpointsAndCommunities), nil)
+	if err != nil {
+		return ea, err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return ea, err
+	}
+
+	data, err := handleResponse(resp)
+
+	err = json.Unmarshal(data, &ea)
+	return ea, err
 }
 
 func GetCertificate(apiServerAddr string) (cert Certificate, err error) {
