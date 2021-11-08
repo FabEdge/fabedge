@@ -17,7 +17,7 @@ package connector
 import (
 	"k8s.io/klog/v2"
 
-	"github.com/fabedge/fabedge/pkg/apis/v1alpha1/"
+	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/jjeffery/stringset"
@@ -59,14 +59,6 @@ func (m *Manager) readCfgFromFile() error {
 	}
 
 	return nil
-}
-
-// remote local and remote address to support IPSec NAT_T
-func removeLocalAndRemoteAddress(conn tunnel.ConnConfig) tunnel.ConnConfig {
-	c := conn
-	c.LocalAddress = nil
-	c.RemoteAddress = nil
-	return c
 }
 
 func (m *Manager) syncConnections() error {
