@@ -17,6 +17,7 @@ package connector
 import (
 	"k8s.io/klog/v2"
 
+	"github.com/fabedge/fabedge/pkg/apis/v1alpha1/"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/jjeffery/stringset"
@@ -91,8 +92,23 @@ func (m *Manager) syncConnections() error {
 
 	// load active connections
 	for _, c := range m.connections {
-		if err = m.tm.LoadConn(removeLocalAndRemoteAddress(c)); err != nil {
-			return err
+		switch c.RemoteType {
+		case v1alpha1.EdgeNode:
+			c.LocalAddress = nil  // we do not care local ip address
+			c.RemoteAddress = nil // we just wait the connection from remote edge nodes
+			if err = m.tm.LoadConn(c); err != nil {
+				klog.Errorf("failed to load connection:%s", err)
+			}
+		case v1alpha1.Connector:
+			c.LocalAddress = nil // we do not care local ip address
+			if err = m.tm.LoadConn(c); err != nil {
+				klog.Errorf("failed to load connection:%s", err)
+			}
+			if err = m.tm.InitiateConn(c.Name); err != nil {
+				klog.Errorf("failed to initiate connection:%s", err)
+			}
+		default:
+			klog.Errorf("connection type:%s is not implemented", c.RemoteType)
 		}
 	}
 
