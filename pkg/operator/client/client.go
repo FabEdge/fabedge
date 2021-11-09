@@ -25,8 +25,9 @@ type Interface interface {
 }
 
 type client struct {
-	baseURL *url.URL
-	client  *http.Client
+	clusterName string
+	baseURL     *url.URL
+	client      *http.Client
 }
 
 type Certificate struct {
@@ -35,14 +36,15 @@ type Certificate struct {
 	PEM []byte
 }
 
-func NewClient(apiServerAddr string, transport http.RoundTripper) (Interface, error) {
+func NewClient(apiServerAddr string, clusterName string, transport http.RoundTripper) (Interface, error) {
 	baseURL, err := url.Parse(apiServerAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &client{
-		baseURL: baseURL,
+		baseURL:     baseURL,
+		clusterName: clusterName,
 		client: &http.Client{
 			Timeout:   defaultTimeout,
 			Transport: transport,
@@ -55,7 +57,8 @@ func (c *client) SignCert(csr []byte) (cert Certificate, err error) {
 	if err != nil {
 		return cert, err
 	}
-	req.Header.Set("Content-Type", "text/html")
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set(apiserver.HeaderClusterName, c.clusterName)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -76,6 +79,7 @@ func (c *client) UpdateEndpoints(endpoints []apis.Endpoint) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(apiserver.HeaderClusterName, c.clusterName)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -91,6 +95,7 @@ func (c *client) GetEndpointsAndCommunities() (ea apiserver.EndpointsAndCommunit
 	if err != nil {
 		return ea, err
 	}
+	req.Header.Set(apiserver.HeaderClusterName, c.clusterName)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
