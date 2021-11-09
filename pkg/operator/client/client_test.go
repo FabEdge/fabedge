@@ -16,6 +16,8 @@ import (
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 )
 
+const clusterName = "fabedge"
+
 func TestGetCertificate(t *testing.T) {
 	mux, url, teardown := newServer()
 	defer teardown()
@@ -92,7 +94,7 @@ func TestClient_SignCert(t *testing.T) {
 		w.Write(certutil.EncodeCertPEM(certDER))
 	})
 
-	cli, err := NewClient(url, nil)
+	cli, err := NewClient(url, clusterName, nil)
 	g.Expect(err).Should(BeNil())
 
 	keyDER, csr, _ := certutil.NewCertRequest(certutil.Request{CommonName: "test"})
@@ -122,7 +124,7 @@ func TestClient_UpdateEndpoints(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	cli, err := NewClient(url, nil)
+	cli, err := NewClient(url, clusterName, nil)
 	g.Expect(err).Should(BeNil())
 
 	endpoints := []apis.Endpoint{
@@ -135,6 +137,7 @@ func TestClient_UpdateEndpoints(t *testing.T) {
 	}
 	g.Expect(cli.UpdateEndpoints(endpoints)).Should(Succeed())
 	g.Expect(req.Method).Should(Equal(http.MethodPut))
+	g.Expect(req.Header.Get(apiserver.HeaderClusterName)).Should(Equal(clusterName))
 	g.Expect(receivedEndpoints).Should(Equal(endpoints))
 }
 
@@ -172,19 +175,19 @@ func TestClient_GetEndpointsAndCommunities(t *testing.T) {
 	var req *http.Request
 	mux.HandleFunc(apiserver.URLGetEndpointsAndCommunities, func(w http.ResponseWriter, r *http.Request) {
 		req = r
-
 		data, _ := json.Marshal(expectedEA)
 		w.WriteHeader(http.StatusOK)
 		w.Write(data)
 	})
 
-	cli, err := NewClient(url, nil)
+	cli, err := NewClient(url, clusterName, nil)
 	g.Expect(err).Should(BeNil())
 
 	ea, err := cli.GetEndpointsAndCommunities()
 	g.Expect(err).Should(BeNil())
 	g.Expect(ea).Should(Equal(expectedEA))
 	g.Expect(req.Method).Should(Equal(http.MethodGet))
+	g.Expect(req.Header.Get(apiserver.HeaderClusterName)).Should(Equal(clusterName))
 }
 
 func newServer() (mux *http.ServeMux, url string, close func()) {

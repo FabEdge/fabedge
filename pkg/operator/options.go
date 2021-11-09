@@ -67,7 +67,7 @@ const (
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 type Options struct {
-	Cluster          string
+	Cluster string
 	// ClusterRole will determine how operator will be running:
 	// Host: operator will start an API server
 	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
@@ -122,7 +122,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
-	flag.BoolVar(&opts.Agent.EnableEdgeIPAM, "agent-enable-edge-ipam", true, "Let FabEdge to manage edge pod allocation")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
@@ -163,26 +162,29 @@ func (opts *Options) Complete() (err error) {
 	}
 	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
 
-	var getPodCIDRs types.PodCIDRsGetter
+	var (
+		getEdgePodCIDRs  types.PodCIDRsGetter
+		getCloudPodCIDRs types.PodCIDRsGetter
+	)
 	switch opts.CNIType {
 	case constants.CNICalico:
+		opts.Agent.EnableEdgeIPAM = true
 		opts.PodCIDRStore = types.NewPodCIDRStore()
-		getPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
-		if opts.Agent.EnableEdgeIPAM {
-			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
-			getPodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
-			if err != nil {
-				log.Error(err, "failed to create allocator")
-				return err
-			}
+		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
+		getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
+		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
+		if err != nil {
+			log.Error(err, "failed to create allocator")
+			return err
 		}
 	case constants.CNIFlannel:
-		getPodCIDRs = nodeutil.GetPodCIDRs
+		getEdgePodCIDRs = nodeutil.GetPodCIDRs
+		getCloudPodCIDRs = nodeutil.GetPodCIDRs
 	default:
 		return fmt.Errorf("unknown CNI: %s", opts.CNIType)
 	}
 
-	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getPodCIDRs)
+	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getEdgePodCIDRs)
 	opts.NewEndpoint = newEndpoint
 
 	cfg, err := config.GetConfig()
@@ -257,7 +259,7 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.CertManager = certManager
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
-	opts.Connector.GetPodCIDRs = getPodCIDRs
+	opts.Connector.GetPodCIDRs = getCloudPodCIDRs
 	opts.Connector.Endpoint.Name = getEndpointName("connector")
 	opts.Connector.Endpoint.ID = getEndpointID("connector")
 
@@ -616,7 +618,7 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	return nil
 }
 
-func (opts Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
+func (opts *Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
 	key := client.ObjectKey{
 		Name:      ClientTLSSecretName,
 		Namespace: opts.Namespace,
@@ -647,14 +649,18 @@ func (opts Options) initAPIClient(kubeClient client.Client, cacert fclient.Certi
 		return err
 	}
 
-	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, &http.Transport{
+	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, opts.Cluster, &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:      certPool,
 			Certificates: []tls.Certificate{cert},
 		},
 	})
+	if err != nil {
+		log.Error(err, "failed to create API client")
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool *x509.CertPool, cacert fclient.Certificate) (secret corev1.Secret, err error) {
@@ -663,11 +669,13 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 		Organization: []string{opts.CertOrganization},
 	})
 	if err != nil {
+		log.Error(err, "failed to create certificate request")
 		return secret, err
 	}
 
 	cert, err := fclient.SignCertByToken(opts.APIServerAddr, opts.InitToken, csrDER, certPool)
 	if err != nil {
+		log.Error(err, "failed to create certificate for API client")
 		return secret, err
 	}
 
