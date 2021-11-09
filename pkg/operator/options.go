@@ -163,26 +163,30 @@ func (opts *Options) Complete() (err error) {
 	}
 	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
 
-	var getPodCIDRs types.PodCIDRsGetter
+	var (
+		getEdgePodCIDRs  types.PodCIDRsGetter
+		getCloudPodCIDRs types.PodCIDRsGetter
+	)
 	switch opts.CNIType {
 	case constants.CNICalico:
 		opts.PodCIDRStore = types.NewPodCIDRStore()
-		getPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
+		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
 		if opts.Agent.EnableEdgeIPAM {
 			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
-			getPodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
+			getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
 			if err != nil {
 				log.Error(err, "failed to create allocator")
 				return err
 			}
 		}
 	case constants.CNIFlannel:
-		getPodCIDRs = nodeutil.GetPodCIDRs
+		getEdgePodCIDRs = nodeutil.GetPodCIDRs
+		getCloudPodCIDRs = nodeutil.GetPodCIDRs
 	default:
 		return fmt.Errorf("unknown CNI: %s", opts.CNIType)
 	}
 
-	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getPodCIDRs)
+	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getEdgePodCIDRs)
 	opts.NewEndpoint = newEndpoint
 
 	cfg, err := config.GetConfig()
@@ -257,7 +261,7 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.CertManager = certManager
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
-	opts.Connector.GetPodCIDRs = getPodCIDRs
+	opts.Connector.GetPodCIDRs = getCloudPodCIDRs
 	opts.Connector.Endpoint.Name = getEndpointName("connector")
 	opts.Connector.Endpoint.ID = getEndpointID("connector")
 
