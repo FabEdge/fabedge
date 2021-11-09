@@ -1,6 +1,9 @@
 package client
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+)
 
 type HttpError struct {
 	Response *http.Response
@@ -8,5 +11,5 @@ type HttpError struct {
 }
 
 func (e HttpError) Error() string {
-	return e.Message
+	return fmt.Sprintf("Status Code: %d. Message: %s", e.Response.StatusCode, e.Message)
 }

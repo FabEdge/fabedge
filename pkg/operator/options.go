@@ -67,7 +67,7 @@ const (
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 type Options struct {
-	Cluster          string
+	Cluster string
 	// ClusterRole will determine how operator will be running:
 	// Host: operator will start an API server
 	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
@@ -616,7 +616,7 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	return nil
 }
 
-func (opts Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
+func (opts *Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
 	key := client.ObjectKey{
 		Name:      ClientTLSSecretName,
 		Namespace: opts.Namespace,
@@ -647,14 +647,18 @@ func (opts Options) initAPIClient(kubeClient client.Client, cacert fclient.Certi
 		return err
 	}
 
-	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, &http.Transport{
+	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, opts.Cluster, &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:      certPool,
 			Certificates: []tls.Certificate{cert},
 		},
 	})
+	if err != nil {
+		log.Error(err, "failed to create API client")
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool *x509.CertPool, cacert fclient.Certificate) (secret corev1.Secret, err error) {
@@ -663,11 +667,13 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 		Organization: []string{opts.CertOrganization},
 	})
 	if err != nil {
+		log.Error(err, "failed to create certificate request")
 		return secret, err
 	}
 
 	cert, err := fclient.SignCertByToken(opts.APIServerAddr, opts.InitToken, csrDER, certPool)
 	if err != nil {
+		log.Error(err, "failed to create certificate for API client")
 		return secret, err
 	}
 
