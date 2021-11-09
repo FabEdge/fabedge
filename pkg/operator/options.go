@@ -122,7 +122,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
-	flag.BoolVar(&opts.Agent.EnableEdgeIPAM, "agent-enable-edge-ipam", true, "Let FabEdge to manage edge pod allocation")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
@@ -169,15 +168,14 @@ func (opts *Options) Complete() (err error) {
 	)
 	switch opts.CNIType {
 	case constants.CNICalico:
+		opts.Agent.EnableEdgeIPAM = true
 		opts.PodCIDRStore = types.NewPodCIDRStore()
 		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
-		if opts.Agent.EnableEdgeIPAM {
-			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
-			getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
-			if err != nil {
-				log.Error(err, "failed to create allocator")
-				return err
-			}
+		getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
+		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
+		if err != nil {
+			log.Error(err, "failed to create allocator")
+			return err
 		}
 	case constants.CNIFlannel:
 		getEdgePodCIDRs = nodeutil.GetPodCIDRs
