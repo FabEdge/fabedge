@@ -251,7 +251,6 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.Store = opts.Store
 	opts.Agent.NewEndpoint = opts.NewEndpoint
 	opts.Agent.GetEndpointName = getEndpointName
-	opts.Agent.EnableFlannelMocking = opts.CNIType == constants.CNIFlannel
 	opts.Agent.CertOrganization = opts.CertOrganization
 
 	opts.Connector.Namespace = opts.Namespace
