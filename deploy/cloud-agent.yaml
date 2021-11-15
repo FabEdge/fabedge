@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fabedge-cloud-agent
+  namespace: fabedge
+spec:
+  selector:
+    matchLabels:
+      app: fabedge-cloud-agent
+  template:
+    metadata:
+      labels:
+        app: fabedge-cloud-agent
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/edge
+                    operator: DoesNotExist
+                  - key: node-role.kubernetes.io/connector
+                    operator: DoesNotExist
+      containers:
+        - args:
+            - --connector-node-addresses=10.20.8.12
+            - -v=5
+          image: fabedge/cloud-agent
+          imagePullPolicy: IfNotPresent
+          name: fabedge-cloud-agent
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64M
+            requests:
+              cpu: 100m
+              memory: 64M
+          securityContext:
+            privileged: true
+      hostNetwork: true
