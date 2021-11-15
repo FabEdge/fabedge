@@ -77,8 +77,7 @@ type Config struct {
 	CertManager      certutil.Manager
 	CertOrganization string
 
-	EnableProxy          bool
-	EnableFlannelMocking bool
+	EnableProxy bool
 
 	EnableEdgeIPAM bool
 }
@@ -128,13 +127,6 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 			store:           cnf.Store,
 			getEndpointName: cnf.GetEndpointName,
 			newEndpoint:     cnf.NewEndpoint,
-		})
-	}
-
-	if cnf.EnableFlannelMocking {
-		handlers = append(handlers, &flannelNodeMocker{
-			client: cli,
-			log:    log,
 		})
 	}
 
