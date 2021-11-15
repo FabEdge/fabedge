@@ -123,16 +123,10 @@ func Execute() {
 
 	about.DisplayVersion()
 
-	mc, err := memberlist.New(msgHandler, nodeLeaveHandler)
-	if err != nil {
-		klog.Exit(err)
-	}
-
 	if len(initMembers) < 1 {
 		klog.Exit("at least one connector node address is needed")
 	}
-
-	err = mc.Run(initMembers)
+	mc, err := memberlist.New(initMembers, msgHandler, nodeLeaveHandler)
 	if err != nil {
 		klog.Exit(err)
 	}
