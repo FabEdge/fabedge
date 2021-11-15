@@ -64,11 +64,9 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 }
 
 func msgHandler(b []byte) {
-	klog.Errorf("get message:%v", b)
 }
 
 func nodeLeveHandler(name string) {
-	klog.Errorf("node leve:%s", name)
 }
 
 func (c Config) Manager() (*Manager, error) {
@@ -90,7 +88,7 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
-	mc, err := memberlist.New(msgHandler, nodeLeveHandler)
+	mc, err := memberlist.New(c.initMembers, msgHandler, nodeLeveHandler)
 	if err != nil {
 		return nil, err
 	}
@@ -116,11 +114,6 @@ func runTasks(interval time.Duration, handler ...func()) {
 }
 
 func (m *Manager) Start() {
-	if err := m.mc.Run(m.Config.initMembers); err != nil {
-		klog.Errorf("failed to run memberlist: %s", err)
-		return
-	}
-
 	routeTaskFn := func() {
 		active, err := m.tm.IsActive()
 		if err != nil {
