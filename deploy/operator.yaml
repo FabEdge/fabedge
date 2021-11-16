@@ -24,7 +24,7 @@ spec:
             - --cluster=fabedge
             # 集群角色，必须提供，可选值有: host,member. 只能有一个集群是host集群
             - --cluster-role=host
-            # 当cluster-role是host时必须配置
+            # 当cluster-role是host时必须配置, 使用job提前生成，无须改动
             #- --api-server-cert-file=/etc/fabedge/tls.crt
             #- --api-server-key-file=/etc/fabedge/tls.key
             # api-server-address地址在两种角色下都可以配置，当集群是member时，必须配置，地址是host集群对外暴露的可访问地址
