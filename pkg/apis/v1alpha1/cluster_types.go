@@ -19,8 +19,9 @@ type Endpoint struct {
 	// pod subnets
 	Subnets []string `yaml:"subnets,omitempty" json:"subnets,omitempty"`
 	// internal IPs of kubernetes node
-	NodeSubnets []string     `yaml:"nodeSubnets,omitempty" json:"nodeSubnets,omitempty"`
-	Type        EndpointType `yaml:"type,omitempty" json:"type,omitempty"`
+	NodeSubnets []string `yaml:"nodeSubnets,omitempty" json:"nodeSubnets,omitempty"`
+	// Type of endpoints: Connector or EdgeNode
+	Type EndpointType `yaml:"type,omitempty" json:"type,omitempty"`
 }
 
 type ClusterSpec struct {
@@ -33,7 +34,6 @@ type ClusterSpec struct {
 // Cluster is used to represent a cluster's endpoints of connector and edge nodes
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="Name",type="string",JSONPath=".spec.name",description="The name of the cluster"
 // +kubebuilder:printcolumn:name="Token",type="string",JSONPath=".spec.token",description="The token used to connect root cluster"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="How long a community is created"
 type Cluster struct {
