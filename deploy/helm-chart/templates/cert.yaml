@@ -109,12 +109,14 @@ spec:
         - -n
         - {{ .Release.Namespace }}
 
-      - name: cert-gen-cloud-connector
+      - name: cert-gen-api-server
         image: {{ .Values.cert.image.repository }}:{{ .Values.cert.image.tag | default .Chart.AppVersion }}
         imagePullPolicy: {{ .Values.cert.image.pullPolicy }}
         args:
         - gen
-        - cloud-connector
+        - api-server
+        - --ips 10.20.8.20
+        - --secret-name api-server-tls
         - -n
         - {{ .Release.Namespace }}
 
