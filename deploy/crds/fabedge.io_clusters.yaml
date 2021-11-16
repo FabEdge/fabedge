@@ -9,10 +9,6 @@ metadata:
   name: clusters.fabedge.io
 spec:
   additionalPrinterColumns:
-  - JSONPath: .spec.name
-    description: The name of the cluster
-    name: Name
-    type: string
   - JSONPath: .spec.token
     description: The token used to connect root cluster
     name: Token
@@ -57,17 +53,17 @@ spec:
                   name:
                     type: string
                   nodeSubnets:
-                    description: Internal IPs of kubernetes node
+                    description: internal IPs of kubernetes node
                     items:
                       type: string
                     type: array
                   publicAddresses:
-                    description: Public addresses can be IP, DNS
+                    description: public addresses can be IP, DNS
                     items:
                       type: string
                     type: array
                   subnets:
-                    description: PodCIDRs, ServiceCIDR
+                    description: pod subnets
                     items:
                       type: string
                     type: array
