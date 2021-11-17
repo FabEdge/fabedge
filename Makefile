@@ -1,6 +1,7 @@
 OUTPUT_DIR := _output
 BINARIES := agent connector operator cert cloud-agent
-IMAGES := $(addsuffix -image, agent connector operator cert cloud-agent)
+BINARIES_QUICK := $(addsuffix -quick, ${BINARIES})
+IMAGES := $(addsuffix -image, ${BINARIES})
 
 VERSION := v0.4.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
@@ -58,6 +59,11 @@ bin: fmt vet ${BINARIES}
 
 ${BINARIES}: fmt vet
 	GOOS=linux go build ${LDFLAGS} -o ${OUTPUT_DIR}/fabedge-$@ ./cmd/$@
+
+
+${BINARIES_QUICK}: APP=$(subst -quick,,$@)
+${BINARIES_QUICK}:
+	GOOS=linux go build ${LDFLAGS} -o ${OUTPUT_DIR}/fabedge-${APP} ./cmd/${APP}
 
 .PHONY: test
 test:
