@@ -24,10 +24,10 @@ spec:
             - --cluster=fabedge
             # 集群角色，必须提供，可选值有: host,member. 只能有一个集群是host集群
             - --cluster-role=host
-            # 当cluster-role是host时必须配置, 使用job提前生成，无须改动
+            # 当cluster-role是host时必须配置, 保持默认值即可。
             #- --api-server-cert-file=/etc/fabedge/tls.crt
             #- --api-server-key-file=/etc/fabedge/tls.key
-            # api-server-address地址在两种角色下都可以配置，当集群是member时，必须配置，地址是host集群对外暴露的可访问地址
+            # 当集群是member时，必须配置，地址是host集群对外暴露的可访问地址; 当是host集群时，可以不配。
             #- --api-server-address=https://10.20.8.20:30303
             # 当集群是member时，必须配置, token从主集群获取
             #- --init-token=123467
@@ -35,11 +35,11 @@ spec:
             - --edge-labels=node-role.kubernetes.io/edge
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
-            # 边缘节点的Pod所在的网段, 当agent-enable-edge-ipam为true时需要配置，该网段不可与connector-subnets里的网段重叠
+            # 边缘节点的Pod使用的网段, 当使用Calico时必须配置，该网段不可与connector-subnets里的网段重叠
             - --edge-pod-cidr=10.10.0.0/16
             # 建议在边缘节点不能运行kube-proxy时启用
             - --agent-enable-proxy=false
-            - --agent-masq-outgoing=false
+            - --agent-masq-outgoing=true
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
             # 边缘节点可访问的connector的IP地址或域名，多个地址用逗号分割
