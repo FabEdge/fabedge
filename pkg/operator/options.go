@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -283,6 +284,7 @@ func (opts *Options) Complete() (err error) {
 		certPool.AddCert(certManager.GetCACert())
 		cert, err := tls.LoadX509KeyPair(opts.APIServerCertFile, opts.APIServerKeyFile)
 		if err != nil {
+			log.Error(err, "failed to load api server key pair")
 			return err
 		}
 		opts.APIServer.TLSConfig = &tls.Config{
@@ -306,6 +308,16 @@ func (opts Options) Validate() (err error) {
 
 	if opts.ClusterRole == RoleMember && len(opts.InitToken) == 0 {
 		return fmt.Errorf("initialization token is needed when cluster role is member")
+	}
+
+	if opts.ClusterRole == RoleHost {
+		if !fileExists(opts.APIServerKeyFile) {
+			return fmt.Errorf("api server key file doesnt' exist")
+		}
+
+		if !fileExists(opts.APIServerCertFile) {
+			return fmt.Errorf("api server certificate file doesnt' exist")
+		}
 	}
 
 	if len(opts.EdgeLabels) == 0 {
@@ -688,4 +700,12 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 
 	err = kubeClient.Create(context.Background(), &secret)
 	return secret, err
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
 }
