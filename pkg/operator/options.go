@@ -104,7 +104,7 @@ type Options struct {
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
-	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster, must be distinct among all clusters")
+	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster must be unique among all clusters and be a valid dns name(RFC 1123)")
 	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
@@ -299,7 +299,11 @@ func (opts *Options) Complete() (err error) {
 
 func (opts Options) Validate() (err error) {
 	if len(opts.Cluster) == 0 {
-		return fmt.Errorf("cluster name is needed")
+		return fmt.Errorf("a cluster name is required")
+	}
+
+	if !dns1123Reg.MatchString(opts.Cluster) {
+		return fmt.Errorf("invalid cluster name: %s", opts.Cluster)
 	}
 
 	if opts.ClusterRole != RoleHost && opts.ClusterRole != RoleMember {
@@ -322,10 +326,6 @@ func (opts Options) Validate() (err error) {
 
 	if len(opts.EdgeLabels) == 0 {
 		return fmt.Errorf("edge labels is needed")
-	}
-
-	if !dns1123Reg.MatchString(opts.Connector.Endpoint.Name) {
-		return fmt.Errorf("invalid connector name")
 	}
 
 	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
