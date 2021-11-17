@@ -47,12 +47,12 @@ func Execute() error {
 
 	about.DisplayAndExitIfRequested()
 
-	if err := opts.Complete(); err != nil {
+	if err := opts.Validate(); err != nil {
+		log.Error(err, "invalid arguments found")
 		return err
 	}
 
-	if err := opts.Validate(); err != nil {
-		log.Error(err, "invalid arguments found")
+	if err := opts.Complete(); err != nil {
 		return err
 	}
 
