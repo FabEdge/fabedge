@@ -7,13 +7,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: connector
+      app: fabedge-connector
   strategy:
       type: Recreate
   template:
     metadata:
       labels:
-        app: connector
+        app: fabedge-connector
     spec:
       affinity:
         nodeAffinity:
@@ -29,7 +29,7 @@ spec:
                 - key: app
                   operator: In
                   values:
-                  - connector
+                  - fabedge-connector
             topologyKey: kubernetes.io/hostname
       hostNetwork: true
       containers:
@@ -89,7 +89,7 @@ spec:
                 path: certs/tls.crt
               - key: tls.key
                 path: private/tls.key
-            secretName: cloud-connector
+            secretName: connector-tls
         - name: ipsec-secrets
           secret:
             items:
