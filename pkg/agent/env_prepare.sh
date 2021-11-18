@@ -4,7 +4,7 @@ set -x
 
 # install CNI plugins
 find /etc/cni/net.d/ -type f -not -name fabedge.conf -exec rm {} \;
-cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /opt/cni/bin
+cp -f /usr/local/bin/bridge /usr/local/bin/host-local /usr/local/bin/loopback /usr/local/bin/portmap /usr/local/bin/bandwidth /opt/cni/bin
 
 # cleanup flannel stuff
 ip link delete cni0
