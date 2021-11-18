@@ -50,8 +50,9 @@ type Config struct {
 	XFRMInterfaceName string
 	XFRMInterfaceID   uint
 
-	EnableIPAM bool
-	CNI        CNI
+	EnableIPAM        bool
+	EnableHairpinMode bool
+	CNI               CNI
 
 	EnableProxy bool
 }
@@ -65,6 +66,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
 	fs.BoolVar(&cfg.EnableIPAM, "enable-ipam", true, "enable the IPAM feature")
+	fs.BoolVar(&cfg.EnableHairpinMode, "enable-hairpinmode", true, "enable the Hairpin feature")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
 	fs.StringVar(&cfg.CNI.ConfDir, "cni-conf-path", "/etc/cni/net.d", "cni version")
 	fs.StringVar(&cfg.CNI.NetworkName, "cni-network-name", "fabedge", "the name of network")

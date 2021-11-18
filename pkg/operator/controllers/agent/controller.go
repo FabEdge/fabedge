@@ -79,7 +79,8 @@ type Config struct {
 
 	EnableProxy bool
 
-	EnableEdgeIPAM bool
+	EnableEdgeIPAM        bool
+	EnableEdgeHairpinMode bool
 }
 
 func AddToManager(cnf Config) error {
@@ -155,14 +156,15 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 		log:       log.WithName("agentPodHandler"),
 
-		imagePullPolicy: corev1.PullPolicy(cnf.ImagePullPolicy),
-		logLevel:        cnf.AgentLogLevel,
-		agentImage:      cnf.AgentImage,
-		strongswanImage: cnf.StrongswanImage,
-		useXfrm:         cnf.UseXfrm,
-		masqOutgoing:    cnf.MasqOutgoing,
-		enableProxy:     cnf.EnableProxy,
-		enableIPAM:      cnf.EnableEdgeIPAM,
+		imagePullPolicy:   corev1.PullPolicy(cnf.ImagePullPolicy),
+		logLevel:          cnf.AgentLogLevel,
+		agentImage:        cnf.AgentImage,
+		strongswanImage:   cnf.StrongswanImage,
+		useXfrm:           cnf.UseXfrm,
+		masqOutgoing:      cnf.MasqOutgoing,
+		enableProxy:       cnf.EnableProxy,
+		enableIPAM:        true,
+		enableHairpinMode: cnf.EnableEdgeHairpinMode,
 	})
 
 	return handlers
