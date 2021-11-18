@@ -12,3 +12,8 @@ release: {{ .Release.Name }}
 app: {{ .Values.cert.name }}
 release: {{ .Release.Name }}
 {{- end -}}
+
+{{- define "cloudAgent.labels" -}}
+app: {{ .Values.cloudAgent.name }}
+release: {{ .Release.Name }}
+{{- end -}}

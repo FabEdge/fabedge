@@ -1,3 +1,7 @@
+apiServer:
+  ip: 10.20.8.20
+  nodePort: 30303
+
 operator:
   name: fabedge-operator
   replicaCount: 1
@@ -5,6 +9,12 @@ operator:
     repository: fabedge/operator
     pullPolicy: IfNotPresent
     # tag:  # default: AppVersion
+
+  initToken: 123456
+
+  cluster:
+    name: fabedge
+    role: host
 
   # CIDR used by pods on edge nodes, modify it per your env.
   edgePodCIDR: 10.10.0.0/16
@@ -16,12 +26,18 @@ operator:
   enableProxy: true
 
   # ip of connector accessible by the edge node
-  connectorPublicAddresses: 10.22.46.48
+  connectorPublicAddresses:
+  - 10.22.46.48
+  connectorNodeAddresses:
+  - 10.22.46.48
 
   # CIDR used by pod & service in the cloud k8s cluster
-  connectorSubnets: 10.233.64.0/18,10.233.0.0/18
+  connectorSubnets:
+  - 10.233.64.0/18
+  - 10.233.0.0/18
 
-  edgeLabels: node-role.kubernetes.io/edge
+  edgeLabels:
+  - node-role.kubernetes.io/edge
 
   affinity:
     nodeAffinity:
@@ -43,7 +59,7 @@ operator:
 cniType: calico
 
 connector:
-  name: connector
+  name: fabedge-connector
   replicaCount: 1
   image:
     repository: fabedge/connector
@@ -119,3 +135,28 @@ cert:
     repository: fabedge/cert
     pullPolicy: IfNotPresent
     # tag:  # default: AppVersion
+
+cloudAgent:
+  name: fabedge-cloud-agent
+  image:
+    repository: fabedge/cloud-agent
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/edge
+                operator: DoesNotExist
+              - key: node-role.kubernetes.io/connector
+                operator: DoesNotExist
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi

@@ -4,13 +4,12 @@ metadata:
   name: {{ .Values.operator.name }}
 rules:
   - apiGroups:
-      - community.fabedge.io
+      - fabedge.io
     resources:
       - communities
+      - clusters
     verbs:
-      - get
-      - list
-      - watch
+      - "*"
   - apiGroups:
       - ""
     resources:
