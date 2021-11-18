@@ -6,7 +6,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.2.5
   creationTimestamp: null
-  name: communities.community.fabedge.io
+  name: communities.fabedge.io
 spec:
   additionalPrinterColumns:
   - JSONPath: .spec.members
@@ -17,7 +17,7 @@ spec:
     description: How long a community is created
     name: Age
     type: date
-  group: community.fabedge.io
+  group: fabedge.io
   names:
     kind: Community
     listKind: CommunityList

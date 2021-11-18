@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Values.cloudAgent.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cloudAgent.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cloudAgent.labels" . | nindent 8 }}
+    spec:
+      {{- if .Values.cloudAgent.affinity }}
+      affinity:
+{{ toYaml .Values.cloudAgent.affinity | indent 8 }}
+      {{- end }}
+      containers:
+        - args:
+            - --connector-node-addresses={{ join "," .Values.operator.connectorNodeAddresses }}
+            - -v=5
+          image: {{ .Values.cloudAgent.image.repository }}:{{ .Values.cloudAgent.image.tag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.cloudAgent.image.pullPolicy }}
+          name: {{ .Values.cloudAgent.name }}
+          {{- if .Values.cloudAgent.resources }}
+          resources:
+{{ toYaml .Values.cloudAgent.resources | indent 12 }}
+          {{- end }}
+          securityContext:
+            privileged: true
+      hostNetwork: true

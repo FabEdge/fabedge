@@ -7,6 +7,8 @@ metadata:
     {{- include "fabedgeOperator.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.operator.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "fabedgeOperator.labels" . | nindent 6 }}
@@ -20,26 +22,60 @@ spec:
           image: {{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
           args:
+            - --cluster={{ .Values.operator.cluster.name }}
+            - --cluster-role={{ .Values.operator.cluster.role }}
+            - --api-server-cert-file=/etc/fabedge/tls.crt
+            - --api-server-key-file=/etc/fabedge/tls.key
+            {{- if eq .Values.operator.cluster.role "member" }}
+            - --api-server-address=https://{{ .Values.apiServer.ip }}:{{ .Values.apiServer.nodePort }}
+            {{- end }}
+            - --init-token={{ .Values.operator.initToken }}
+
             - --edge-pod-cidr={{ .Values.operator.edgePodCIDR }}
-            - --agent-enable-edge-ipam=true
             - --cni-type={{ .Values.cniType }}
             - --agent-image={{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
             - --agent-strongswan-image={{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}
-            - --connector-config=connector-config
-            - --edge-labels={{ .Values.operator.edgeLabels }}
-            - --connector-public-addresses={{ .Values.operator.connectorPublicAddresses }}
-            - --connector-subnets={{ .Values.operator.connectorSubnets }}
+            - --edge-labels={{ join "," .Values.operator.edgeLabels }}
+            - --connector-public-addresses={{ join "," .Values.operator.connectorPublicAddresses }}
+            - --connector-subnets={{ join "," .Values.operator.connectorSubnets }}
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
             - --agent-masq-outgoing={{ .Values.operator.masqOutgoing }}
             - --agent-enable-proxy={{ .Values.operator.enableProxy }}
             - -v=5
+          ports:
+            - containerPort: 3030
+              name: apiserver
+          {{- if eq .Values.operator.cluster.role "host" }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/fabedge/
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              port: 3030
+              scheme: HTTPS
+              path: "/api/ca-cert"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
           {{- if .Values.operator.resources }}
           resources:
 {{ toYaml .Values.operator.resources | indent 12 }}
           {{- end }}
-      hostNetwork: true
       serviceAccountName: {{ .Values.operator.name }}
       {{- if .Values.operator.affinity }}
       affinity:
 {{ toYaml .Values.operator.affinity | indent 8 }}
+      {{- end }}
+      {{- if eq .Values.operator.cluster.role "host" }}
+      volumes:
+      - name: tls
+        secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          secretName: api-server-tls
       {{- end }}

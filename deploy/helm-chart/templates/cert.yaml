@@ -109,16 +109,20 @@ spec:
         - -n
         - {{ .Release.Namespace }}
 
+      {{- if eq .Values.operator.cluster.role "host" }}
       - name: cert-gen-api-server
         image: {{ .Values.cert.image.repository }}:{{ .Values.cert.image.tag | default .Chart.AppVersion }}
         imagePullPolicy: {{ .Values.cert.image.pullPolicy }}
         args:
         - gen
         - api-server
-        - --ips 10.20.8.20
-        - --secret-name api-server-tls
+        - --ips
+        - {{ .Values.apiServer.ip }}
+        - --secret-name
+        - api-server-tls
         - -n
         - {{ .Release.Namespace }}
+      {{- end }}
 
       containers:
       - name: cert-true

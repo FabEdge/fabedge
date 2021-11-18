@@ -61,6 +61,7 @@ spec:
           args:
             - --cni-type={{ .Values.cniType }}
             - --sync-period={{ .Values.connector.syncPeriod }}
+            - --connector-node-addresses={{ join "," .Values.operator.connectorNodeAddresses }}
             - -v=5
           volumeMounts:
             - name: var-run
@@ -89,10 +90,10 @@ spec:
                 path: certs/tls.crt
               - key: tls.key
                 path: private/tls.key
-            secretName: cloud-connector
+            secretName: connector-tls
         - name: ipsec-secrets
           secret:
             items:
               - key: ipsec.secrets
                 path: ipsec.secrets
-            secretName: cloud-connector
+            secretName: connector-tls
