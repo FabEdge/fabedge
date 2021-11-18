@@ -88,11 +88,12 @@ type Options struct {
 
 	ManagerOpts manager.Options
 
-	APIServerCertFile string
-	APIServerKeyFile  string
-	APIServerAddr     string
-	TokenValidPeriod  time.Duration
-	InitToken         string
+	APIServerCertFile      string
+	APIServerKeyFile       string
+	APIServerListenAddress string
+	APIServerAddress       string
+	TokenValidPeriod       time.Duration
+	InitToken              string
 
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
@@ -136,7 +137,8 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
 	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
 
-	flag.StringVar(&opts.APIServerAddr, "api-server-address", "0.0.0.0:3030", "The address on which for api server to listen, when cluster role is member, this value will be used by api client")
+	flag.StringVar(&opts.APIServerListenAddress, "api-server-listen-address", "0.0.0.0:3030", "The address on which for API server to listen")
+	flag.StringVar(&opts.APIServerAddress, "api-server-address", "", "The address of host cluster's API server")
 	flag.StringVar(&opts.APIServerCertFile, "api-server-cert-file", "", "The cert file path for api server")
 	flag.StringVar(&opts.APIServerKeyFile, "api-server-key-file", "", "The key file path for api server")
 	flag.StringVar(&opts.InitToken, "init-token", "", "The token used to initialize TLS cert for API client")
@@ -220,7 +222,7 @@ func (opts *Options) Complete() (err error) {
 			return err
 		}
 	} else {
-		cacert, err := fclient.GetCertificate(opts.APIServerAddr)
+		cacert, err := fclient.GetCertificate(opts.APIServerAddress)
 		if err != nil {
 			log.Error(err, "failed to get CA cert from host cluster")
 			return err
@@ -269,7 +271,7 @@ func (opts *Options) Complete() (err error) {
 
 	if opts.ClusterRole == RoleHost {
 		opts.APIServer, err = apiserver.New(apiserver.Config{
-			Addr:        opts.APIServerAddr,
+			Addr:        opts.APIServerListenAddress,
 			CertManager: certManager,
 			Store:       opts.Store,
 			Client:      opts.Manager.GetClient(),
@@ -660,7 +662,7 @@ func (opts *Options) initAPIClient(kubeClient client.Client, cacert fclient.Cert
 		return err
 	}
 
-	opts.APIClient, err = fclient.NewClient(opts.APIServerAddr, opts.Cluster, &http.Transport{
+	opts.APIClient, err = fclient.NewClient(opts.APIServerAddress, opts.Cluster, &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:      certPool,
 			Certificates: []tls.Certificate{cert},
@@ -684,7 +686,7 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 		return secret, err
 	}
 
-	cert, err := fclient.SignCertByToken(opts.APIServerAddr, opts.InitToken, csrDER, certPool)
+	cert, err := fclient.SignCertByToken(opts.APIServerAddress, opts.InitToken, csrDER, certPool)
 	if err != nil {
 		log.Error(err, "failed to create certificate for API client")
 		return secret, err

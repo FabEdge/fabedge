@@ -10,6 +10,8 @@ spec:
   selector:
     matchLabels:
       app: fabedge-operator
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -24,10 +26,10 @@ spec:
             - --cluster=fabedge
             # 集群角色，必须提供，可选值有: host,member. 只能有一个集群是host集群
             - --cluster-role=host
-            # 当cluster-role是host时必须配置, 保持默认值即可。
+            # 当cluster-role是host时必须配置, 保持默认值即可
             #- --api-server-cert-file=/etc/fabedge/tls.crt
             #- --api-server-key-file=/etc/fabedge/tls.key
-            # 当集群是member时，必须配置，地址是host集群对外暴露的可访问地址; 当是host集群时，可以不配。
+            # 当集群是member时，必须配置，地址是host集群对外暴露的可访问地址
             #- --api-server-address=https://10.20.8.20:30303
             # 当集群是member时，必须配置, token从主集群获取
             #- --init-token=123467
