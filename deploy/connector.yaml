@@ -65,6 +65,7 @@ spec:
           args:
             - --cni-type=calico
             - --sync-period=1m
+            - --connector-node-addresses=10.20.8.28
             - -v=5
           volumeMounts:
             - name: var-run
