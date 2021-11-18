@@ -2,7 +2,7 @@ apiVersion: v2
 name: fabedge
 version: "0.4.0"
 type: application
-description: FabEdge is an open source edge networking solution based on kubernetes and kubeedge. 
+description: FabEdge is an open source edge networking solution based on kubernetes. 
 home: http://www.fabedge.io
 sources:
   - https://github.com/FabEdge/fabedge
