@@ -109,18 +109,6 @@ func CreateKubeNamespace(name string, client client.Client) (*corev1.Namespace, 
 	return &ns, nil
 }
 
-func DeleteKubeNamespace(c client.Client, name string) error {
-	ns := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				"ns-name": name,
-			},
-		},
-	}
-	return c.Delete(context.TODO(), &ns)
-}
-
 func WaitForNamespacesDeleted(client client.Client, namespaces []string, timeout time.Duration) error {
 	Logf("Waiting for namespaces to vanish")
 	nsMap := map[string]bool{}
