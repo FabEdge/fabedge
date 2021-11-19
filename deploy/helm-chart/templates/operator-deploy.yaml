@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "fabedgeOperator.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.operator.replicaCount }}
+  replicas: {{ .Values.operator.replicas }}
   strategy:
     type: Recreate
   selector:
@@ -27,7 +27,7 @@ spec:
             - --api-server-cert-file=/etc/fabedge/tls.crt
             - --api-server-key-file=/etc/fabedge/tls.key
             {{- if eq .Values.operator.cluster.role "member" }}
-            - --api-server-address=https://{{ .Values.apiServer.ip }}:{{ .Values.apiServer.nodePort }}
+            - --api-server-address=https://{{ .Values.apiServer.ip }}:{{ .Values.apiServer.port }}
             {{- end }}
             - --init-token={{ .Values.operator.initToken }}
 

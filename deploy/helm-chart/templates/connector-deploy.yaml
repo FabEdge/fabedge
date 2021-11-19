@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "connector.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.connector.replicaCount }}
+  replicas: {{ .Values.connector.replicas }}
   selector:
     matchLabels:
       {{- include "connector.labels" . | nindent 6 }}
