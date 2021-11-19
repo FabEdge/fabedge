@@ -162,6 +162,7 @@ func addAllEdgesToCommunity(cli client.Client) {
 		community.Spec.Members = append(community.Spec.Members, framework.GetEndpointName(node.Name))
 	}
 
+	_ = cli.Delete(context.TODO(), &community)
 	if err = cli.Create(context.TODO(), &community); err != nil {
 		framework.Failf("failed to create community: %s", err)
 	}
@@ -174,18 +175,21 @@ func addAllEdgesToCommunity(cli client.Client) {
 }
 
 func prepareNamespace(client client.Client, namespace string) {
+	ns := corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}
+
+	_ = client.Delete(context.Background(), &ns)
 	// 等待上次的测试资源清除
-	err := framework.WaitForNamespacesDeleted(client, []string{namespace}, 30*time.Second)
+	err := framework.WaitForNamespacesDeleted(client, []string{namespace}, time.Hour)
 	if err != nil {
 		framework.Failf("namespace %q is not deleted. err: %s", namespace, err)
 	}
 
 	framework.Logf("create new test namespace: %s", namespace)
-	createObject(client, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespace,
-		},
-	})
+	createObject(client, &ns)
 }
 
 // 在每个节点创建一个nginx pod和一个net-tool pod，
