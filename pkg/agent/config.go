@@ -94,19 +94,23 @@ func (cfg *Config) Validate() error {
 
 func (cfg Config) Manager() (*Manager, error) {
 	kernelHandler := ipvs.NewLinuxKernelHandler()
-	canUseProxy, err := ipvs.CanUseIPVSProxier(kernelHandler)
-	if err != nil {
-		return nil, err
+	if cfg.EnableProxy {
+		if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
+			return nil, err
+		}
 	}
-	cfg.EnableProxy = canUseProxy && cfg.EnableProxy
 
 	cfg.MASQOutgoing = cfg.EnableIPAM && cfg.MASQOutgoing
 
-	supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
-	if err != nil {
-		return nil, err
+	if cfg.UseXFRM {
+		supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
+		if err != nil {
+			return nil, err
+		}
+		if !supportXFRM {
+			return nil, fmt.Errorf("xfrm interfaces have been supported since kernel 4.19, the current kernel version is too low")
+		}
 	}
-	cfg.UseXFRM = supportXFRM && cfg.UseXFRM
 
 	var opts strongswan.Options
 	if cfg.UseXFRM {
@@ -138,3 +142,4 @@ func (cfg Config) Manager() (*Manager, error) {
 
 	return m, nil
 }
+
