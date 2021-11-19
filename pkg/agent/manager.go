@@ -278,17 +278,36 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	cni := CNINetConf{
 		CNIVersion: m.CNI.Version,
 		Name:       m.CNI.NetworkName,
-		Type:       "bridge",
+	}
+
+	bridge := BridgeConfig{
+		Type: "bridge",
 
 		Bridge:           m.CNI.BridgeName,
 		IsDefaultGateway: true,
 		ForceAddress:     true,
+		HairpinMode:      m.EnableHairpinMode,
 
 		IPAM: IPAMConfig{
 			Type:   "host-local",
 			Ranges: ranges,
 		},
 	}
+
+	portmap := CapbilitiesConfig{
+		Type:         "portmap",
+		Capabilities: map[string]bool{"portMappings": true},
+	}
+
+	// bandwidth under control by metadata.annotations within yaml:
+	// kubernetes.io/ingress-bandwidth: 1M
+	// kubernetes.io/egress-bandwidth: 1M
+	// there will be no limit without these 2 items.
+	bandwidth := CapbilitiesConfig{
+		Type:         "bandwidth",
+		Capabilities: map[string]bool{"bandwidth": true},
+	}
+	cni.Plugins = append(cni.Plugins, bridge, portmap, bandwidth)
 
 	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conf", m.CNI.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")

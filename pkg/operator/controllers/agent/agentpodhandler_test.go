@@ -42,14 +42,15 @@ var _ = Describe("AgentPodHandler", func() {
 
 	BeforeEach(func() {
 		handler = &agentPodHandler{
-			namespace:       namespace,
-			agentImage:      agentImage,
-			strongswanImage: strongswanImage,
-			imagePullPolicy: corev1.PullIfNotPresent,
-			logLevel:        3,
-			client:          k8sClient,
-			log:             klogr.New().WithName("agentPodHandler"),
-			enableIPAM:      true,
+			namespace:         namespace,
+			agentImage:        agentImage,
+			strongswanImage:   strongswanImage,
+			imagePullPolicy:   corev1.PullIfNotPresent,
+			logLevel:          3,
+			client:            k8sClient,
+			log:               klogr.New().WithName("agentPodHandler"),
+			enableIPAM:        true,
+			enableHairpinMode: true,
 		}
 
 		nodeName := getNodeName()
@@ -217,6 +218,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"tls.crt",
 			"--masq-outgoing=false",
 			"--enable-ipam=true",
+			"--enable-hairpinmode=true",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",
@@ -369,6 +371,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"tls.crt",
 			"--masq-outgoing=false",
 			"--enable-ipam=false",
+			"--enable-hairpinmode=true",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",
