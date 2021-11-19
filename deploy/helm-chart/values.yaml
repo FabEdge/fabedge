@@ -1,10 +1,10 @@
 apiServer:
   ip: 10.20.8.20
-  nodePort: 30303
+  port: 30303
 
 operator:
   name: fabedge-operator
-  replicaCount: 1
+  replicas: 1
   image:
     repository: fabedge/operator
     pullPolicy: IfNotPresent
@@ -60,7 +60,7 @@ cniType: calico
 
 connector:
   name: fabedge-connector
-  replicaCount: 1
+  replicas: 1
   image:
     repository: fabedge/connector
     pullPolicy: IfNotPresent
