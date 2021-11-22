@@ -8,7 +8,7 @@
 创建如下社区:
 
 ```yaml
-apiVersion: community.fabedge.io/v1alpha1
+apiVersion: fabedge.io/v1alpha1
 kind: Community
 metadata:
   name: all-edge-nodes
@@ -24,7 +24,7 @@ _注: 社区成员的名字不是节点名称，而是端点名，一个节点�
 假设我们还有另外一个边缘集群，部署时为集群命名为shanghai，我们现在需要将beijing和shanghai两个集群通信，创建如下集群:
 
 ```yaml
-apiVersion: community.fabedge.io/v1alpha1
+apiVersion: fabedge.io/v1alpha1
 kind: Community
 metadata:
   name: connectors
@@ -35,4 +35,3 @@ spec:
 ```
 
 *注: 跨集群通信主要是由connector实现，所以成员名称是各个集群的connector的端点名*
-
