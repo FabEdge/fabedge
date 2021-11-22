@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 )
 
 type GetIDFunc func(nodeName string) string
@@ -46,6 +47,11 @@ func NewEndpointFuncs(namePrefix, idFormat string, getPodCIDRs PodCIDRsGetter) (
 			}
 		}
 
+		publicAddresses := getPublicAddressesFromAnnotations(node)
+		if len(publicAddresses) == 0 {
+			publicAddresses = nodeSubnets
+		}
+
 		if node.Name == "" {
 			return apis.Endpoint{}
 		}
@@ -53,7 +59,7 @@ func NewEndpointFuncs(namePrefix, idFormat string, getPodCIDRs PodCIDRsGetter) (
 		return apis.Endpoint{
 			ID:              getID(node.Name),
 			Name:            getName(node.Name),
-			PublicAddresses: nodeSubnets,
+			PublicAddresses: publicAddresses,
 			Subnets:         getPodCIDRs(node),
 			NodeSubnets:     nodeSubnets,
 			Type:            apis.EdgeNode,
@@ -61,4 +67,17 @@ func NewEndpointFuncs(namePrefix, idFormat string, getPodCIDRs PodCIDRsGetter) (
 	}
 
 	return getName, getID, newEndpoint
+}
+
+func getPublicAddressesFromAnnotations(node corev1.Node) []string {
+	if len(node.Annotations) == 0 {
+		return nil
+	}
+
+	publicAddresses := node.Annotations[constants.KeyNodePublicAddresses]
+	if len(publicAddresses) == 0 {
+		return nil
+	}
+
+	return strings.Split(publicAddresses, ",")
 }
