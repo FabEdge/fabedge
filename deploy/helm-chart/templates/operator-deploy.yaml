@@ -24,8 +24,10 @@ spec:
           args:
             - --cluster={{ .Values.operator.cluster.name }}
             - --cluster-role={{ .Values.operator.cluster.role }}
+            {{- if eq .Values.operator.cluster.role "host" }}
             - --api-server-cert-file=/etc/fabedge/tls.crt
             - --api-server-key-file=/etc/fabedge/tls.key
+            {{- end }}
             {{- if eq .Values.operator.cluster.role "member" }}
             - --api-server-address=https://{{ .Values.apiServer.ip }}:{{ .Values.apiServer.port }}
             {{- end }}
@@ -42,14 +44,13 @@ spec:
             - --agent-masq-outgoing={{ .Values.operator.masqOutgoing }}
             - --agent-enable-proxy={{ .Values.operator.enableProxy }}
             - -v=5
+          {{- if eq .Values.operator.cluster.role "host" }}
           ports:
             - containerPort: 3030
               name: apiserver
-          {{- if eq .Values.operator.cluster.role "host" }}
           volumeMounts:
             - name: tls
               mountPath: /etc/fabedge/
-          {{- end }}
           readinessProbe:
             httpGet:
               port: 3030
@@ -59,6 +60,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 30
             failureThreshold: 3
+          {{- end }}
           {{- if .Values.operator.resources }}
           resources:
 {{ toYaml .Values.operator.resources | indent 12 }}
