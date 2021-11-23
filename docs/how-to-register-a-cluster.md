@@ -15,9 +15,13 @@
 2. 查看token
 
    ```shell
-   # kubectl get cluster beijing
-   NAME   TOKEN   AGE
-   beijing          eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MzcwODUzNTEsInN1YiI6ImJlaWppbmcifQ.X-1-o0fDG40b0cB4wExYCbeFke4WtqMQKnGa9u_2js_cSJibJrgzQiKeL7K4PiiYsRrmqYc2rQDA3e-qoNcgDSPO0h4m92MvGkrj5_lmkDaEydljfSlgrAc-xVIXl6-vzT42w9Atg7qWmAzWLk4oyQ3dg-aBvckpVD16SfpqEi-LLBS_ymSVleLTAHA5e77sQkbxu0WkllGDWX57Xr6pkX87r4QKEB7ynwwr75fKpeD5w99V-5l3OB-o4PI4ysqgsFhZNzVT7OMzDiXFGSFFu6FAMw7_zKj0pChW2b4D0gLLkcc-we7Rd597XAPviSnz1gIw18hx79MPkITlElB8o8pUDk1bZ5WP5kc2sFCsOfIFjo87s6wH9TXQyesccCCO38qzN5_iTJ1dj_AF9cbiwusbkXs93rJUObm_Rai33rPWNjL_LMvl-Lz_AknghVf8e2mcbh72d9drdAV2bmuBmVkGHCD40CksMytb2ePRpwDa4tWX6w96iIcC21NLcBOtQ_MNQp5KtKAnhnG3MtydlZSEUWWu1V4SVSi_K6c9UH6GAbjUdOdd3dezewczAVM6_xhylxY6gizW-yx--8sSzN2JSp2Uy2TYKQJbpNv9KI9zYIqqlxNegDj15ew33_PBwUyWZsIEc0zW4neK2E_YO8HSbZL8IIHsqfSLWBQJJ30   13m
+   # kubectl describe cluster beijing
+   Name:         beijing
+   Namespace:    
+   Kind:         Cluster
+   Spec:
+     Token:   eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Mzc2MDQ5NzIsInN1YiI6ImJlaWppbmcifQ.nA9pgy4bkHx7AFr8O0lVUIgnzxccrrd4MdKoNua4BX5dW4yU9geBykIOQVZK4zbOX1rh2FC-OkPMmrRKhobqGrvG-XwLnUNyOURkuMpDsye_zcHr_3CbXLL_v0HnzNjnXvRWLsn4TccTLs4sZA5Yr8PZu9vFwhSfluqoa-joYHk4RaaybMw6KIYsLYRzn97AVD3Sbcg27WwxFGEju365M0ZND6eZAJkLAXiQmOR1Dr7vNh3mKog3gu-CX2sGz26M9AFLzIdstYOia8CStF430dTgkSdLEjjxlN_w311OSAdQdv35tkjRmQKdXQPBCml9-WJS3nc6YT0Ps72Y9UjujY6LXnqGyj3Ru9HzklUsBSTiVZhcO50-9jjhChfTHvOd_ns6vY3gxu-VlKA-gl6d4o0Cy-hLJs9j2R1JDvZFueUfEVHs68xuJndeqI0F309-FyTVV14h3MSxPCJphxOktmZH-RS8HARDvYqf7djJHJmfpR7cIWWsDeJDm7D9UZWzkHjc_YcVcWJLbry2youAFKao17Au8SO79jzQVR28-Wh9lCaB9W4cWCx0NPNuoeqHWvl8BTC_rx4DNNFAB-7i-pFCjjoE1E8QpDxkBOe13ItrmRTFWA_CcGXF_cSRWUN35-nvAmfNcof2JYifibuI5me9JOsALET0_XR4PebW68A
+   
    ```
 
    *注: token由fabedge-operator负责生成，该token有效期内使用该token进行成员集群初始化*

@@ -9,10 +9,6 @@ metadata:
   name: clusters.fabedge.io
 spec:
   additionalPrinterColumns:
-  - JSONPath: .spec.token
-    description: The token used to connect root cluster
-    name: Token
-    type: string
   - JSONPath: .metadata.creationTimestamp
     description: How long a community is created
     name: Age
