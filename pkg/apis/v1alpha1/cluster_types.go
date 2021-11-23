@@ -34,7 +34,6 @@ type ClusterSpec struct {
 // Cluster is used to represent a cluster's endpoints of connector and edge nodes
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="Token",type="string",JSONPath=".spec.token",description="The token used to connect root cluster"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="How long a community is created"
 type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`
