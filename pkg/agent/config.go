@@ -142,4 +142,3 @@ func (cfg Config) Manager() (*Manager, error) {
 
 	return m, nil
 }
-
