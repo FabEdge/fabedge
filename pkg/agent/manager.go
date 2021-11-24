@@ -309,7 +309,7 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	}
 	cni.Plugins = append(cni.Plugins, bridge, portmap, bandwidth)
 
-	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conf", m.CNI.NetworkName))
+	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conflist", m.CNI.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")
 	if err != nil {
 		m.log.Error(err, "failed to marshal cni config")
