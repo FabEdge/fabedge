@@ -28,6 +28,7 @@ import (
 
 var _ = Describe("EndpointFuncs", func() {
 	_, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
+
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "edge1",
@@ -46,6 +47,10 @@ var _ = Describe("EndpointFuncs", func() {
 	}
 	endpoint := newEndpoint(node)
 
+	It("should mark endpoint as EdgeNode", func() {
+		Expect(endpoint.Type).Should(Equal(apis.EdgeNode))
+	})
+
 	It("should replace {node} in id format", func() {
 		Expect(endpoint.ID).Should(Equal("C=CN, O=StrongSwan, CN=cluster.edge1"))
 	})
@@ -55,11 +60,37 @@ var _ = Describe("EndpointFuncs", func() {
 		Expect(endpoint.Subnets).Should(ContainElement("2.2.0.128/26"))
 	})
 
-	It("should extract ip from node.status.address", func() {
+	It("should read node subnets from node.status.address", func() {
+		Expect(endpoint.NodeSubnets).Should(ConsistOf("192.168.1.1"))
+	})
+
+	It("should ues internal IP as public addresses if no public addresses in annotation", func() {
+		Expect(endpoint.NodeSubnets).Should(ConsistOf("192.168.1.1"))
 		Expect(endpoint.PublicAddresses).Should(ConsistOf("192.168.1.1"))
 	})
 
-	It("should mark endpoint as EdgeNode", func() {
-		Expect(endpoint.Type).Should(Equal(apis.EdgeNode))
+	It("should read public addresses from annotation if it exists", func() {
+		node = corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "edge1",
+				Annotations: map[string]string{
+					constants.KeyPodSubnets:          "2.2.0.1/26,2.2.0.128/26",
+					constants.KeyNodePublicAddresses: "www.example.com,10.0.0.1",
+				},
+			},
+			Status: corev1.NodeStatus{
+				Addresses: []corev1.NodeAddress{
+					{
+						Type:    corev1.NodeInternalIP,
+						Address: "192.168.1.1",
+					},
+				},
+			},
+		}
+
+		endpoint = newEndpoint(node)
+
+		Expect(endpoint.PublicAddresses).Should(ConsistOf("www.example.com", "10.0.0.1"))
 	})
+
 })

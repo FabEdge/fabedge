@@ -10,7 +10,7 @@ type msgHandlerFun func(b []byte)
 type notifyLeaveFun func(name string)
 
 type broadcast struct {
-	msg    []byte
+	msg []byte
 }
 
 func (b *broadcast) Invalidates(other memberlist.Broadcast) bool {
@@ -24,7 +24,7 @@ func (b *broadcast) Message() []byte {
 func (b *broadcast) Finished() {
 }
 
-type delegate struct{
+type delegate struct {
 	notifyMsg msgHandlerFun
 	queue     *memberlist.TransmitLimitedQueue
 }
@@ -69,15 +69,15 @@ func (ed *eventDelegate) NotifyLeave(node *memberlist.Node) {
 func (ed *eventDelegate) NotifyUpdate(node *memberlist.Node) {
 }
 
-type Client struct{
-	list *memberlist.Memberlist
+type Client struct {
+	list     *memberlist.Memberlist
 	delegate *delegate
 }
 
 func New(initMembers []string, msgHandler msgHandlerFun, leaveHandler notifyLeaveFun) (*Client, error) {
 	conf := memberlist.DefaultLANConfig()
 
-	 dg := &delegate{
+	dg := &delegate{
 		notifyMsg: msgHandler,
 		queue:     &memberlist.TransmitLimitedQueue{RetransmitMult: 2},
 	}
@@ -105,11 +105,10 @@ func New(initMembers []string, msgHandler msgHandlerFun, leaveHandler notifyLeav
 	}
 
 	return &Client{
-		list: list,
+		list:     list,
 		delegate: dg,
 	}, nil
 }
-
 
 func (c *Client) ListMembers() []*memberlist.Node {
 	return c.list.Members()
@@ -121,6 +120,6 @@ func (c *Client) UpdateNode() error {
 
 func (c *Client) Broadcast(b []byte) {
 	c.delegate.queue.QueueBroadcast(&broadcast{
-		msg:    b,
+		msg: b,
 	})
 }
