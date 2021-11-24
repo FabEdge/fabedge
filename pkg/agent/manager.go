@@ -154,17 +154,19 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
 		if err := m.tm.LoadConn(conn); err != nil {
-			return err
+			m.log.Error(err, "failed to add tunnel", "tunnel", conn)
+			continue
 		}
 
 		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
 		if err := m.tm.InitiateConn(peer.Name); err != nil {
-			return err
+			m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
 		}
 	}
 
 	oldNames, err := m.tm.ListConnNames()
 	if err != nil {
+		m.log.Error(err, "failed to list connections")
 		return err
 	}
 
@@ -176,7 +178,6 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 		if err := m.tm.UnloadConn(name); err != nil {
 			m.log.Error(err, "failed to unload tunnel", "name", name)
-			return err
 		}
 	}
 
