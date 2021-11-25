@@ -15,6 +15,7 @@
 package connector
 
 import (
+	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"net"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -150,6 +151,9 @@ func (m *Manager) syncEdgeNodeCIDRSet() error {
 func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
 	cidrs := sets.NewString()
 	for _, c := range m.connections {
+		if c.RemoteType == v1alpha1.Connector {
+			continue
+		}
 		for _, subnet := range c.RemoteNodeSubnets {
 			// translate the IP address to CIDR is needed
 			// because FABEDGE-EDGE-NODE-CIDR ipset type is hash:net
@@ -217,6 +221,9 @@ func (m *Manager) syncCloudNodeCIDRSet() error {
 func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 	cidrs := sets.NewString()
 	for _, c := range m.connections {
+		if c.RemoteType == v1alpha1.Connector {
+			continue
+		}
 		for _, subnet := range c.LocalNodeSubnets {
 			// translate the IP address to CIDR is needed
 			// because FABEDGE-CLOUD-NODE-CIDR ipset type is hash:net

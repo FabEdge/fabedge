@@ -2,7 +2,6 @@ package cloud_agent
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/bep/debounce"
 	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
@@ -68,10 +67,8 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 		rt.Dst = prefix
 
 		klog.V(5).Infof("add route: %+v", rt)
-		if err = netlink.RouteAdd(&rt); err != nil {
-			if !routeUtil.FileExistsError(err) {
-				return fmt.Errorf("failed to add route:%+v with error:%s", rt, err)
-			}
+		if err = netlink.RouteReplace(&rt); err != nil {
+			klog.Errorf("failed to replace route:%s", err)
 		}
 
 		// save the route, for the sake to remove it once the node left
