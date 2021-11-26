@@ -15,9 +15,11 @@
 package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	"github.com/fabedge/fabedge/pkg/tunnel"
 	"net"
+	"strings"
 
+	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
@@ -148,10 +150,21 @@ func (m *Manager) syncEdgeNodeCIDRSet() error {
 	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeCIDRs, oldEdgeNodeCIDRs, ipset.HashNet)
 }
 
+func inSameCluster(c tunnel.ConnConfig) bool {
+	if c.RemoteType == v1alpha1.Connector {
+		return false
+	}
+
+	l := strings.Split(c.LocalID, ".")  // e.g. fabedge.connector
+	r := strings.Split(c.RemoteID, ".") // e.g. fabedge.edge1
+
+	return l[0] == r[0]
+}
+
 func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
 	cidrs := sets.NewString()
 	for _, c := range m.connections {
-		if c.RemoteType == v1alpha1.Connector {
+		if !inSameCluster(c) {
 			continue
 		}
 		for _, subnet := range c.RemoteNodeSubnets {
@@ -221,7 +234,7 @@ func (m *Manager) syncCloudNodeCIDRSet() error {
 func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 	cidrs := sets.NewString()
 	for _, c := range m.connections {
-		if c.RemoteType == v1alpha1.Connector {
+		if !inSameCluster(c) {
 			continue
 		}
 		for _, subnet := range c.LocalNodeSubnets {
