@@ -12,5 +12,5 @@ spec:
     - protocol: TCP
       port: 3030
       targetPort: 3030
-      nodePort: {{ .Values.apiServer.port }}
+      nodePort: {{ .Values.operator.operatorAPIServer.nodePort }}
 {{- end }}

@@ -18,7 +18,7 @@ spec:
       {{- end }}
       containers:
         - args:
-            - --connector-node-addresses={{ join "," .Values.operator.connectorNodeAddresses }}
+            - --connector-node-addresses={{ include "connector.node.addresses" . }}
             - -v=5
           image: {{ .Values.cloudAgent.image.repository }}:{{ .Values.cloudAgent.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.cloudAgent.image.pullPolicy }}
