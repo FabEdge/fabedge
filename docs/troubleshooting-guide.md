@@ -9,8 +9,7 @@ kubectl get po -n kube-system
 kubectl get no 
 ```
 
-如果Kubernetes不正常，请自行排查，直到问题解决。
-
+如果Kubernetes不正常，请自行排查，直到问题解决，然后下一步
 
 
 ## 确认FabEdge服务正常
