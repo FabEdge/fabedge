@@ -16,15 +16,12 @@ package routing
 
 import (
 	"fmt"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/vishvananda/netlink"
 	"net"
 	"strings"
-)
-
-const (
-	TableStrongswan = 220
 )
 
 type ConnectorPrefixes struct {
@@ -99,7 +96,7 @@ func delEdgeRoute(subnet *net.IPNet) error {
 	if err != nil {
 		return err
 	}
-	route := netlink.Route{Dst: subnet, Gw: gw, Table: TableStrongswan}
+	route := netlink.Route{Dst: subnet, Gw: gw, Table: constants.TableStrongswan}
 	return netlink.RouteDel(&route)
 }
 
@@ -140,7 +137,7 @@ func delRoutesNotInConnections(connections []tunnel.ConnConfig, table int) error
 
 func GetRemotePrefixes() ([]string, error) {
 	var routeFilter = &netlink.Route{
-		Table: TableStrongswan,
+		Table: constants.TableStrongswan,
 	}
 	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
 	if err != nil {

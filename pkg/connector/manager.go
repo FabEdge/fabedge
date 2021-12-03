@@ -160,6 +160,7 @@ func (m *Manager) Start() {
 		cp, err := m.router.GetConnectorPrefixes()
 		if err != nil {
 			klog.Errorf("failed to get connector prefixes:%s", err)
+			return
 		}
 		klog.V(5).Infof("get connector prefixes:%+v", cp)
 
