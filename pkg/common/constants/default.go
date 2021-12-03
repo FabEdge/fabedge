@@ -33,3 +33,7 @@ const (
 	CNIFlannel = "flannel"
 	CNICalico  = "calico"
 )
+
+const (
+	TableStrongswan = 220
+)
