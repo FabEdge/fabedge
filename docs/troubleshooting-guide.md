@@ -94,4 +94,16 @@ iptables -t nat -L -nv --line-numbers
 
 ## 排查工具
 
-TODO
+```
+# master节点执行：
+curl http://116.62.127.76/checker.sh | bash -s master | tee /tmp/master-checker.log
+
+# connector节点执行：
+curl http://116.62.127.76/checker.sh | bash -s connector | tee /tmp/connector-checker.log
+
+# edge节点执行：
+curl http://116.62.127.76/checker.sh | bash -s edge | tee /tmp/edge-checker.log
+
+# 其它节点执行：
+curl http://116.62.127.76/checker.sh | bash | tee /tmp/node-checker.log
+```
