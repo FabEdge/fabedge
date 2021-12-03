@@ -489,20 +489,16 @@ Community：FabEdge定义的CRD，有两种使用场景：
 ## 常见问题
 
 1. 有的网络环境存在非对称路由，需要在云端节点关闭rp_filter
-
    ```shell
-   $ sudo for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done
-   
+   $ sudo for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done 
    # 保存配置
    $ sudo vi /etc/sysctl.conf
    net.ipv4.conf.default.rp_filter=0
    net.ipv4.conf.all.rp_filter=0
    ```
 
-1.  报错：“Error: cannot re-use a name that is still in use”，
-   
-   因为fabedge helm chart已经安装，使用以下命令卸载后重试。
-   
+1. 报错：“Error: cannot re-use a name that is still in use”，
+   这是因为fabedge已经安装，使用以下命令卸载后重试。
    ```shell
    $ helm uninstall -n fabedge fabedge
    release "fabedge" uninstalled
