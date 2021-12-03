@@ -15,6 +15,7 @@
 package routing
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/vishvananda/netlink"
@@ -28,10 +29,10 @@ func NewCalicoRouter() *CalicoRouter {
 }
 
 func (r *CalicoRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
-	if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
+	if err := delRoutesNotInConnections(connections, constants.TableStrongswan); err != nil {
 		return err
 	}
-	return addAllEdgeRoutes(connections, TableStrongswan)
+	return addAllEdgeRoutes(connections, constants.TableStrongswan)
 }
 
 func (r *CalicoRouter) CleanRoutes(conns []tunnel.ConnConfig) error {

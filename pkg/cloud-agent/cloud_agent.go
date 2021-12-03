@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/bep/debounce"
 	"github.com/fabedge/fabedge/pkg/common/about"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	"github.com/fabedge/fabedge/pkg/util/memberlist"
@@ -46,6 +47,19 @@ func getRouteTmpl(prefix string) (netlink.Route, error) {
 	return r, nil
 }
 
+func addRule() error {
+	rule := netlink.NewRule()
+	rule.Priority = constants.TableStrongswan
+	rule.Table = constants.TableStrongswan
+
+	err := netlink.RuleAdd(rule)
+	if !routeUtil.FileExistsError(err) {
+		return err
+	}
+
+	return nil
+}
+
 func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 	if len(cp.RemotePrefixes) < 1 {
 		return nil
@@ -53,6 +67,11 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 
 	// get the route to connector's local prefix and save it as a template
 	rt, err := getRouteTmpl(cp.LocalPrefixes[0])
+	if err != nil {
+		return err
+	}
+
+	err = addRule()
 	if err != nil {
 		return err
 	}
@@ -65,6 +84,7 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 			return err
 		}
 		rt.Dst = prefix
+		rt.Table = constants.TableStrongswan
 
 		klog.V(5).Infof("add route: %+v", rt)
 		if err = netlink.RouteReplace(&rt); err != nil {
