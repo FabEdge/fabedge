@@ -229,7 +229,8 @@ Community：FabEdge定义的CRD，有两种使用场景：
    
    $ kubectl apply -f beijing.yaml
    
-   $ kubectl get cluster beijing -o go-template --template='{{.spec.token}}' | awk 'END{print}' eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Mzc1OTIzNTIsInN1YiI6ImJlaWppbmcifQ.j_1BMF86SDLKh_cdS13yUPaSfyoQvaAqtk536IFVACdM3xNPyt89nswGaHFRSjtusocA-Gkiz9h0_JXgsY7JmTdRXKQthLcdCrSVAWVDu-Ky7QfBTUn_X82pOJplYBYCqI7DmEJ_BnSK_cMX2KLlv5eE5It5hFQU0GQONslec1i4IK6nEFPp8j3QT0NmADjW4SOHwUYvyVpt0Dq8uwedt2ThjIpB91iqKxhyF89RZhCte7fZCgVscA8ZQSS3cStAn1WVeutEer7-
+   $ kubectl get cluster beijing -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
+   eyJ------省略了很长内容-----9u0
    ```
 
 2. 获取当前集群配置信息，供后面使用
@@ -312,7 +313,9 @@ Community：FabEdge定义的CRD，有两种使用场景：
    node1    Ready    connector   5h23m   v1.18.2
    ```
 
-   > 注意：选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
+   > 注意：
+   >
+   > 选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
 
 7. 准备values.yaml文件
 
@@ -333,7 +336,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
      
      hostOperatorAPIServer: https://10.20.8.28:30303
      
-     initToken: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Mzc1OTIzNTIsInN1YiI6ImJlaWppbmcifQ.j_1BMF86SDLKh_cdS13yUPaSfyoQvaAqtk536IFVACdM3xNPyt89nswGaHFRSjtusocA-Gkiz9h0_JXgsY7JmTdRXKQthLcdCrSVAWVDu-Ky7QfBTUn_X82pOJplYBYCqI7DmEJ_BnSK_cMX2KLlv5eE5It5hFQU0GQONslec1i4IK6nEFPp8j3QT0NmADjW4SOHwUYvyVpt0Dq8uwedt2ThjIpB91iqKxhyF89RZhCte7fZCgVscA8ZQSS3cStAn1WVeutEer7-a_ludAGSDlMLk3z3SncA3J9M9X9dzChgaLjtalALo8e6gcmo0LW3J3sFoD4IRSFRYYgShcDKYCUUi8twahgGSBTC6pcvRQjsKmasWFPwxSHTBMA-CoWUYct7ULyiqD0ZUQcRlYcgVG61l-2g2vEkiSvjiKCRcWR8j8dpWVswoWvdB-5M0QZ_8A6L1iBlXKtZ865qBUJnwWX--OvgWwz486b-89-RD6HzNfJa6C_N3OOAAQ_EFBRkPDDLHBALrDyijGYTfHpBZ-klkiArgJ7YKQda3kGg2SWI_-MgFXl-GeGsFF0hl8mYKYBbOG7qsxnAlAzj9z63vsgIgBadv95FZP29IfwKOE67C6SvAkaN4oQ4urwhVmNFZzElxdaG2eTjWrawo-tK7Q4DtkcXtXPkM6zar95t9u0
+     initToken: eyJ------省略了很长内容-----9u0
    
    EOF
    ```
@@ -395,27 +398,26 @@ Community：FabEdge定义的CRD，有两种使用场景：
 
 ## 创建多集群Community （可选）
 
-把需要通讯的集群加入一个Community
+1. 把需要通讯的集群加入一个Community
 
-```shell
-# 在host集群中操作
-$ cat > community.yaml << EOF
-apiVersion: fabedge.io/v1alpha1
-kind: Community
-metadata:
-  name: connectors
-spec:
-  members:
-    - fabedge.connector  
-    - beijing.connector    
-EOF
-
-$ kubectl apply -f community.yaml
-```
-
-> members是**端点名**的列表，这个例子表示将集群fabedge和beijing加入同一个community，允许直接通讯
->
-
+   ```shell
+   # 在host集群中操作
+   $ cat > community.yaml << EOF
+   apiVersion: fabedge.io/v1alpha1
+   kind: Community
+   metadata:
+     name: connectors
+   spec:
+     members:
+       - fabedge.connector  
+       - beijing.connector    
+   EOF
+   
+   $ kubectl apply -f community.yaml
+   ```
+   
+   > members是**端点名**的列表，这个例子表示将集群fabedge和beijing加入同一个community，允许直接通讯
+   >
 
 
 ## 和计算框架相关的配置
@@ -452,7 +454,7 @@ $ kubectl apply -f community.yaml
 
 ### 如果使用SuperEdge
 
-1. 检查服务状态，如果不Ready，要删除重建。
+1. 检查服务状态，如果不Ready，要删除Pod重建
 
     ```shell
     $ kubectl get po -n edge-system
@@ -478,7 +480,9 @@ $ kubectl apply -f community.yaml
     pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
     ```
 
-1. SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent， 导致不能和master节点上的Pod通讯，如果需要， 需要修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。
+1. master节点上的Pod不能和边缘Pod通讯
+
+    SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent， 导致不能和master节点上的Pod通讯。如果需要，可以修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。
 
 
 
@@ -495,7 +499,10 @@ $ kubectl apply -f community.yaml
    net.ipv4.conf.all.rp_filter=0
    ```
 
-1.  报错：“Error: cannot re-use a name that is still in use”，是因为fabedge helm chart已经安装，使用以下命令卸载后重试。
+1.  报错：“Error: cannot re-use a name that is still in use”，
+   
+   因为fabedge helm chart已经安装，使用以下命令卸载后重试。
+   
    ```shell
    $ helm uninstall -n fabedge fabedge
    release "fabedge" uninstalled
