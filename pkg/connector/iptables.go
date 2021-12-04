@@ -98,6 +98,11 @@ func (m *Manager) ensureNatIPTablesRules() (err error) {
 		return err
 	}
 
+	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
+	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
 	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
