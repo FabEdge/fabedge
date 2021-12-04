@@ -52,9 +52,10 @@ func addRule() error {
 	rule.Priority = constants.TableStrongswan
 	rule.Table = constants.TableStrongswan
 
-	err := netlink.RuleAdd(rule)
-	if !routeUtil.FileExistsError(err) {
-		return err
+	if err := netlink.RuleAdd(rule); err != nil {
+		if !routeUtil.FileExistsError(err) {
+			return err
+		}
 	}
 
 	return nil
