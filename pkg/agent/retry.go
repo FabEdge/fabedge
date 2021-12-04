@@ -27,7 +27,7 @@ func retryForever(ctx context.Context, retryableFunc retry.RetryableFunc, onRetr
 	_ = retry.Do(
 		retryableFunc,
 		retry.Context(ctx),
-		retry.Attempts(math.MaxUint64),
+		retry.Attempts(math.MaxUint32),
 		retry.Delay(5*time.Second),
 		retry.DelayType(retry.FixedDelay),
 		retry.LastErrorOnly(true),
