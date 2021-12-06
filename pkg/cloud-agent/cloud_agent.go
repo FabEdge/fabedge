@@ -62,8 +62,27 @@ func addRule() error {
 }
 
 func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
-	if len(cp.RemotePrefixes) < 1 {
-		return nil
+	// ensure iptables
+	go func() {
+		klog.V(5).Infof("try to sync ipset")
+		if err := syncRemotePodCIDRSet(cp); err != nil {
+			klog.Errorf("failed to sync ipset:%s", err)
+		}
+
+		klog.V(5).Infof("try to sync iptables forward chain")
+		if err := syncForwardRules(); err != nil {
+			klog.Errorf("failed to sync iptables forward chain:%s", err)
+		}
+
+		klog.V(5).Infof("try to sync iptables post-routing chain")
+		if err := syncPostRoutingRules(); err != nil {
+			klog.Errorf("failed to sync iptables post-routing chain:%s", err)
+		}
+	}()
+
+	klog.V(5).Infof("try to sync ip rule")
+	if err := addRule(); err != nil {
+		return err
 	}
 
 	// get the route to connector's local prefix and save it as a template
@@ -72,12 +91,7 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 		return err
 	}
 
-	err = addRule()
-	if err != nil {
-		return err
-	}
-
-	// add all remote routes, which are rendered with the template saved before
+	klog.V(5).Infof("try to sync routes")
 	var routes []netlink.Route
 	for _, p := range cp.RemotePrefixes {
 		_, prefix, err := net.ParseCIDR(p)
@@ -87,7 +101,6 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 		rt.Dst = prefix
 		rt.Table = constants.TableStrongswan
 
-		klog.V(5).Infof("add route: %+v", rt)
 		if err = netlink.RouteReplace(&rt); err != nil {
 			klog.Errorf("failed to replace route:%s", err)
 		}
