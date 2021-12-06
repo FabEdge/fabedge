@@ -420,7 +420,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
    >
 
 
-## 和计算框架相关的配置
+## 和边缘计算框架相关的配置
 
 ### 如果使用KubeEdge
 
@@ -483,6 +483,49 @@ Community：FabEdge定义的CRD，有两种使用场景：
 1. master节点上的Pod不能和边缘Pod通讯
 
     SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent， 导致不能和master节点上的Pod通讯。如果需要，可以修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。
+
+
+
+## 和CNI相关的配置
+
+### 如果使用Calico
+
+将**所有其它集群**的Pod和Service的网段加入Calico，防止Calico做源地址转换，导致不能通讯。
+
+```shell
+# 在所有集群的master节点上执行
+cat > pool.yaml << EOF
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: cluster-beijing-cluster-cidr
+spec:
+  blockSize: 26
+  cidr: 10.233.64.0/18
+  natOutgoing: false
+  disabled: true
+  ipipMode: Always
+EOF
+  
+calicoctl.sh create -f p.yaml
+
+cat > pool.yaml << EOF
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: cluster-beijing-service-cluster-ip-range
+spec:
+  blockSize: 26
+  cidr: 10.233.0.0/18
+  natOutgoing: false
+  disabled: true
+  ipipMode: Always
+EOF
+
+calicoctl.sh create -f p.yaml 
+```
+
+> **cidr**: 分别为前面get_cluster_info.sh输出的cluster-cidr和service-cluster-ip-range
 
 
 
