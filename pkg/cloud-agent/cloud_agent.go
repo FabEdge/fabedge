@@ -62,36 +62,41 @@ func addRule() error {
 }
 
 func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
+	if len(cp.LocalPrefixes) <1 || len(cp.RemotePrefixes) <1 {
+		klog.Errorf("get an empty message:%+v", cp)
+		return nil
+	}
+
 	// ensure iptables
 	go func() {
-		klog.V(5).Infof("try to sync ipset")
 		if err := syncRemotePodCIDRSet(cp); err != nil {
 			klog.Errorf("failed to sync ipset:%s", err)
 		}
+		klog.V(5).Infof("ipset is synced")
 
-		klog.V(5).Infof("try to sync iptables forward chain")
 		if err := syncForwardRules(); err != nil {
 			klog.Errorf("failed to sync iptables forward chain:%s", err)
 		}
+		klog.V(5).Infof("iptables forward chain is synced.")
 
-		klog.V(5).Infof("try to sync iptables post-routing chain")
 		if err := syncPostRoutingRules(); err != nil {
 			klog.Errorf("failed to sync iptables post-routing chain:%s", err)
 		}
+		klog.V(5).Infof("iptables post-routing chain is synced.")
 	}()
 
-	klog.V(5).Infof("try to sync ip rule")
 	if err := addRule(); err != nil {
 		return err
 	}
+	klog.V(5).Infof("ip rule is synced")
 
 	// get the route to connector's local prefix and save it as a template
 	rt, err := getRouteTmpl(cp.LocalPrefixes[0])
 	if err != nil {
 		return err
 	}
+	klog.V(5).Infof("get route to connector local prefix:%s", cp.LocalPrefixes[0])
 
-	klog.V(5).Infof("try to sync routes")
 	var routes []netlink.Route
 	for _, p := range cp.RemotePrefixes {
 		_, prefix, err := net.ParseCIDR(p)
@@ -109,7 +114,8 @@ func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
 		routes = append(routes, rt)
 	}
 
-	addedRoutes[cp.Name] = routes
+	addedRoutes[cp.NodeName] = routes
+	klog.V(5).Infof("routes are synced:%+v", routes)
 
 	return nil
 }
@@ -125,13 +131,14 @@ func msgHandler(b []byte) {
 		if err := addAndSaveRoutes(cp); err != nil {
 			klog.Errorf("failed to add route:%s", err)
 		}
+		klog.V(5).Infof("routes are added and saved")
+
 	})
 }
 
 func delAllSavedRoutesByNode(name string) {
 	if _, ok := addedRoutes[name]; ok {
 		for _, r := range addedRoutes[name] {
-			klog.V(5).Infof("delete route: %+v", r)
 			if err := netlink.RouteDel(&r); err != nil {
 				if !routeUtil.NoSuchProcessError(err) {
 					klog.Errorf("failed to delete route:%+v with error:%s", r, err)

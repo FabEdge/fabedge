@@ -72,7 +72,7 @@ func (r *FlannelRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
 	}
 	cp.RemotePrefixes = remote
 
-	cp.Name = routeUtil.GetNodeName()
+	cp.NodeName = routeUtil.GetNodeName()
 
 	return cp, nil
 }
