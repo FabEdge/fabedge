@@ -71,7 +71,7 @@ func (r *CalicoRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
 	}
 	cp.RemotePrefixes = remote
 
-	cp.NodeName= routeUtil.GetNodeName()
+	cp.NodeName = routeUtil.GetNodeName()
 
 	return cp, nil
 }

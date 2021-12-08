@@ -76,7 +76,7 @@ type Client struct {
 }
 
 func getAdvertiseAddr() (string, error) {
-	ip := 	os.Getenv("MY_POD_IP")
+	ip := os.Getenv("MY_POD_IP")
 	if len(ip) > 1 {
 		return ip, nil
 	} else {

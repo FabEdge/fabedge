@@ -62,7 +62,7 @@ func addRule() error {
 }
 
 func addAndSaveRoutes(cp routing.ConnectorPrefixes) error {
-	if len(cp.LocalPrefixes) <1 || len(cp.RemotePrefixes) <1 {
+	if len(cp.LocalPrefixes) < 1 || len(cp.RemotePrefixes) < 1 {
 		klog.Errorf("get an empty message:%+v", cp)
 		return nil
 	}
