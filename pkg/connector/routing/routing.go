@@ -25,9 +25,9 @@ import (
 )
 
 type ConnectorPrefixes struct {
-	Name           string   `json:"name,omitempty"`
-	LocalPrefixes  []string `json:"local-prefixes,omitempty"`
-	RemotePrefixes []string `json:"remote-prefixes omitempty"`
+	NodeName           string   `json:"name"`
+	LocalPrefixes  []string `json:"local-prefixes"`
+	RemotePrefixes []string `json:"remote-prefixes"`
 }
 
 type Routing interface {
