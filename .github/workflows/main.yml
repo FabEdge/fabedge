@@ -14,36 +14,43 @@ jobs:
       matrix:
         include:
         - platforms: linux/amd64
-          tags: fabedge/installer
+          tags: wanglet/installer
           file: build/installer/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/strongswan
+          tags: wanglet/strongswan:5.9.1
           file: build/strongswan/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/connector
+          tags: wanglet/connector
           file: build/connector/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/operator
+          tags: wanglet/operator
           file: build/operator/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/agent
+          tags: wanglet/agent
           file: build/agent/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/cert
+          tags: wanglet/cert
           file: build/cert/Dockerfile
 
     steps:
     - uses: actions/checkout@v2
 
-    - name: Extract branch name
+    - name: Set tags
       shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-      id: extract_branch
+      env:
+        TAGS: ${{ matrix.tags }}
+      run: |
+        if [[ ${TAGS} =~ ":" ]]; then
+          echo "::set-output name=tags::${TAGS}"
+        else
+          echo "::set-output name=tags::${TAGS}:${GITHUB_REF##*/}"
+        fi
+      id: set_tags
 
     - name: Remove proxies
       run: |
@@ -67,5 +74,5 @@ jobs:
         context: .
         platforms: ${{ matrix.platforms }}
         push: true
-        tags: ${{ matrix.tags }}:${{ steps.extract_branch.outputs.branch }}
+        tags: ${{ steps.set_tags.outputs.tags }}
         file: ${{ matrix.file }}
