@@ -25,7 +25,7 @@ import (
 )
 
 type ConnectorPrefixes struct {
-	NodeName           string   `json:"name"`
+	NodeName       string   `json:"name"`
 	LocalPrefixes  []string `json:"local-prefixes"`
 	RemotePrefixes []string `json:"remote-prefixes"`
 }
