@@ -3,7 +3,7 @@ name: build
 on:
   push:
     branches:
-      - main
+      - 'v*'
     paths-ignore:
       - 'docs/**'
 
@@ -17,28 +17,33 @@ jobs:
           tags: fabedge/installer
           file: build/installer/Dockerfile
 
-        - platforms: linux/amd64,linux/arm64
+        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/strongswan
           file: build/strongswan/Dockerfile
 
-        - platforms: linux/amd64,linux/arm64
+        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/connector
           file: build/connector/Dockerfile
 
-        - platforms: linux/amd64,linux/arm64
+        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/operator
           file: build/operator/Dockerfile
 
-        - platforms: linux/amd64,linux/arm64
+        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/agent
           file: build/agent/Dockerfile
 
-        - platforms: linux/amd64,linux/arm64
+        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/cert
           file: build/cert/Dockerfile
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: Extract branch name
+      shell: bash
+      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+      id: extract_branch
 
     - name: Remove proxies
       run: |
@@ -62,5 +67,5 @@ jobs:
         context: .
         platforms: ${{ matrix.platforms }}
         push: true
-        tags: ${{ matrix.tags }}
+        tags: ${{ matrix.tags }}:${{ steps.extract_branch.outputs.branch }}
         file: ${{ matrix.file }}
