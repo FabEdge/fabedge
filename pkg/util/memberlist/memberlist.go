@@ -3,6 +3,7 @@ package memberlist
 import (
 	"fmt"
 	"github.com/hashicorp/memberlist"
+	"os"
 	"time"
 )
 
@@ -74,8 +75,21 @@ type Client struct {
 	delegate *delegate
 }
 
+func getAdvertiseAddr() (string, error) {
+	ip := 	os.Getenv("MY_POD_IP")
+	if len(ip) > 1 {
+		return ip, nil
+	} else {
+		return "", fmt.Errorf("failed to get ip address")
+	}
+}
+
 func New(initMembers []string, msgHandler msgHandlerFun, leaveHandler notifyLeaveFun) (*Client, error) {
-	conf := memberlist.DefaultLANConfig()
+	conf := memberlist.DefaultWANConfig()
+
+	if ip, err := getAdvertiseAddr(); err != nil {
+		conf.AdvertiseAddr = ip
+	}
 
 	dg := &delegate{
 		notifyMsg: msgHandler,
