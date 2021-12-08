@@ -8,7 +8,7 @@ RUN cd /tmp && git clone https://gitee.com/fabedge/plugins.git && \
     chmod a+x /fabedge/pkg/agent/env_prepare.sh && \
     cp /fabedge/pkg/agent/env_prepare.sh /tmp
 
-FROM alpine:3.13.6
+FROM alpine:3.15
 COPY --from=builder /fabedge/_output/fabedge-agent /tmp/bridge /tmp/host-local /tmp/loopback /tmp/portmap /tmp/bandwidth /tmp/env_prepare.sh /usr/local/bin/
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk add iptables && \
