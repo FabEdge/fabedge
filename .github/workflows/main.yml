@@ -18,7 +18,7 @@ jobs:
           file: build/installer/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/strongswan
+          tags: fabedge/strongswan:5.9.1
           file: build/strongswan/Dockerfile
 
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -40,10 +40,17 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Extract branch name
+    - name: Set tags
       shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-      id: extract_branch
+      env:
+        TAGS: ${{ matrix.tags }}
+      run: |
+        if [[ ${TAGS} =~ ":" ]]; then
+          echo "::set-output name=tags::${TAGS}"
+        else
+          echo "::set-output name=tags::${TAGS}:${GITHUB_REF##*/}"
+        fi
+      id: set_tags
 
     - name: Remove proxies
       run: |
@@ -67,5 +74,5 @@ jobs:
         context: .
         platforms: ${{ matrix.platforms }}
         push: true
-        tags: ${{ matrix.tags }}:${{ steps.extract_branch.outputs.branch }}
+        tags: ${{ steps.set_tags.outputs.tags }}
         file: ${{ matrix.file }}
