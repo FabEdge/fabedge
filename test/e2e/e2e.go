@@ -17,7 +17,10 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
+	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,15 +28,12 @@ import (
 	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
-	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
 
@@ -41,6 +41,10 @@ const (
 	testNamespace = "fabedge-e2e-test"
 	appNetTool    = "fabedge-net-tool"
 	communityName = "all-edge-nodes"
+
+	multiClusterCommunityName = "multi-cluster-all-nodes"
+	multiClusterNamespace     = "multi-cluster-fabedge-e2e-test"
+	clusterKeySingle          = "localhost"
 
 	instanceNetTool     = "net-tool"
 	instanceHostNetTool = "host-net-tool"
@@ -50,25 +54,26 @@ const (
 
 	// add a random label, prevent kubeedge to cache it
 	labelKeyRand = "random"
-)
 
-var (
 	serviceCloudNginx     = "cloud-nginx"
 	serviceEdgeNginx      = "edge-nginx"
 	serviceHostCloudNginx = "host-cloud-nginx"
 	serviceHostEdgeNginx  = "host-edge-nginx"
+)
 
+var (
 	// 标记是否有失败的spec
 	hasFailedSpec = false
+
+	// cluster ip list for testing
+	clusterIPs = []string{}
+	// key: cluster IP val: cluster Detail
+	clusterByIP = make(map[string]*Cluster)
 )
 
 func init() {
 	_ = apis.AddToScheme(scheme.Scheme)
-	rand.Seed(time.Now().Unix())
-	serviceCloudNginx = getName(serviceCloudNginx)
-	serviceEdgeNginx = getName(serviceEdgeNginx)
-	serviceHostCloudNginx = getName(serviceHostCloudNginx)
-	serviceHostEdgeNginx = getName(serviceHostEdgeNginx)
+	rand.Seed(int64(time.Now().UnixNano()))
 }
 
 // RunE2ETests checks configuration parameters (specified through flags) and then runs
@@ -91,22 +96,12 @@ func RunE2ETests(t *testing.T) {
 }
 
 var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
-	client, err := framework.CreateClient()
-	if err != nil {
-		framework.Failf("Error creating client: %v", err)
+
+	if framework.TestContext.IsMultiClusterTest() {
+		multiClusterE2eTestPrepare()
+	} else {
+		singleClusterE2eTestPrepare()
 	}
-
-	addAllEdgesToCommunity(client)
-
-	prepareNamespace(client, testNamespace)
-	preparePodOnEachNode(client)
-	prepareHostNetworkPodOnEachNode(client)
-	prepareService(client, serviceCloudNginx, testNamespace)
-	prepareService(client, serviceEdgeNginx, testNamespace)
-	prepareService(client, serviceHostCloudNginx, testNamespace)
-	prepareService(client, serviceHostEdgeNginx, testNamespace)
-
-	WaitForAllPodsReady(client)
 
 	return nil
 }, func(_ []byte) {
@@ -130,116 +125,182 @@ var _ = ginkgo.SynchronizedAfterSuite(func() {
 }, func() {
 })
 
-// 将所有边缘节点添加到同一个社区，确保所有节点上的pod可以通信
-func addAllEdgesToCommunity(cli client.Client) {
-	framework.Logf("add all edge nodes to community %s", communityName)
-
-	var nodes corev1.NodeList
-	err := cli.List(context.TODO(), &nodes)
+func singleClusterE2eTestPrepare() {
+	framework.Logf("single cluster e2e test")
+	cfg, err := framework.LoadConfig()
 	if err != nil {
-		framework.Failf("failed to get edge nodes: %s", err)
+		framework.Failf("Error loading config: %v", err)
+	}
+	client, err := framework.CreateClient()
+	if err != nil {
+		framework.Failf("Error creating client: %v", err)
+	}
+	clientset, err := framework.CreateClientSet()
+	if err != nil {
+		framework.Failf("Error creating clientset: %v", err)
 	}
 
-	var edgeNodes []corev1.Node
-	for _, node := range nodes.Items {
-		if nodeutil.IsEdgeNode(node) {
-			edgeNodes = append(edgeNodes, node)
+	cluster := Cluster{
+		config:    cfg,
+		client:    client,
+		clientset: clientset,
+	}
+	err = cluster.generateNameAndRole()
+	if err != nil {
+		framework.Failf("Error generating cluster name or role: %v", err)
+	}
+	cluster.generateServiceNames()
+
+	clusterIPs = append(clusterIPs, clusterKeySingle)
+	clusterByIP[clusterKeySingle] = &cluster // global
+
+	cluster.addAllEdgesToCommunity(communityName)
+	prepareClustersNamespace(testNamespace)
+	preparePodsOnEachClusterNode(testNamespace)
+	cluster.prepareHostNetworkPodsOnEachNode(testNamespace)
+	prepareServicesOnEachCluster(testNamespace)
+
+	WaitForAllClusterPodsReady(testNamespace)
+}
+
+func multiClusterE2eTestPrepare() {
+	framework.Logf("multi cluster e2e test")
+	// read dir get all cluster IPs
+	configDir := framework.TestContext.MultiClusterConfigDir
+	filelist, err := ioutil.ReadDir(configDir)
+	if err != nil {
+		framework.Failf("Error reading kubeconfig dir: %v", err)
+	}
+	for _, f := range filelist {
+		ipStr := f.Name()
+		clusterIPs = append(clusterIPs, ipStr)
+	}
+	if len(clusterIPs) <= 1 {
+		framework.Failf("Error no multi cluster condition, cluster IP list: %v", clusterIPs)
+	}
+	framework.Logf("kubeconfigDir=%v get cluster IP list: %v", configDir, clusterIPs)
+
+	clusterNameList := []string{}
+	hasHostCluster := false
+	for i := 0; i < len(clusterIPs); {
+		clusterIP := clusterIPs[i]
+		cluster, err := generateCluster(path.Join(configDir, clusterIP))
+		if err != nil {
+			framework.Logf("Error generating cluster <%s> err: %v", clusterIP, err)
+			clusterIPs = append(clusterIPs[:i], clusterIPs[i+1:]...)
+			continue
 		}
+
+		if cluster.isHost() {
+			hasHostCluster = true
+		}
+		clusterNameList = append(clusterNameList, cluster.name+":"+clusterIP)
+		clusterByIP[clusterIP] = &cluster
+		i++
 	}
 
-	if len(edgeNodes) == 0 {
-		framework.Failf("no edge nodes are available")
+	if len(clusterIPs) <= 1 {
+		framework.Failf("Error no multi cluster condition, cluster list: %v", clusterNameList)
 	}
+	if !hasHostCluster {
+		framework.Failf("Error can not find host cluster role")
+	}
+	framework.Logf("cluster list: %v", clusterNameList)
+
+	addAllMultiClusterNodesToCommunity()
+	prepareClustersNamespace(multiClusterNamespace)
+	preparePodsOnEachClusterNode(multiClusterNamespace)
+	prepareServicesOnEachCluster(multiClusterNamespace)
+
+	WaitForAllClusterPodsReady(multiClusterNamespace)
+}
+
+// 将各集群connector添加到同一个社区，确保所有集群非边缘节点上的pod可以互相通信
+func addAllMultiClusterNodesToCommunity() {
+	framework.Logf("add all multi cluster nodes to community %s", multiClusterCommunityName)
 
 	community := apis.Community{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: communityName,
+			Name: multiClusterCommunityName,
 		},
 		Spec: apis.CommunitySpec{},
 	}
-
-	for _, node := range edgeNodes {
-		community.Spec.Members = append(community.Spec.Members, framework.GetEndpointName(node.Name))
+	var hostCluster *Cluster
+	for _, clusterIP := range clusterIPs {
+		cluster := clusterByIP[clusterIP]
+		community.Spec.Members = append(community.Spec.Members, framework.GetEndpointName(cluster.name, "connector"))
+		if cluster.isHost() {
+			hostCluster = cluster
+		}
 	}
 
-	_ = cli.Delete(context.TODO(), &community)
-	if err = cli.Create(context.TODO(), &community); err != nil {
-		framework.Failf("failed to create community: %s", err)
+	_ = hostCluster.client.Delete(context.TODO(), &community)
+	if err := hostCluster.client.Create(context.TODO(), &community); err != nil {
+		framework.Failf("host cluster %s failed to create community %s, Err: %v",
+			hostCluster.name, community.Name, err)
 	}
 
 	framework.AddCleanupAction(func() {
-		if err := cli.Delete(context.TODO(), &community); err != nil {
-			framework.Logf(" failed to delete community %s. Err: %s", communityName, err)
+		if err := hostCluster.client.Delete(context.TODO(), &community); err != nil {
+			framework.Logf("host cluster %s failed to delete community %s, Err: %v",
+				hostCluster.name, community.Name, err)
 		}
 	})
 }
 
-func prepareNamespace(client client.Client, namespace string) {
-	ns := corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespace,
-		},
+func prepareClustersNamespace(namespace string) {
+	for _, clusterIP := range clusterIPs {
+		if cluster, ok := clusterByIP[clusterIP]; ok {
+			cluster.prepareNamespace(namespace)
+		}
 	}
-
-	_ = client.Delete(context.Background(), &ns)
-	// 等待上次的测试资源清除
-	err := framework.WaitForNamespacesDeleted(client, []string{namespace}, time.Hour)
-	if err != nil {
-		framework.Failf("namespace %q is not deleted. err: %s", namespace, err)
-	}
-
-	framework.Logf("create new test namespace: %s", namespace)
-	createObject(client, &ns)
 }
 
 // 在每个节点创建一个nginx pod和一个net-tool pod，
 // nginx pod 根据节点类型决定pod是cloudNginx还是edgeNginx的后端
 // net-tool pod用来相互ping和访问service
-func preparePodOnEachNode(cli client.Client) {
-	var nodes corev1.NodeList
-	framework.ExpectNoError(cli.List(context.TODO(), &nodes))
-
-	for _, node := range nodes.Items {
-		serviceName := serviceCloudNginx
-		if nodeutil.IsEdgeNode(node) {
-			serviceName = serviceEdgeNginx
+func preparePodsOnEachClusterNode(namespace string) {
+	framework.Logf("Prepare pods on each node")
+	for _, clusterIP := range clusterIPs {
+		if cluster, ok := clusterByIP[clusterIP]; ok {
+			cluster.preparePodsOnEachNode(namespace)
 		}
-
-		framework.Logf("create nginx pod on node %s", node.Name)
-		pod := newNginxPod(node, serviceName)
-		createObject(cli, &pod)
-
-		framework.Logf("create net-tool pod on node %s", node.Name)
-		pod = newNetToolPod(node)
-		createObject(cli, &pod)
 	}
 }
 
-func prepareHostNetworkPodOnEachNode(cli client.Client) {
-	var nodes corev1.NodeList
-	framework.ExpectNoError(cli.List(context.TODO(), &nodes))
-
-	for _, node := range nodes.Items {
-		serviceName := serviceHostCloudNginx
-		if nodeutil.IsEdgeNode(node) {
-			serviceName = serviceHostEdgeNginx
+func prepareServicesOnEachCluster(namespace string) {
+	for _, clusterIP := range clusterIPs {
+		if cluster, ok := clusterByIP[clusterIP]; ok {
+			cluster.prepareService(cluster.serviceCloudNginx, namespace)
+			if !framework.TestContext.IsMultiClusterTest() {
+				cluster.prepareService(cluster.serviceEdgeNginx, namespace)
+				cluster.prepareService(cluster.serviceHostCloudNginx, namespace)
+				cluster.prepareService(cluster.serviceHostEdgeNginx, namespace)
+			}
 		}
-
-		framework.Logf("create hostNetwork nginx pod on node %s", node.Name)
-		pod := newHostNginxPod(node, serviceName)
-		createObject(cli, &pod)
-
-		framework.Logf("create hostNetwork net-tool pod on node %s", node.Name)
-		pod = newHostNetToolPod(node)
-		createObject(cli, &pod)
 	}
 }
 
-func newNginxPod(node corev1.Node, serviceName string) corev1.Pod {
+func WaitForAllClusterPodsReady(namespace string) {
+	var wg sync.WaitGroup
+	for _, cluster := range clusterByIP {
+		wg.Add(1)
+		go cluster.waitForClusterPodsReady(&wg, namespace)
+	}
+	wg.Wait()
+
+	for _, cluster := range clusterByIP {
+		if !cluster.ready {
+			framework.Failf("clusters exist not ready pods")
+		}
+	}
+}
+
+func newNginxPod(node corev1.Node, namespace, serviceName string) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("nginx-%s", node.Name),
-			Namespace: testNamespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: serviceName,
@@ -250,11 +311,11 @@ func newNginxPod(node corev1.Node, serviceName string) corev1.Pod {
 	}
 }
 
-func newHostNginxPod(node corev1.Node, serviceName string) corev1.Pod {
+func newHostNginxPod(node corev1.Node, serviceName, namespace string) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("host-nginx-%s", node.Name),
-			Namespace: testNamespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: serviceName,
@@ -265,11 +326,11 @@ func newHostNginxPod(node corev1.Node, serviceName string) corev1.Pod {
 	}
 }
 
-func newNetToolPod(node corev1.Node) corev1.Pod {
+func newNetToolPod(node corev1.Node, namespace string) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("net-tool-%s", node.Name),
-			Namespace: testNamespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: instanceNetTool,
@@ -280,7 +341,7 @@ func newNetToolPod(node corev1.Node) corev1.Pod {
 	}
 }
 
-func newHostNetToolPod(node corev1.Node) corev1.Pod {
+func newHostNetToolPod(node corev1.Node, namespace string) corev1.Pod {
 	// change default port to avoid ports conflict with host service's endpoints
 	spec := hostNetworkPodSpec(node.Name)
 	spec.Containers[0].Env = []corev1.EnvVar{
@@ -297,7 +358,7 @@ func newHostNetToolPod(node corev1.Node) corev1.Pod {
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("host-net-tool-%s", node.Name),
-			Namespace: testNamespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				labelKeyApp:      appNetTool,
 				labelKeyInstance: instanceHostNetTool,
@@ -342,66 +403,6 @@ func podSpec(nodeName string) corev1.PodSpec {
 				Operator: corev1.TolerationOpExists,
 			},
 		},
-	}
-}
-
-func prepareService(cli client.Client, name, namespace string) {
-	framework.Logf("Create service %s/%s", namespace, name)
-	svc := corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: corev1.ServiceSpec{
-			Type: corev1.ServiceTypeClusterIP,
-			Selector: map[string]string{
-				labelKeyInstance: name,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "default",
-					Port:       80,
-					TargetPort: intstr.FromInt(80),
-					Protocol:   corev1.ProtocolTCP,
-				},
-			},
-		},
-	}
-
-	createObject(cli, &svc)
-}
-
-func WaitForAllPodsReady(cli client.Client) {
-	framework.Logf("Waiting for all pods to be ready")
-
-	timeout := time.Duration(framework.TestContext.WaitTimeout) * time.Second
-	err := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		var pods corev1.PodList
-		err := cli.List(context.TODO(), &pods, client.InNamespace(testNamespace), client.MatchingLabels{
-			"app": appNetTool,
-		})
-		if err != nil {
-			return false, err
-		}
-
-		if len(pods.Items) == 0 {
-			return false, nil
-		}
-
-		for _, pod := range pods.Items {
-			if pod.Status.Phase != corev1.PodRunning {
-				return false, nil
-			}
-		}
-
-		// wait the pods to be ready, not only to be running, especially on slow environment
-		time.Sleep(15 * time.Second)
-
-		return true, nil
-	})
-
-	if err != nil {
-		framework.Failf("net-tool pods are not ready after %d seconds. Error: %s", framework.TestContext.WaitTimeout, err)
 	}
 }
 
