@@ -490,11 +490,16 @@ Community：FabEdge定义的CRD，有两种使用场景：
 
 ### 如果使用Calico
 
-将**所有其它集群**的Pod和Service的网段加入Calico，防止Calico做源地址转换，导致不能通讯。
+不论是什么集群角色,只要集群使用Calico，就将其它所有集群的Pod和Service的网段加入当前集群的Calico,防止Calico做源地址转换，导致不能通讯。
+
+例如: host (Calico)  + member (Calico) + member(Flannel)
+
+* 在host (Calico) 集群的master节点进行操作将另外两个member集群的地址配置到host集群的Calico中。
+* 在 member (Calico)集群的master节点进行操作将另外host (Calico) 和member(Flannel)集群的地址配置到host集群的Calico中。
+* member(Flannel)无需操作。
 
 ```shell
-# 在所有集群的master节点上执行
-cat > pool.yaml << EOF
+$ cat > cluster-cidr-pool.yaml << EOF
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -506,10 +511,10 @@ spec:
   disabled: true
   ipipMode: Always
 EOF
-  
-calicoctl.sh create -f p.yaml
 
-cat > pool.yaml << EOF
+$ calicoctl.sh create -f cluster-cidr-pool.yaml
+
+$ cat > service-cluster-ip-range-pool.yaml << EOF
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -522,11 +527,10 @@ spec:
   ipipMode: Always
 EOF
 
-calicoctl.sh create -f p.yaml 
+$ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 ```
 
-> **cidr**: 分别为前面get_cluster_info.sh输出的cluster-cidr和service-cluster-ip-range
-
+> **cidr**: 被添加集群的get_cluster_info.sh输出的cluster-cidr和service-cluster-ip-range
 
 
 ## 常见问题
