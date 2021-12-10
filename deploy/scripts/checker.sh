@@ -15,13 +15,13 @@ function echoBlue() {
 
 function printColorOutput() {
   command=$1
-  keyworld=${2:-"********************"}
+  keyword=${2:-"********************"}
 
   echoBlue "$ $command"
 
   while read line;
   do
-    if [[ $line =~ $keyworld ]];
+    if [[ $line =~ $keyword ]];
     then
       echoRed "$line"
     else
@@ -86,7 +86,7 @@ function printFabedgeDetails () {
   while read name ready status restarts age; do
     printColorOutput "kubectl -n $FABEDGE_NAMESPACE describe pods $name"
 
-    if [[ $name =~ agent|connector ]];then
+    if [[ $name =~ fabedge-agent|connector ]];then
       printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-conns"
       printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-sa"
     fi
