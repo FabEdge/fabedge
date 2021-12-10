@@ -53,9 +53,9 @@ function printColorOutput() {
 
 
 function checkNodes () {
-  echoBlue "$ kubectl get nodes"
+  echoBlue "$ kubectl get nodes -o wide"
 
-  nodesInfo=$(kubectl get nodes)
+  nodesInfo=$(kubectl get nodes -o wide)
   exitCode=$?
   failed="false"
 
@@ -76,8 +76,6 @@ function checkNodes () {
 }
 
 function checkPods () {
-  failed="false"
-  failedPods=""
   while read line; do
     read name ready status restarts age <<< $line
     if [[ $name == NAME ]]; then
@@ -87,37 +85,22 @@ function checkPods () {
     read readyContainers totalContainers <<< $(awk -F '/' '{print $1, $2}' <<< $ready)
     if [ $readyContainers != $totalContainers -o $status != Running ];then
       echoRed "$line"
-      failed="true"
-      failedPods="$failedPods $name"
       continue
     fi
     echo "$line"
   done <<< "$podsInfo"
-
-  for podName in $failedPods; do
-    # Terminating
-    
-    echoBlue "$ kubectl -n $1 logs --tail 50 $podName --all-containers=true"
-    kubectl -n $1 logs --tail 100 $podName --all-containers=true
-  done
-
-  #if [ "$failed" == "true" -o $exitCode != 0 ];then
-  #  echoBanner "${FUNCNAME[1]} failed" red
-  #else 
-  #  echoBanner "${FUNCNAME[1]} passed" green
-  #fi
 }
 
 function checkKubeSystemPods () {
   echoBlue "$ kubectl get pods -n kube-system -o wide"
-  podsInfo=$(kubectl get pods -n kube-system)
+  podsInfo=$(kubectl get pods -n kube-system -o wide)
   exitCode=$?
   checkPods kube-system
 }
 
 function checkFabedgePods () {
   echoBlue "$ kubectl get pods -n $FABEDGE_NAMESPACE -o wide"
-  podsInfo=$(kubectl get pods -n $FABEDGE_NAMESPACE)
+  podsInfo=$(kubectl get pods -n $FABEDGE_NAMESPACE -o wide)
   exitCode=$?
   checkPods $FABEDGE_NAMESPACE
 }
@@ -129,9 +112,18 @@ function printStrongswanConnsAndSas () {
     return 1
   fi
   while read name ready status restarts age; do
-    if [[ $name =~ ^fabedge-agent|^fabedge-connector ]];then
-      printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-conns" 
-      printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-sa"
+    if [[ $name =~ ^fabedge ]];then
+      printColorOutput "kubectl -n $FABEDGE_NAMESPACE describe pods $name"
+
+      if [[ $name =~ ^fabedge-agent|^fabedge-connector ]];then
+        printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-conns"
+        printColorOutput "kubectl exec -n $FABEDGE_NAMESPACE $name -c strongswan -- swanctl --list-sa"
+      fi
+
+      for containerName in $(kubectl -n $FABEDGE_NAMESPACE get pods $name -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}');
+      do
+        printColorOutput "kubectl logs --tail 50 -n $FABEDGE_NAMESPACE $name -c $containerName"
+      done
     fi
   done <<< "$podsInfo"
 }
