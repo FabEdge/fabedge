@@ -172,6 +172,6 @@ func ListCloudAndEdgePods(cli client.Client, opts ...client.ListOption) (cloudPo
 	return
 }
 
-func GetEndpointName(nodeName string) string {
-	return fmt.Sprintf("%s.%s", TestContext.Cluster, nodeName)
+func GetEndpointName(clusterName, nodeName string) string {
+	return fmt.Sprintf("%s.%s", clusterName, nodeName)
 }

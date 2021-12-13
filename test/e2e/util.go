@@ -15,7 +15,6 @@
 package e2e
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -24,88 +23,21 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/remotecommand"
 
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
 
-func ping(pod corev1.Pod, ip string) error {
-	timeout := fmt.Sprint(framework.TestContext.PingTimeout)
-	_, _, err := execute(pod, []string{"ping", "-w", timeout, "-c", "1", ip})
-	return err
-}
-
-func pingBetween(p1, p2 corev1.Pod) error {
-	if err := ping(p1, p2.Status.PodIP); err != nil {
-		return err
-	}
-
-	return ping(p2, p1.Status.PodIP)
-}
-
-func expectCurlResultContains(pod corev1.Pod, url string, substr string) {
+func expectCurlResultContains(cluster *Cluster, pod corev1.Pod, url string, substr string) {
 	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
 	err := wait.Poll(time.Second, time.Duration(framework.TestContext.CurlTimeout)*time.Second, func() (bool, error) {
-		stdout, _, _ := execute(pod, []string{"curl", "-sS", "-m", timeout, url})
+		stdout, _, _ := cluster.execute(pod, []string{"curl", "-sS", "-m", timeout, url})
 		return strings.Contains(stdout, substr), nil
 	})
 
 	Expect(err).ShouldNot(HaveOccurred(), fmt.Sprintf("response of curl %s should contains %s", url, substr))
 }
 
-func execCurl(pod corev1.Pod, url string) (string, string, error) {
-	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
-	return execute(pod, []string{"curl", "-sS", "-m", timeout, url})
-}
-
-func execute(pod corev1.Pod, cmd []string) (string, string, error) {
-	cfg, err := framework.LoadConfig()
-	if err != nil {
-		return "", "", err
-	}
-
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return "", "", err
-	}
-
-	req := clientset.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Name(pod.Name).
-		Namespace(pod.Namespace).
-		SubResource("exec")
-
-	req.VersionedParams(&corev1.PodExecOptions{
-		Container: pod.Spec.Containers[0].Name,
-		Command:   cmd,
-		Stdin:     false,
-		Stdout:    true,
-		Stderr:    true,
-		TTY:       false,
-	}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
-	if err != nil {
-		return "", "", err
-	}
-
-	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdin:  nil,
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Tty:    false,
-	})
-
-	if err != nil && framework.TestContext.ShowExecError {
-		framework.Logf("failed to execute cmd: %s. stderr: %s. err: %s", strings.Join(cmd, " "), stderr, err)
-	}
-
-	return stdout.String(), stderr.String(), err
-}
-
 func getName(prefix string) string {
+	time.Sleep(time.Millisecond)
 	return fmt.Sprintf("%s-%d", prefix, rand.Int31n(1000))
 }
