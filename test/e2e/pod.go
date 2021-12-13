@@ -22,126 +22,162 @@ import (
 )
 
 var _ = Describe("FabEdge", func() {
-	var k8sclient client.Client
-	var err error
+	// 集群间通信测试
+	if framework.TestContext.IsMultiClusterTest() {
+		// 测试集群间云端pod与pod通信
+		It("let cluster cloud pods communicate with another cluster cloud pods [multi-cluster]", func() {
 
-	BeforeEach(func() {
-		k8sclient, err = framework.CreateClient()
-		framework.ExpectNoError(err)
-	})
+			for i := 0; i < len(clusterIPs)-1; i++ {
+				c1 := clusterByIP[clusterIPs[i]]
+				cloudPodsI, _, err := framework.ListCloudAndEdgePods(c1.client,
+					client.InNamespace(multiClusterNamespace),
+					client.MatchingLabels{labelKeyInstance: instanceNetTool},
+				)
+				framework.ExpectNoError(err)
 
-	// 测试非主机网络pod与pod边边通信
-	It("let edge pods communicate with each other [p2p][e2e]", func() {
-		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceNetTool},
-		)
-		framework.ExpectNoError(err)
-
-		By("pods communicate with each other")
-		for _, p1 := range edgePods {
-			for _, p2 := range edgePods {
-				if p1.Name == p2.Name {
-					continue
+				for j := i + 1; j < len(clusterIPs); j++ {
+					c2 := clusterByIP[clusterIPs[j]]
+					cloudPodsJ, _, err := framework.ListCloudAndEdgePods(c2.client,
+						client.InNamespace(multiClusterNamespace),
+						client.MatchingLabels{labelKeyInstance: instanceNetTool},
+					)
+					framework.ExpectNoError(err)
+					for _, p1 := range cloudPodsI {
+						for _, p2 := range cloudPodsJ {
+							framework.Logf("ping between %s of cluster %s and %s of cluster %s", p1.Name, c1.name, p2.Name, c2.name)
+							framework.ExpectNoError(c1.ping(p1, p2.Status.PodIP))
+							framework.ExpectNoError(c2.ping(p2, p1.Status.PodIP))
+						}
+					}
 				}
-
-				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
 			}
-		}
-	})
+		})
 
-	// 测试非主机网络pod与pod云边通信
-	It("let edge pods communicate with cloud pods [p2p][e2c]", func() {
-		cloudPods, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceNetTool},
-		)
-		framework.ExpectNoError(err)
+	} else {
+		// 单集群测试
+		var cluster *Cluster
+		BeforeEach(func() {
+			cluster = clusterByIP[clusterKeySingle]
+		})
 
-		By("pods communicate with each other")
-		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-		for _, p1 := range edgePods {
-			for _, p2 := range cloudPods {
-				if p1.Name == p2.Name {
-					continue
+		// 测试非主机网络pod与pod边边通信
+		It("let edge pods communicate with each other [p2p][e2e]", func() {
+			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			By("pods communicate with each other")
+			for _, p1 := range edgePods {
+				for _, p2 := range edgePods {
+					if p1.Name == p2.Name {
+						continue
+					}
+
+					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
+					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
 				}
-
-				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
 			}
-		}
-	})
+		})
 
-	// 测试非主机网络Pods与主机网络Pod的边边通信
-	It("let edge pods communicate with edge pods using host network [p2n][e2e]", func() {
-		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceNetTool},
-		)
-		framework.ExpectNoError(err)
+		// 测试非主机网络pod与pod云边通信
+		It("let edge pods communicate with cloud pods [p2p][e2c]", func() {
+			cloudPods, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
 
-		_, hostEdgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
-		)
-		framework.ExpectNoError(err)
+			By("pods communicate with each other")
+			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+			for _, p1 := range edgePods {
+				for _, p2 := range cloudPods {
+					if p1.Name == p2.Name {
+						continue
+					}
 
-		By("pods communicate with each other")
-		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-		for _, p1 := range edgePods {
-			for _, p2 := range hostEdgePods {
-				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
+					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+				}
 			}
-		}
-	})
+		})
 
-	// 测试非主机网络Pods与主机网络Pod的互通
-	It("let edge pods communicate with cloud pods using host network[p2n][e2c]", func() {
-		_, edgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceNetTool},
-		)
-		framework.ExpectNoError(err)
+		// 测试非主机网络Pods与主机网络Pod的边边通信
+		It("let edge pods communicate with edge pods using host network [p2n][e2e]", func() {
+			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
 
-		hostCloudPods, _, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
-		)
-		framework.ExpectNoError(err)
+			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+			)
+			framework.ExpectNoError(err)
 
-		By("pods communicate with each other")
-		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-		for _, p1 := range edgePods {
-			for _, p2 := range hostCloudPods {
-				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			By("pods communicate with each other")
+			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+			for _, p1 := range edgePods {
+				for _, p2 := range hostEdgePods {
+					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
+					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+				}
 			}
-		}
-	})
+		})
 
-	// 测试主机网络Pods与非主机网络Pod的互通
-	It("let edge pods using host network communicate with cloud pods[n2p][e2c]", func() {
-		_, hostEdgePods, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
-		)
-		framework.ExpectNoError(err)
+		// 测试非主机网络Pods与主机网络Pod的互通
+		It("let edge pods communicate with cloud pods using host network[p2n][e2c]", func() {
+			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
 
-		cloudPods, _, err := framework.ListCloudAndEdgePods(k8sclient,
-			client.InNamespace(testNamespace),
-			client.MatchingLabels{labelKeyInstance: instanceNetTool},
-		)
-		framework.ExpectNoError(err)
+			hostCloudPods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+			)
+			framework.ExpectNoError(err)
 
-		By("pods communicate with each other")
-		// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-		for _, p1 := range hostEdgePods {
-			for _, p2 := range cloudPods {
-				framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-				framework.ExpectNoError(pingBetween(p1, p2), "pods should be able to communicate with each other")
+			By("pods communicate with each other")
+			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+			for _, p1 := range edgePods {
+				for _, p2 := range hostCloudPods {
+					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
+					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+				}
 			}
-		}
-	})
+		})
+
+		// 测试主机网络Pods与非主机网络Pod的互通
+		It("let edge pods using host network communicate with cloud pods[n2p][e2c]", func() {
+			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			cloudPods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(testNamespace),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			By("pods communicate with each other")
+			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
+			for _, p1 := range hostEdgePods {
+				for _, p2 := range cloudPods {
+					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
+					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+				}
+			}
+		})
+	}
 })
