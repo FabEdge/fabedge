@@ -93,3 +93,40 @@ spec:
      token: eyJhbGciOi--省略--4PebW68A
    ```
 
+
+
+## 校验证书
+
+FabEdge相关的证书，包括CA， Connector， Agent都保存在Secret里，Operator会自动维护这些证书。如果出现证书相关错误，可以使用下面方法手动验证。
+
+```shell
+# 在master节点上执行
+
+# 启动一个cert的容器
+docker run fabedge/cert
+
+# 获取刚启动的容器的ID 
+docker ps -a | grep cert
+65ceb57d6656   fabedge/cert                  "/usr/local/bin/fabe…"   15 seconds ago   
+
+# 将可执行程序拷贝到主机
+docker cp 65ceb57d6656:/usr/local/bin/fabedge-cert .
+
+# 查看相关Secret
+kubectl get secret -n fabedge
+NAME                            TYPE                                  DATA   AGE
+api-server-tls                  kubernetes.io/tls                     4      3d22h
+cert-token-csffn                kubernetes.io/service-account-token   3      3d22h
+connector-tls                   kubernetes.io/tls                     4      3d22h
+default-token-rq9mv             kubernetes.io/service-account-token   3      3d22h
+fabedge-agent-tls-edge1         kubernetes.io/tls                     4      3d22h
+fabedge-agent-tls-edge2         kubernetes.io/tls                     4      3d22h
+fabedge-ca                      Opaque                                2      3d22h
+fabedge-operator-token-tb8qb    kubernetes.io/service-account-token   3      3d22h
+
+# 校验相关Secret
+./fabedge-cert verify -s connector-tls
+Your cert is ok
+./fabedge-cert verify -s fabedge-agent-tls-edge1
+Your cert is ok
+```
