@@ -72,15 +72,15 @@ type Config struct {
 
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
+	GetEndpointName      types.GetNameFunc
 
 	CertManager      certutil.Manager
 	CertOrganization string
-	CertValidPeriod  int64
 
-	EnableProxy          bool
-	EnableFlannelMocking bool
+	EnableProxy bool
 
-	EnableEdgeIPAM bool
+	EnableEdgeIPAM        bool
+	EnableEdgeHairpinMode bool
 }
 
 func AddToManager(cnf Config) error {
@@ -116,23 +116,18 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	var handlers []Handler
 	if cnf.Allocator != nil {
 		handlers = append(handlers, &allocatablePodCIDRsHandler{
-			store:       cnf.Store,
-			allocator:   cnf.Allocator,
-			newEndpoint: cnf.NewEndpoint,
-			client:      cli,
-			log:         log.WithName("podCIDRsHandler"),
+			store:           cnf.Store,
+			allocator:       cnf.Allocator,
+			newEndpoint:     cnf.NewEndpoint,
+			getEndpointName: cnf.GetEndpointName,
+			client:          cli,
+			log:             log.WithName("podCIDRsHandler"),
 		})
 	} else {
 		handlers = append(handlers, &rawPodCIDRsHandler{
-			store:       cnf.Store,
-			newEndpoint: cnf.NewEndpoint,
-		})
-	}
-
-	if cnf.EnableFlannelMocking {
-		handlers = append(handlers, &flannelNodeMocker{
-			client: cli,
-			log:    log,
+			store:           cnf.Store,
+			getEndpointName: cnf.GetEndpointName,
+			newEndpoint:     cnf.NewEndpoint,
 		})
 	}
 
@@ -140,6 +135,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		namespace:            cnf.Namespace,
 		client:               cli,
 		store:                cnf.Store,
+		getEndpointName:      cnf.GetEndpointName,
 		getConnectorEndpoint: cnf.GetConnectorEndpoint,
 		log:                  log.WithName("configHandler"),
 	})
@@ -149,8 +145,8 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 
 		certManager:      cnf.CertManager,
+		getEndpointName:  cnf.GetEndpointName,
 		certOrganization: cnf.CertOrganization,
-		certValidPeriod:  cnf.CertValidPeriod,
 
 		log: log.WithName("certHandler"),
 	})
@@ -160,14 +156,15 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 		log:       log.WithName("agentPodHandler"),
 
-		imagePullPolicy: corev1.PullPolicy(cnf.ImagePullPolicy),
-		logLevel:        cnf.AgentLogLevel,
-		agentImage:      cnf.AgentImage,
-		strongswanImage: cnf.StrongswanImage,
-		useXfrm:         cnf.UseXfrm,
-		masqOutgoing:    cnf.MasqOutgoing,
-		enableProxy:     cnf.EnableProxy,
-		enableIPAM:      cnf.EnableEdgeIPAM,
+		imagePullPolicy:   corev1.PullPolicy(cnf.ImagePullPolicy),
+		logLevel:          cnf.AgentLogLevel,
+		agentImage:        cnf.AgentImage,
+		strongswanImage:   cnf.StrongswanImage,
+		useXfrm:           cnf.UseXfrm,
+		masqOutgoing:      cnf.MasqOutgoing,
+		enableProxy:       cnf.EnableProxy,
+		enableIPAM:        true,
+		enableHairpinMode: cnf.EnableEdgeHairpinMode,
 	})
 
 	return handlers
@@ -207,9 +204,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 
 func (ctl *agentController) shouldSkip(node corev1.Node) bool {
 	ip := nodeutil.GetIP(node)
-	cidrs := nodeutil.GetPodCIDRs(node)
-
-	return len(ip) == 0 || len(cidrs) == 0
+	return len(ip) == 0
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {

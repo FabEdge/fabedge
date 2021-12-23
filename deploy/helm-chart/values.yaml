@@ -1,10 +1,25 @@
 operator:
   name: fabedge-operator
-  replicaCount: 1
+  replicas: 1
   image:
     repository: fabedge/operator
     pullPolicy: IfNotPresent
     # tag:  # default: AppVersion
+
+  initToken: 123456
+
+  operatorAPIServer:
+    listenAddress:
+      address: 0.0.0.0
+      port: 3030
+    nodePort: 30303
+
+  cluster:
+    name: beijing
+    role: member
+
+  hostOperatorAPIServer: https://1.1.1.1:30303
+
 
   # CIDR used by pods on edge nodes, modify it per your env.
   edgePodCIDR: 10.10.0.0/16
@@ -12,16 +27,16 @@ operator:
   # enable masquerade when edge pods access Internet
   masqOutgoing: true
 
-  # enable fabedge ipvs loadbalancer function
-  enableProxy: true
-
   # ip of connector accessible by the edge node
-  connectorPublicAddresses: 10.22.46.48
+  connectorPublicAddresses:
+  - 10.22.46.48
 
-  # CIDR used by pod & service in the cloud k8s cluster
-  connectorSubnets: 10.233.64.0/18,10.233.0.0/18
+  # CIDR used by service in the cloud k8s cluster
+  serviceClusterIPRanges:
+  - 10.233.0.0/18
 
-  edgeLabels: node-role.kubernetes.io/edge
+  edgeLabels:
+  - node-role.kubernetes.io/edge
 
   affinity:
     nodeAffinity:
@@ -40,11 +55,9 @@ operator:
   #    cpu: 10m
   #    memory: 32Mi
 
-cniType: calico
-
 connector:
-  name: connector
-  replicaCount: 1
+  name: fabedge-connector
+  replicas: 1
   image:
     repository: fabedge/connector
     pullPolicy: IfNotPresent
@@ -119,3 +132,28 @@ cert:
     repository: fabedge/cert
     pullPolicy: IfNotPresent
     # tag:  # default: AppVersion
+
+cloudAgent:
+  name: fabedge-cloud-agent
+  image:
+    repository: fabedge/cloud-agent
+    pullPolicy: IfNotPresent
+    # tag:  # default: AppVersion
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/edge
+                operator: DoesNotExist
+              - key: node-role.kubernetes.io/connector
+                operator: DoesNotExist
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi

@@ -15,18 +15,25 @@
 package constants
 
 const (
-	KeyPodSubnets = "fabedge.io/subnets"
-	KeyFabedgeAPP = "fabedge.io/app"
-	KeyCreatedBy  = "fabedge.io/created-by"
-	KeyPodHash    = "fabedge.io/pod-spec-hash"
-	KeyNode       = "fabedge.io/node"
-	AppAgent      = "fabedge-agent"
-	AppOperator   = "fabedge-operator"
+	KeyPodSubnets          = "fabedge.io/subnets"
+	KeyFabedgeAPP          = "fabedge.io/app"
+	KeyCreatedBy           = "fabedge.io/created-by"
+	KeyNode                = "fabedge.io/node"
+	KeyNodePublicAddresses = "fabedge.io/node-public-addresses"
+	KeyPodHash             = "fabedge.io/pod-spec-hash"
+	AppAgent               = "fabedge-agent"
+	AppOperator            = "fabedge-operator"
 
 	ConnectorConfigFileName = "tunnels.yaml"
+	ConnectorConfigName     = "connector-config"
+	ConnectorTLSName        = "connector-tls"
 )
 
 const (
 	CNIFlannel = "flannel"
 	CNICalico  = "calico"
+)
+
+const (
+	TableStrongswan = 220
 )

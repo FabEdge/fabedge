@@ -3,7 +3,7 @@
 ## Q3 2021
 
 - Support KubeEdge/SuperEdge/Openyurt
-- Automatic management of node certificate 
+- Automatic management of node certificate
 - Air-gap installation
 - Support Flannel/Calico
 - Support IPV4

@@ -56,15 +56,12 @@ var _ = Describe("AgentController", func() {
 		certManager certutil.Manager
 		newNode     = newNodePodCIDRsInAnnotations
 		edgeNameSet *types.SafeStringSet
-
-		newEndpoint = types.GenerateNewEndpointFunc("C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 	)
 
 	BeforeEach(func() {
-		ctx, cancel = context.WithCancel(context.Background())
+		getName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 
 		store = storepkg.NewStore()
-
 		alloc, _ = allocator.New("2.2.0.0/16")
 
 		caCertDER, caKeyDER, _ := certutil.NewSelfSignedCA(certutil.Config{
@@ -73,7 +70,7 @@ var _ = Describe("AgentController", func() {
 			IsCA:           true,
 			ValidityPeriod: timeutil.Days(365),
 		})
-		certManager, _ = certutil.NewManger(caCertDER, caKeyDER)
+		certManager, _ = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(365))
 
 		mgr, err := manager.New(cfg, manager.Options{
 			MetricsBindAddress:     "0",
@@ -87,8 +84,8 @@ var _ = Describe("AgentController", func() {
 			AgentImage:           agentImage,
 			StrongswanImage:      strongswanImage,
 			CertManager:          certManager,
+			GetEndpointName:      getName,
 			CertOrganization:     certutil.DefaultOrganization,
-			CertValidPeriod:      365,
 			Allocator:            alloc,
 			Store:                store,
 			NewEndpoint:          newEndpoint,
@@ -118,6 +115,7 @@ var _ = Describe("AgentController", func() {
 		)
 		Expect(err).ShouldNot(HaveOccurred())
 
+		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
 			defer GinkgoRecover()
 			Expect(mgr.Start(ctx)).To(Succeed())

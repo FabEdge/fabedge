@@ -14,6 +14,10 @@
 
 package tunnel
 
+import (
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+)
+
 type Manager interface {
 	ListConnNames() ([]string, error)
 	LoadConn(conn ConnConfig) error
@@ -30,9 +34,11 @@ type ConnConfig struct {
 	LocalSubnets     []string
 	LocalNodeSubnets []string
 	LocalCerts       []string
+	LocalType        apis.EndpointType
 
 	RemoteID          string
 	RemoteAddress     []string
 	RemoteSubnets     []string
 	RemoteNodeSubnets []string
+	RemoteType        apis.EndpointType
 }

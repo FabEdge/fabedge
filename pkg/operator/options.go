@@ -16,8 +16,13 @@ package operator
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
+	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -25,62 +30,91 @@ import (
 	"github.com/jjeffery/stringset"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	apis "github.com/fabedge/fabedge/pkg/operator/apis/community/v1alpha1"
+	"github.com/fabedge/fabedge/pkg/operator/apiserver"
+	fclient "github.com/fabedge/fabedge/pkg/operator/client"
 	agentctl "github.com/fabedge/fabedge/pkg/operator/controllers/agent"
+	clusterctl "github.com/fabedge/fabedge/pkg/operator/controllers/cluster"
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
 	connectorctl "github.com/fabedge/fabedge/pkg/operator/controllers/connector"
 	"github.com/fabedge/fabedge/pkg/operator/controllers/ipamblockmonitor"
 	proxyctl "github.com/fabedge/fabedge/pkg/operator/controllers/proxy"
+	"github.com/fabedge/fabedge/pkg/operator/routines"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 	"github.com/fabedge/fabedge/third_party/calicoapi"
+)
+
+const (
+	RoleHost   = "host"
+	RoleMember = "member"
+
+	ClientTLSSecretName = "api-client-tls"
 )
 
 var dns1123Reg, _ = regexp.Compile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 type Options struct {
+	Cluster string
+	// ClusterRole will determine how operator will be running:
+	// Host: operator will start an API server
+	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
+	ClusterRole      string
 	Namespace        string
 	EdgePodCIDR      string
 	EndpointIDFormat string
 	EdgeLabels       []string
 	CNIType          string
 
-	CASecretName string
-	Agent        agentctl.Config
-	Connector    connectorctl.Config
-	Proxy        proxyctl.Config
+	CASecretName     string
+	CertValidPeriod  int64
+	CertOrganization string
+	Agent            agentctl.Config
+	Connector        connectorctl.Config
+	Proxy            proxyctl.Config
 
 	ManagerOpts manager.Options
+
+	APIServerCertFile      string
+	APIServerKeyFile       string
+	APIServerListenAddress string
+	APIServerAddress       string
+	TokenValidPeriod       time.Duration
+	InitToken              string
 
 	Store        storepkg.Interface
 	PodCIDRStore types.PodCIDRStore
 	NewEndpoint  types.NewEndpointFunc
-	GetPodCIDRs  types.PodCIDRsGetter
 	Manager      manager.Manager
+	APIServer    *http.Server
+	APIClient    fclient.Interface
+	PrivateKey   *rsa.PrivateKey
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
+	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster must be unique among all clusters and be a valid dns name(RFC 1123)")
+	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
 	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
-	flag.StringVar(&opts.Connector.Endpoint.Name, "connector-name", "cloud-connector", "The name of connector, only letters, number and '-' are allowed, the initial must be a letter.")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
-	flag.StringVar(&opts.Connector.ConfigMapKey.Name, "connector-config", "cloud-tunnels-config", "The name of configmap for connector")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
 
 	flag.StringVar(&opts.Agent.AgentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
@@ -90,11 +124,11 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
-	flag.BoolVar(&opts.Agent.EnableEdgeIPAM, "agent-enable-edge-ipam", true, "Let FabEdge to manage edge pod allocation")
+	flag.BoolVar(&opts.Agent.EnableEdgeHairpinMode, "agent-enable-edge-hairpinmode", true, "Enable edge node pods HairpinMode")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
-	flag.StringVar(&opts.Agent.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
-	flag.Int64Var(&opts.Agent.CertValidPeriod, "cert-validity-period", 365, "The validity period for agent's cert")
+	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
+	flag.Int64Var(&opts.CertValidPeriod, "cert-validity-period", 3650, "The validity period for agent's cert")
 
 	flag.StringVar(&opts.Proxy.IPVSScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 
@@ -103,6 +137,13 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
 	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
 	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
+
+	flag.StringVar(&opts.APIServerListenAddress, "api-server-listen-address", "0.0.0.0:3030", "The address on which for API server to listen")
+	flag.StringVar(&opts.APIServerAddress, "api-server-address", "", "The address of host cluster's API server")
+	flag.StringVar(&opts.APIServerCertFile, "api-server-cert-file", "", "The cert file path for api server")
+	flag.StringVar(&opts.APIServerKeyFile, "api-server-key-file", "", "The key file path for api server")
+	flag.StringVar(&opts.InitToken, "init-token", "", "The token used to initialize TLS cert for API client")
+	flag.DurationVar(&opts.TokenValidPeriod, "token-valid-period", 12*time.Hour, "The validity duration of token for child cluster to initialize")
 }
 
 func (opts *Options) Complete() (err error) {
@@ -125,26 +166,30 @@ func (opts *Options) Complete() (err error) {
 	}
 	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
 
+	var (
+		getEdgePodCIDRs  types.PodCIDRsGetter
+		getCloudPodCIDRs types.PodCIDRsGetter
+	)
 	switch opts.CNIType {
 	case constants.CNICalico:
+		opts.Agent.EnableEdgeIPAM = true
 		opts.PodCIDRStore = types.NewPodCIDRStore()
-		opts.GetPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
-		if opts.Agent.EnableEdgeIPAM {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRsFromAnnotation)
-			opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
-			if err != nil {
-				log.Error(err, "failed to create allocator")
-				return err
-			}
-		} else {
-			opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, opts.GetPodCIDRs)
+		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
+		getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
+		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
+		if err != nil {
+			log.Error(err, "failed to create allocator")
+			return err
 		}
 	case constants.CNIFlannel:
-		opts.NewEndpoint = types.GenerateNewEndpointFunc(opts.EndpointIDFormat, nodeutil.GetPodCIDRs)
-		opts.GetPodCIDRs = nodeutil.GetPodCIDRs
+		getEdgePodCIDRs = nodeutil.GetPodCIDRs
+		getCloudPodCIDRs = nodeutil.GetPodCIDRs
 	default:
 		return fmt.Errorf("unknown CNI: %s", opts.CNIType)
 	}
+
+	getEndpointName, getEndpointID, newEndpoint := types.NewEndpointFuncs(opts.Cluster, opts.EndpointIDFormat, getEdgePodCIDRs)
+	opts.NewEndpoint = newEndpoint
 
 	cfg, err := config.GetConfig()
 	if err != nil {
@@ -167,13 +212,39 @@ func (opts *Options) Complete() (err error) {
 		return err
 	}
 
-	certManager, err := createCertManager(kubeClient, client.ObjectKey{
-		Name:      opts.CASecretName,
-		Namespace: opts.Namespace,
-	})
-	if err != nil {
-		log.Error(err, "failed to create cert manager")
-		return err
+	var certManager certutil.Manager
+	if opts.ClusterRole == RoleHost {
+		certManager, opts.PrivateKey, err = createCertManager(kubeClient, client.ObjectKey{
+			Name:      opts.CASecretName,
+			Namespace: opts.Namespace,
+		}, timeutil.Days(opts.CertValidPeriod))
+		if err != nil {
+			log.Error(err, "failed to create cert manager")
+			return err
+		}
+	} else {
+		cacert, err := fclient.GetCertificate(opts.APIServerAddress)
+		if err != nil {
+			log.Error(err, "failed to get CA cert from host cluster")
+			return err
+		}
+
+		if err = opts.initAPIClient(kubeClient, cacert); err != nil {
+			return err
+		}
+
+		certManager, err = certutil.NewRemoteManager(cacert.DER, func(csr []byte) ([]byte, error) {
+			cert, innerErr := opts.APIClient.SignCert(csr)
+			if innerErr != nil {
+				return nil, innerErr
+			}
+
+			return cert.DER, nil
+		})
+		if err != nil {
+			log.Error(err, "failed to create certManager")
+			return err
+		}
 	}
 
 	opts.Store = storepkg.NewStore()
@@ -183,32 +254,81 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.Manager = opts.Manager
 	opts.Agent.Store = opts.Store
 	opts.Agent.NewEndpoint = opts.NewEndpoint
-	opts.Agent.EnableFlannelMocking = opts.CNIType == constants.CNIFlannel
+	opts.Agent.GetEndpointName = getEndpointName
+	opts.Agent.CertOrganization = opts.CertOrganization
 
-	opts.Connector.ConfigMapKey.Namespace = opts.Namespace
+	opts.Connector.Namespace = opts.Namespace
+	opts.Connector.CertOrganization = opts.CertOrganization
+	opts.Connector.CertManager = certManager
 	opts.Connector.Manager = opts.Manager
 	opts.Connector.Store = opts.Store
-	opts.Connector.GetPodCIDRs = opts.GetPodCIDRs
-	opts.Connector.Endpoint.ID = types.GetID(opts.EndpointIDFormat, opts.Connector.Endpoint.Name)
+	opts.Connector.GetPodCIDRs = getCloudPodCIDRs
+	opts.Connector.Endpoint.Name = getEndpointName("connector")
+	opts.Connector.Endpoint.ID = getEndpointID("connector")
 
 	opts.Proxy.AgentNamespace = opts.Namespace
 	opts.Proxy.Manager = opts.Manager
 	opts.Proxy.CheckInterval = 5 * time.Second
 
+	if opts.ClusterRole == RoleHost {
+		opts.APIServer, err = apiserver.New(apiserver.Config{
+			Addr:        opts.APIServerListenAddress,
+			CertManager: certManager,
+			Store:       opts.Store,
+			Client:      opts.Manager.GetClient(),
+			Log:         log.WithName("apiserver"),
+		})
+		if err != nil {
+			log.Error(err, "failed to create api server")
+			return err
+		}
+
+		certPool := x509.NewCertPool()
+		certPool.AddCert(certManager.GetCACert())
+		cert, err := tls.LoadX509KeyPair(opts.APIServerCertFile, opts.APIServerKeyFile)
+		if err != nil {
+			log.Error(err, "failed to load api server key pair")
+			return err
+		}
+		opts.APIServer.TLSConfig = &tls.Config{
+			ClientCAs:    certPool,
+			Certificates: []tls.Certificate{cert},
+			ClientAuth:   tls.RequestClientCert,
+		}
+	}
+
 	return nil
 }
 
 func (opts Options) Validate() (err error) {
+	if len(opts.Cluster) == 0 {
+		return fmt.Errorf("a cluster name is required")
+	}
+
+	if !dns1123Reg.MatchString(opts.Cluster) {
+		return fmt.Errorf("invalid cluster name: %s", opts.Cluster)
+	}
+
+	if opts.ClusterRole != RoleHost && opts.ClusterRole != RoleMember {
+		return fmt.Errorf("unknown cluster role: %s", opts.ClusterRole)
+	}
+
+	if opts.ClusterRole == RoleMember && len(opts.InitToken) == 0 {
+		return fmt.Errorf("initialization token is needed when cluster role is member")
+	}
+
+	if opts.ClusterRole == RoleHost {
+		if !fileExists(opts.APIServerKeyFile) {
+			return fmt.Errorf("api server key file doesnt' exist")
+		}
+
+		if !fileExists(opts.APIServerCertFile) {
+			return fmt.Errorf("api server certificate file doesnt' exist")
+		}
+	}
+
 	if len(opts.EdgeLabels) == 0 {
 		return fmt.Errorf("edge labels is needed")
-	}
-
-	if !dns1123Reg.MatchString(opts.Connector.Endpoint.Name) {
-		return fmt.Errorf("invalid connector name")
-	}
-
-	if !dns1123Reg.MatchString(opts.Connector.ConfigMapKey.Name) {
-		return fmt.Errorf("invalid connector config name")
 	}
 
 	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
@@ -264,7 +384,7 @@ func (opts Options) Validate() (err error) {
 	return nil
 }
 
-func createCertManager(cli client.Client, key client.ObjectKey) (certutil.Manager, error) {
+func createCertManager(cli client.Client, key client.ObjectKey, validPeriod time.Duration) (certutil.Manager, *rsa.PrivateKey, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -272,21 +392,27 @@ func createCertManager(cli client.Client, key client.ObjectKey) (certutil.Manage
 	err := cli.Get(ctx, key, &secret)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	certPEM, keyPEM := secretutil.GetCA(secret)
 
 	certDER, err := certutil.DecodePEM(certPEM)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	keyDER, err := certutil.DecodePEM(keyPEM)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return certutil.NewManger(certDER, keyDER)
+	privateKey, err := x509.ParsePKCS1PrivateKey(keyDER)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certManager, err := certutil.NewManger(certDER, keyDER, validPeriod)
+	return certManager, privateKey, err
 }
 
 func (opts Options) RunManager() error {
@@ -295,9 +421,40 @@ func (opts Options) RunManager() error {
 		return err
 	}
 
+	if opts.ClusterRole == RoleHost {
+		if err := opts.Manager.Add(manager.RunnableFunc(opts.runAPIServer)); err != nil {
+			log.Error(err, "failed to add api server runnable")
+			return err
+		}
+	}
+
 	err := opts.Manager.Start(signals.SetupSignalHandler())
 	if err != nil {
 		log.Error(err, "failed to start controller manager")
+	}
+
+	return err
+}
+
+func (opts Options) runAPIServer(ctx context.Context) error {
+	errChan := make(chan error)
+
+	go func() {
+		var err error
+		err = opts.APIServer.ListenAndServeTLS("", "")
+		if err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	var err error
+	select {
+	case err = <-errChan:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		err = ctx.Err()
 	}
 
 	return err
@@ -356,6 +513,51 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		}
 	}
 
+	if err = clusterctl.AddToManager(clusterctl.Config{
+		Cluster:       opts.Cluster,
+		Manager:       opts.Manager,
+		PrivateKey:    opts.PrivateKey,
+		TokenDuration: opts.TokenValidPeriod,
+		Store:         opts.Store,
+	}); err != nil {
+		log.Error(err, "failed to add cluster controller to manager")
+		return err
+	}
+
+	if opts.ClusterRole == RoleHost {
+		reporter := &routines.LocalClusterReporter{
+			Cluster:      opts.Cluster,
+			GetConnector: getConnectorEndpoint,
+			SyncInterval: 10 * time.Second,
+			Client:       opts.Manager.GetClient(),
+			Log:          opts.Manager.GetLogger().WithName("LocalClusterReporter"),
+		}
+		if err = opts.Manager.Add(reporter); err != nil {
+			log.Error(err, "failed to add local cluster reporter to manager")
+			return err
+		}
+	} else {
+		err = opts.Manager.Add(routines.LoadEndpointsAndCommunities(
+			timeutil.Seconds(10),
+			opts.Store,
+			opts.APIClient.GetEndpointsAndCommunities,
+		))
+		if err != nil {
+			log.Error(err, "failed to start loadEndpointsAndCommunities routine")
+			return err
+		}
+
+		err = opts.Manager.Add(routines.ExportEndpoints(
+			timeutil.Seconds(10),
+			getConnectorEndpoint,
+			opts.APIClient.UpdateEndpoints,
+		))
+		if err != nil {
+			log.Error(err, "failed to start exportEndpoints routine")
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -386,7 +588,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 
 	for _, node := range nodes.Items {
 		ep := opts.NewEndpoint(node)
-		if !ep.IsValid() {
+		if len(ep.PublicAddresses) == 0 || len(ep.Subnets) == 0 || len(ep.NodeSubnets) == 0 {
 			continue
 		}
 
@@ -428,4 +630,85 @@ func (opts Options) recordIPAMBlocks(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (opts *Options) initAPIClient(kubeClient client.Client, cacert fclient.Certificate) error {
+	key := client.ObjectKey{
+		Name:      ClientTLSSecretName,
+		Namespace: opts.Namespace,
+	}
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(cacert.Raw)
+
+	var secret corev1.Secret
+	err := kubeClient.Get(context.Background(), key, &secret)
+	switch {
+	case err == nil:
+	case errors.IsNotFound(err):
+		secret, err = opts.createTLSSecretForClient(kubeClient, certPool, cacert)
+		if err != nil {
+			log.Error(err, "failed to create tls secret for API client")
+			return err
+		}
+	default:
+		log.Error(err, "failed to get tls secret for API client")
+		return err
+	}
+
+	certPEM, keyPEM := secretutil.GetCertAndKey(secret)
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		log.Error(err, "not able to create tls key pair")
+		return err
+	}
+
+	opts.APIClient, err = fclient.NewClient(opts.APIServerAddress, opts.Cluster, &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:      certPool,
+			Certificates: []tls.Certificate{cert},
+		},
+	})
+	if err != nil {
+		log.Error(err, "failed to create API client")
+		return err
+	}
+
+	return nil
+}
+
+func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool *x509.CertPool, cacert fclient.Certificate) (secret corev1.Secret, err error) {
+	keyDER, csrDER, err := certutil.NewCertRequest(certutil.Request{
+		CommonName:   fmt.Sprintf("%s.fabedge-client", opts.Cluster),
+		Organization: []string{opts.CertOrganization},
+	})
+	if err != nil {
+		log.Error(err, "failed to create certificate request")
+		return secret, err
+	}
+
+	cert, err := fclient.SignCertByToken(opts.APIServerAddress, opts.InitToken, csrDER, certPool)
+	if err != nil {
+		log.Error(err, "failed to create certificate for API client")
+		return secret, err
+	}
+
+	secret = secretutil.TLSSecret().
+		Name(ClientTLSSecretName).
+		Namespace(opts.Namespace).
+		EncodeKey(keyDER).
+		CertPEM(cert.PEM).
+		CACertPEM(cacert.PEM).
+		Label(constants.KeyCreatedBy, constants.AppOperator).Build()
+
+	err = kubeClient.Create(context.Background(), &secret)
+	return secret, err
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
 }

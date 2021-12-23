@@ -16,15 +16,9 @@ package agent
 
 // CNINetConf describes a network.
 type CNINetConf struct {
-	CNIVersion string `json:"cniVersion,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Type       string `json:"type,omitempty"`
-
-	Bridge           string     `json:"bridge"`
-	IsGateway        bool       `json:"isGateway"`
-	IsDefaultGateway bool       `json:"isDefaultGateway"`
-	ForceAddress     bool       `json:"forceAddress"`
-	IPAM             IPAMConfig `json:"ipam"`
+	CNIVersion string        `json:"cniVersion,omitempty"`
+	Name       string        `json:"name,omitempty"`
+	Plugins    []interface{} `json:"plugins"`
 }
 
 type IPAMConfig struct {
@@ -35,4 +29,19 @@ type IPAMConfig struct {
 type RangeSet []Range
 type Range struct {
 	Subnet string `json:"subnet"`
+}
+
+type BridgeConfig struct {
+	Type             string     `json:"type"`
+	Bridge           string     `json:"bridge"`
+	IsGateway        bool       `json:"isGateway,omitempty"`
+	IsDefaultGateway bool       `json:"isDefaultGateway,omitempty"`
+	ForceAddress     bool       `json:"forceAddress,omitempty"`
+	HairpinMode      bool       `json:"hairpinMode,omitempty"`
+	IPAM             IPAMConfig `json:"ipam"`
+}
+
+type CapbilitiesConfig struct {
+	Type         string          `json:"type"`
+	Capabilities map[string]bool `json:"capabilities,omitempty"`
 }

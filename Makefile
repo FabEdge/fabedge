@@ -1,8 +1,8 @@
 OUTPUT_DIR := _output
-BINARIES := agent connector operator cert
-IMAGES := $(addsuffix -image, agent connector operator cert)
+BINARIES := agent connector operator cert cloud-agent
+IMAGES := $(addsuffix -image, ${BINARIES})
 
-VERSION := v0.3.0
+VERSION := v0.4.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fabedge/pkg/common/about
@@ -56,7 +56,7 @@ vet:
 
 bin: fmt vet ${BINARIES}
 
-${BINARIES}: fmt vet
+${BINARIES}: $(if $(QUICK),,fmt vet)
 	GOOS=linux go build ${LDFLAGS} -o ${OUTPUT_DIR}/fabedge-$@ ./cmd/$@
 
 .PHONY: test
@@ -88,13 +88,13 @@ clean:
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=fabedge-admin paths="./..." output:dir:crd=deploy/crds
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=fabedge-admin paths="./pkg/..." output:dir:crd=deploy/crds
 	@# 因为k8s的bug, 导致必须手动删除一些信息，详细内容参考 https://github.com/kubernetes/kubernetes/issues/91395
 #    sed -i '/- protocol/d' build/crds/edge.bocloud.com_edgeapplications.yaml
 
 # Generate code
 generate: controller-gen
-	$(CONTROLLER_GEN) object paths="./..."
+	$(CONTROLLER_GEN) object paths="./pkg/..."
 
 # find or download controller-gen
 # download controller-gen if necessary

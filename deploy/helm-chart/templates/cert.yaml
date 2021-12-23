@@ -87,7 +87,7 @@ metadata:
     {{- include "cert.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
     "helm.sh/hook-weight": "-5"
 spec:
   template:
@@ -109,14 +109,20 @@ spec:
         - -n
         - {{ .Release.Namespace }}
 
-      - name: cert-gen-cloud-connector
+      {{- if eq .Values.operator.cluster.role "host" }}
+      - name: cert-gen-api-server
         image: {{ .Values.cert.image.repository }}:{{ .Values.cert.image.tag | default .Chart.AppVersion }}
         imagePullPolicy: {{ .Values.cert.image.pullPolicy }}
         args:
         - gen
-        - cloud-connector
+        - api-server
+        - --ips
+        - {{ include "connector.node.addresses" . }}
+        - --secret-name
+        - api-server-tls
         - -n
         - {{ .Release.Namespace }}
+      {{- end }}
 
       containers:
       - name: cert-true

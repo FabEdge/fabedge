@@ -50,8 +50,9 @@ type Config struct {
 	XFRMInterfaceName string
 	XFRMInterfaceID   uint
 
-	EnableIPAM bool
-	CNI        CNI
+	EnableIPAM        bool
+	EnableHairpinMode bool
+	CNI               CNI
 
 	EnableProxy bool
 }
@@ -65,6 +66,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
 	fs.BoolVar(&cfg.EnableIPAM, "enable-ipam", true, "enable the IPAM feature")
+	fs.BoolVar(&cfg.EnableHairpinMode, "enable-hairpinmode", true, "enable the Hairpin feature")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
 	fs.StringVar(&cfg.CNI.ConfDir, "cni-conf-path", "/etc/cni/net.d", "cni version")
 	fs.StringVar(&cfg.CNI.NetworkName, "cni-network-name", "fabedge", "the name of network")
@@ -94,22 +96,24 @@ func (cfg *Config) Validate() error {
 
 func (cfg Config) Manager() (*Manager, error) {
 	kernelHandler := ipvs.NewLinuxKernelHandler()
-	canUseProxy, err := ipvs.CanUseIPVSProxier(kernelHandler)
-	if err != nil {
-		return nil, err
+	if cfg.EnableProxy {
+		if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
+			return nil, err
+		}
 	}
-	cfg.EnableProxy = canUseProxy && cfg.EnableProxy
 
 	cfg.MASQOutgoing = cfg.EnableIPAM && cfg.MASQOutgoing
 
-	supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
-	if err != nil {
-		return nil, err
-	}
-	cfg.UseXFRM = supportXFRM && cfg.UseXFRM
-
 	var opts strongswan.Options
 	if cfg.UseXFRM {
+		supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
+		if err != nil {
+			return nil, err
+		}
+		if !supportXFRM {
+			return nil, fmt.Errorf("xfrm interfaces have been supported since kernel 4.19, the current kernel version is too low")
+		}
+
 		opts = append(opts, strongswan.InterfaceID(&cfg.XFRMInterfaceID))
 	}
 	tm, err := strongswan.New(opts...)

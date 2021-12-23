@@ -28,6 +28,7 @@ import (
 	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
@@ -142,26 +143,30 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 			LocalSubnets:     conf.Subnets,
 			LocalNodeSubnets: conf.NodeSubnets,
 			LocalCerts:       m.LocalCerts,
+			LocalType:        conf.Type,
 
 			RemoteID:          peer.ID,
 			RemoteAddress:     peer.PublicAddresses,
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
+			RemoteType:        peer.Type,
 		}
 
 		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
 		if err := m.tm.LoadConn(conn); err != nil {
-			return err
+			m.log.Error(err, "failed to add tunnel", "tunnel", conn)
+			continue
 		}
 
 		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
 		if err := m.tm.InitiateConn(peer.Name); err != nil {
-			return err
+			m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
 		}
 	}
 
 	oldNames, err := m.tm.ListConnNames()
 	if err != nil {
+		m.log.Error(err, "failed to list connections")
 		return err
 	}
 
@@ -173,7 +178,6 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 		if err := m.tm.UnloadConn(name); err != nil {
 			m.log.Error(err, "failed to unload tunnel", "name", name)
-			return err
 		}
 	}
 
@@ -275,11 +279,15 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	cni := CNINetConf{
 		CNIVersion: m.CNI.Version,
 		Name:       m.CNI.NetworkName,
-		Type:       "bridge",
+	}
+
+	bridge := BridgeConfig{
+		Type: "bridge",
 
 		Bridge:           m.CNI.BridgeName,
 		IsDefaultGateway: true,
 		ForceAddress:     true,
+		HairpinMode:      m.EnableHairpinMode,
 
 		IPAM: IPAMConfig{
 			Type:   "host-local",
@@ -287,7 +295,22 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		},
 	}
 
-	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conf", m.CNI.NetworkName))
+	portmap := CapbilitiesConfig{
+		Type:         "portmap",
+		Capabilities: map[string]bool{"portMappings": true},
+	}
+
+	// bandwidth under control by metadata.annotations within yaml:
+	// kubernetes.io/ingress-bandwidth: 1M
+	// kubernetes.io/egress-bandwidth: 1M
+	// there will be no limit without these 2 items.
+	bandwidth := CapbilitiesConfig{
+		Type:         "bandwidth",
+		Capabilities: map[string]bool{"bandwidth": true},
+	}
+	cni.Plugins = append(cni.Plugins, bridge, portmap, bandwidth)
+
+	filename := filepath.Join(m.CNI.ConfDir, fmt.Sprintf("%s.conflist", m.CNI.NetworkName))
 	data, err := json.MarshalIndent(cni, "", "  ")
 	if err != nil {
 		m.log.Error(err, "failed to marshal cni config")
@@ -388,18 +411,19 @@ func (m *Manager) syncLoadBalanceRules() error {
 	return m.syncVirtualServer(servers)
 }
 
-func (m *Manager) getConnectorSubnets() ([]string, error) {
+func (m *Manager) getConnectorSubnets() (subnets []string, err error) {
 	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// the first peer always be connector endpoint
-	if len(conf.Peers) > 0 {
-		return conf.Peers[0].Subnets, nil
+	for _, peer := range conf.Peers {
+		if peer.Type == apis.Connector {
+			subnets = append(subnets, peer.Subnets...)
+		}
 	}
 
-	return nil, nil
+	return subnets, nil
 }
 
 func (m *Manager) syncServiceClusterIPBind(servers []server) error {
