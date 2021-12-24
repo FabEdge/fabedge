@@ -1,43 +1,43 @@
-## 卸载FabEdge
+# Delete FabEdge
 
+English | [中文](uninstall_zh.md)
 
+1. Use helm to delete the primary resource
 
-1. 使用helm删除主要资源
+```
+$ helm uninstall fabedge -n fabedge
+```
 
-  ```shell
-  $ helm uninstall fabedge -n fabedge
-  ```
+2. Delete other resources
 
-2. 删除其它资源
+```
+$ kubectl -n fabedge delete cm --all
+$ kubectl -n fabedge delete pods --all
+$ kubectl -n fabedge delete secret --all
+$ kubectl -n fabedge delete job.batch --all
+```
 
-   ```shell
-   $ kubectl -n fabedge delete cm --all
-   $ kubectl -n fabedge delete pods --all
-   $ kubectl -n fabedge delete secret --all
-   $ kubectl -n fabedge delete job.batch --all
-   ```
-   
-3. 删除namespace
+3. Delete namespace
 
-   ```shell
-   $ kubectl delete namespace fabedge
-   ```
+```
+$ kubectl delete namespace fabedge
+```
 
-4. 删除所有边缘节点的`fabedge.conf`
+4. Delete from all edge nodes‘ `fabedge.conf`
 
-   ```shell
-   $ rm -f /etc/cni/net.d/fabedge.*
-   ```
+```
+$ rm -f /etc/cni/net.d/fabedge.*
+```
 
-​    5. 删除所有节点的上fabedge相关的镜像
+5.  Delete fabedge-related mirrors on all nodes
 
-```shell
+```
    $ docker images | grep fabedge | awk '{print $3}' | xargs -I{} docker rmi {}
 ```
 
- 6.删除CustomResourceDefinition
+6. Delete CustomResourceDefinition
 
-```shell
+```
 $ kubectl delete CustomResourceDefinition "clusters.fabedge.io"
 $ kubectl delete CustomResourceDefinition "communities.fabedge.io"
 $ kubectl delete ClusterRole "fabedge-operator"
