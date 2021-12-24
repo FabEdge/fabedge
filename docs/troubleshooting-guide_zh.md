@@ -1,23 +1,23 @@
-# FabEdge troubleshooting manual
+# FabEdge排错手册
 
 [toc]
 
-English | [中文](troubleshooting-guide_zh.md)
-
-## Verify that the Kubernetes environment is normal
+## 确认Kubernetes环境正常
 
 ```shell
 kubectl get po -n kube-system
 kubectl get no 
 ```
 
+如果Kubernetes不正常，请自行排查，直到问题解决，然后下一步
 
-## Confirm FabEdge service is normal
 
-If the FabEdge service is abnormal, check related logs.
+## 确认FabEdge服务正常
+
+如果FabEdge服务不正常，检查相关日志
 
 ```shell
-# Execute on master node, use the correct pod name.
+# 在master节点上执行, 请使用正确的Pod的名字
 kubectl get po -n fabedge
 
 kubectl describe po -n fabedge fabedge-operator-xxx 
@@ -33,10 +33,10 @@ kubectl logs --tail=50 -n fabedge fabedge-agent-edge1 -c strongswan
 kubectl logs --tail=50 -n fabedge fabedge-agent-edge1 -c agent
 ```
 
-## Verify that the tunnel is successfully established
+## 确认隧道建立成功
 
 ```shell
-# Execute on master node.
+# 在master节点上执行
 kubectl exec -n fabedge fabedge-connector-xxx -c strongswan -- swanctl --list-conns
 kubectl exec -n fabedge fabedge-connector-xxx -c strongswan -- swanctl --list-sas
 
@@ -44,70 +44,68 @@ kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-conns
 kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 ```
 
-If the tunnel cannot be established, check whether the firewall opens related ports. For details, see the  [install](install.md).
+如果隧道不能建立，要确认防火墙是否开放相关端口，具体参考[安装手册](install.md)
 
-## Check the routing table 
+## 检查路由表
 
 ```shell
-# Run on the connector node.
+# 在connector节点上运行
 ip l
 ip r
 ip r s t 220
 ip x p 
 ip x s
 
-# Run on edge nodes
+# 在边缘节点上运行
 ip l
 ip r
 ip r s t 220
 ip x p 
 ip x s
 
-# Run on non-connector nodes in the cloud  
+# 在云端非connector节点上运行
 ip l
 ip r
 ```
 
-> Note: If **edge node**  has interfaces such as CNI, means flannel residues exist and you need to restart **edge node**.  
+如果**边缘节点**有cni等接口，表示有flannel的残留，需要重启**边缘节点**
 
-## Check the iptables
+## 检查iptables
 
 ```shell
-# Run on the connector node 
+# 在connector节点上运行
 iptables -S
 iptables -L -nv --line-numbers
 iptables -t nat -S
 iptables -t nat -L -nv --line-numbers
 
-# Run on edge nodes.
+# 在边缘节点上运行
 iptables -S
 iptables -L -nv --line-numbers
 iptables -t nat -S
 iptables -t nat -L -nv --line-numbers
 ```
 
-Check whether the environment has host firewall DROP rules, especially INPUT and FORWARD chains.
+检查是否环境里有主机防火墙DROP的规则，尤其是INPUT， FORWARD的链
 
+## 校验证书
 
-
-## Verify the certificate 
-
-FabEdge related certificates including CA, Connector, and Agent, are stored in Secret and maintained by Operator automatically. If a certificate-related error occurs, you can use the following method to manually verify.  
+FabEdge相关的证书，包括CA， Connector， Agent都保存在Secret里，Operator会自动维护这些证书。如果出现证书相关错误，可以使用下面方法手动验证。
 
 ```shell
-# Execute on the master node.
+# 在master节点上执行
 
-# Start a container for cert.
+# 启动一个cert的容器
 docker run fabedge/cert
 
-# Get the ID of the container you just started.  
+# 获取刚启动的容器的ID 
 docker ps -a | grep cert
 65ceb57d6656   fabedge/cert                  "/usr/local/bin/fabe…"   15 seconds ago   
 
-# Copy the executable to the host.
+# 将可执行程序拷贝到主机
 docker cp 65ceb57d6656:/usr/local/bin/fabedge-cert .
 
-# Check out related secret.  
+# 查看相关Secret
 kubectl get secret -n fabedge
 NAME                            TYPE                                  DATA   AGE
 api-server-tls                  kubernetes.io/tls                     4      3d22h
@@ -119,27 +117,29 @@ fabedge-agent-tls-edge2         kubernetes.io/tls                     4      3d2
 fabedge-ca                      Opaque                                2      3d22h
 fabedge-operator-token-tb8qb    kubernetes.io/service-account-token   3      3d22h
 
-# Verify related secret.  
+# 校验相关Secret
 ./fabedge-cert verify -s connector-tls
 Your cert is ok
 ./fabedge-cert verify -s fabedge-agent-tls-edge1
 Your cert is ok
 ```
 
-## Screening tool
 
-You can use the script below to quickly collect the above information. If you need community support, please submit the generated file. 
+
+## 排查工具
+
+也可以使用下面的脚本快速收集以上信息，如需社区提供支持，请提交生成的文件。
 
 ```
-# The master node executes：
+# master节点执行：
 curl http://116.62.127.76/checker.sh | bash -s master | tee /tmp/master-checker.log
 
-# Connector node execute：
+# connector节点执行：
 curl http://116.62.127.76/checker.sh | bash -s connector | tee /tmp/connector-checker.log
 
-# Edge node execute：
+# edge节点执行：
 curl http://116.62.127.76/checker.sh | bash -s edge | tee /tmp/edge-checker.log
 
-# Other nodes execute：
+# 其它节点执行：
 curl http://116.62.127.76/checker.sh | bash | tee /tmp/node-checker.log
 ```
