@@ -1,10 +1,10 @@
-# FabEdge troubleshooting manual
-
-[toc]
+# FabEdge Troubleshooting Guide
 
 English | [中文](troubleshooting-guide_zh.md)
 
-## Verify that the Kubernetes environment is normal
+[toc]
+
+## Verify Kubernetes is normal
 
 ```shell
 kubectl get po -n kube-system
@@ -12,9 +12,10 @@ kubectl get no
 ```
 
 
-## Confirm FabEdge service is normal
 
-If the FabEdge service is abnormal, check related logs.
+## Verify FabEdge is normal
+
+If the FabEdge service is abnormal, check the pod logs.
 
 ```shell
 # Execute on master node, use the correct pod name.
@@ -33,7 +34,9 @@ kubectl logs --tail=50 -n fabedge fabedge-agent-edge1 -c strongswan
 kubectl logs --tail=50 -n fabedge fabedge-agent-edge1 -c agent
 ```
 
-## Verify that the tunnel is successfully established
+
+
+## Verify the tunnel is successfully established
 
 ```shell
 # Execute on master node.
@@ -46,7 +49,9 @@ kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 
 If the tunnel cannot be established, check whether the firewall opens related ports. For details, see the  [install](install.md).
 
-## Check the routing table 
+
+
+## Check routing table and xfrm policy
 
 ```shell
 # Run on the connector node.
@@ -68,9 +73,11 @@ ip l
 ip r
 ```
 
-> Note: If **edge node**  has interfaces such as CNI, means flannel residues exist and you need to restart **edge node**.  
+> Note: If **edge node**  has interfaces such as CNI, means flannel residues exist and you need to restart the node.  
 
-## Check the iptables
+
+
+## Check iptables
 
 ```shell
 # Run on the connector node 
@@ -90,9 +97,9 @@ Check whether the environment has host firewall DROP rules, especially INPUT and
 
 
 
-## Verify the certificate 
+## Verify the certificates 
 
-FabEdge related certificates including CA, Connector, and Agent, are stored in Secret and maintained by Operator automatically. If a certificate-related error occurs, you can use the following method to manually verify.  
+FabEdge related certificates including CA, Connector, and Agent, are stored in Secret and managed by Operator automatically. If some certificate-related error occur, you can use the following method to verify it.  
 
 ```shell
 # Execute on the master node.
@@ -126,20 +133,22 @@ Your cert is ok
 Your cert is ok
 ```
 
-## Screening tool
 
-You can use the script below to quickly collect the above information. If you need community support, please submit the generated file. 
+
+## Collect diagnostic informaiton
+
+You can use the script below to quickly collect the diagnostic information. If support is needed, please submit the generated files. 
 
 ```
-# The master node executes：
+# Run on master node
 curl http://116.62.127.76/checker.sh | bash -s master | tee /tmp/master-checker.log
 
-# Connector node execute：
+# Run on connector node
 curl http://116.62.127.76/checker.sh | bash -s connector | tee /tmp/connector-checker.log
 
-# Edge node execute：
+# Run on edge node
 curl http://116.62.127.76/checker.sh | bash -s edge | tee /tmp/edge-checker.log
 
-# Other nodes execute：
+# Run on other nodes
 curl http://116.62.127.76/checker.sh | bash | tee /tmp/node-checker.log
 ```
