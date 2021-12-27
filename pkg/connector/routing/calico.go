@@ -15,8 +15,9 @@
 package routing
 
 import (
-	"fmt"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
+	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/vishvananda/netlink"
 )
 
@@ -27,64 +28,50 @@ func NewCalicoRouter() *CalicoRouter {
 	return &CalicoRouter{}
 }
 
-func (c *CalicoRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
-	if err := EnsureDummyDevice(dummyInfName); err != nil {
+func (r *CalicoRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
+	if err := delRoutesNotInConnections(connections, constants.TableStrongswan); err != nil {
 		return err
 	}
-
-	if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
-		return err
-	}
-
-	if err := addAllEdgeRoutes(connections, TableStrongswan); err != nil {
-		return err
-	}
-
-	return addAllEdgeRoutesIntoMainTable(connections, dummyInfName)
+	return addAllEdgeRoutes(connections, constants.TableStrongswan)
 }
 
-func (c *CalicoRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
-	// delete routes in table 220
-	if err := delAllEdgeRoutes(conns); err != nil {
-		return err
-	}
-
-	// delete routes in main table via dummy interface
-	return delAllEdgeRoutesFromMainTable(dummyInfName)
+func (r *CalicoRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
+	return delAllEdgeRoutes(conns)
 }
 
-// add all routes via a dummy interface for them to be propagated into other nodes
-func addAllEdgeRoutesIntoMainTable(conns []tunnel.ConnConfig, devName string) error {
-	link, err := netlink.LinkByName(devName)
+func (r *CalicoRouter) GetLocalPrefixes() ([]string, error) {
+	tunl, err := netlink.LinkByName("tunl0")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, conn := range conns {
-		for _, subnet := range conn.RemoteSubnets {
-			s, err := netlink.ParseIPNet(subnet)
-			if err != nil {
-				return err
-			}
-			route := netlink.Route{Dst: s, LinkIndex: link.Attrs().Index}
-			err = netlink.RouteAdd(&route)
-			if err != nil && !fileExistsError(err) {
-				return err
-			}
-		}
+	addrs, err := netlink.AddrList(tunl, netlink.FAMILY_V4)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	var prefixes []string
+	for _, a := range addrs {
+		prefixes = append(prefixes, a.IPNet.String())
+	}
+
+	return prefixes, nil
 }
 
-func delAllEdgeRoutesFromMainTable(devName string) error {
-	link := &netlink.Dummy{
-		LinkAttrs: netlink.LinkAttrs{Name: devName},
+func (r *CalicoRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
+	cp := new(ConnectorPrefixes)
+	local, err := r.GetLocalPrefixes()
+	if err != nil {
+		return nil, err
 	}
-	// after the interface is deleted, all routes via which are cleaned automatically.
-	err := netlink.LinkDel(link)
-	if err != nil && invalidArgument(err) {
-		return fmt.Errorf("%s does not exist", devName)
-	} else {
-		return err
+	cp.LocalPrefixes = local
+
+	remote, err := GetRemotePrefixes()
+	if err != nil {
+		return nil, err
 	}
+	cp.RemotePrefixes = remote
+
+	cp.NodeName = routeUtil.GetNodeName()
+
+	return cp, nil
 }

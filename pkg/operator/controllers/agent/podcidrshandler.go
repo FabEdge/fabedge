@@ -31,11 +31,12 @@ import (
 var _ Handler = &allocatablePodCIDRsHandler{}
 
 type allocatablePodCIDRsHandler struct {
-	client      client.Client
-	allocator   allocator.Interface
-	store       storepkg.Interface
-	newEndpoint types.NewEndpointFunc
-	log         logr.Logger
+	client          client.Client
+	allocator       allocator.Interface
+	store           storepkg.Interface
+	newEndpoint     types.NewEndpointFunc
+	getEndpointName types.GetNameFunc
+	log             logr.Logger
 }
 
 func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
@@ -46,7 +47,7 @@ func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.N
 			return err
 		}
 	} else {
-		handler.store.SaveEndpoint(currentEndpoint)
+		handler.store.SaveEndpointAsLocal(currentEndpoint)
 	}
 
 	return nil
@@ -99,19 +100,20 @@ func (handler *allocatablePodCIDRsHandler) allocateSubnet(ctx context.Context, n
 		return err
 	}
 
-	handler.store.SaveEndpoint(handler.newEndpoint(node))
+	handler.store.SaveEndpointAsLocal(handler.newEndpoint(node))
 	return nil
 }
 
 func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName string) error {
 	log := handler.log.WithValues("nodeName", nodeName)
 
-	ep, ok := handler.store.GetEndpoint(nodeName)
+	epName := handler.getEndpointName(nodeName)
+	ep, ok := handler.store.GetEndpoint(epName)
 	if !ok {
 		return nil
 	}
 
-	handler.store.DeleteEndpoint(nodeName)
+	handler.store.DeleteEndpoint(ep.Name)
 	log.V(5).Info("endpoint is delete from store", "endpoint", ep)
 
 	for _, sn := range ep.Subnets {
@@ -130,16 +132,19 @@ func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName st
 var _ Handler = &rawPodCIDRsHandler{}
 
 type rawPodCIDRsHandler struct {
-	store       storepkg.Interface
-	newEndpoint types.NewEndpointFunc
+	store           storepkg.Interface
+	getEndpointName types.GetNameFunc
+	newEndpoint     types.NewEndpointFunc
 }
 
 func (handler *rawPodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
 	endpoint := handler.newEndpoint(node)
-	handler.store.SaveEndpoint(endpoint)
+	handler.store.SaveEndpointAsLocal(endpoint)
 	return nil
 }
 
 func (handler *rawPodCIDRsHandler) Undo(ctx context.Context, nodeName string) error {
+	epName := handler.getEndpointName(nodeName)
+	handler.store.DeleteEndpoint(epName)
 	return nil
 }

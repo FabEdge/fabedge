@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/klog/v2/klogr"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -40,12 +41,14 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 		store := storepkg.NewStore()
 		alloc, _ := allocator.New("2.2.0.0/16")
 
+		getEndpointName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 		handler = &allocatablePodCIDRsHandler{
-			store:       store,
-			allocator:   alloc,
-			newEndpoint: types.GenerateNewEndpointFunc("C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRsFromAnnotation),
-			client:      k8sClient,
-			log:         klogr.New().WithName("podCIDRsHandler"),
+			store:           store,
+			allocator:       alloc,
+			getEndpointName: getEndpointName,
+			newEndpoint:     newEndpoint,
+			client:          k8sClient,
+			log:             klogr.New().WithName("podCIDRsHandler"),
 		}
 	})
 
@@ -64,9 +67,13 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 			Expect(node.Annotations[constants.KeyPodSubnets]).ShouldNot(BeEmpty())
 
-			ep, ok := handler.store.GetEndpoint(nodeName)
+			epName := handler.getEndpointName(nodeName)
+			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
+
+			nameSet := handler.store.GetLocalEndpointNames()
+			Expect(nameSet.Contains(epName)).Should(BeTrue())
 
 			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
 			Expect(err).Should(BeNil())
@@ -82,7 +89,8 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			ep, ok := handler.store.GetEndpoint(nodeName)
+			epName := handler.getEndpointName(nodeName)
+			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
@@ -101,7 +109,8 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			ep, ok := handler.store.GetEndpoint(nodeName)
+			epName := handler.getEndpointName(nodeName)
+			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
@@ -112,7 +121,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 		It("should reallocate a subnet to a edge node if this node's subnet is not match to record in store", func() {
 			nodeName := getNodeName()
-			handler.store.SaveEndpoint(types.Endpoint{
+			handler.store.SaveEndpoint(apis.Endpoint{
 				Name:            nodeName,
 				PublicAddresses: nil,
 				Subnets:         []string{"2.2.2.2/26"},
@@ -125,7 +134,8 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
 
-			ep, ok := handler.store.GetEndpoint(nodeName)
+			epName := handler.getEndpointName(nodeName)
+			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
@@ -143,7 +153,8 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
 			Expect(handler.Do(context.TODO(), node)).Should(Succeed())
 
-			ep, ok := handler.store.GetEndpoint(nodeName)
+			epName := handler.getEndpointName(nodeName)
+			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).Should(BeTrue())
 
 			_, ipNet, err := net.ParseCIDR(ep.Subnets[0])
@@ -151,7 +162,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 			Expect(handler.Undo(context.TODO(), nodeName)).Should(Succeed())
 
-			_, ok = handler.store.GetEndpoint(nodeName)
+			_, ok = handler.store.GetEndpoint(epName)
 			Expect(ok).Should(BeFalse())
 
 			Expect(handler.allocator.IsAllocated(*ipNet)).Should(BeFalse())
@@ -168,10 +179,12 @@ var _ = Describe("rawPodCIDRsHandler", func() {
 
 	BeforeEach(func() {
 		store := storepkg.NewStore()
+		getName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRs)
 
 		handler = &rawPodCIDRsHandler{
-			store:       store,
-			newEndpoint: types.GenerateNewEndpointFunc("C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRs),
+			store:           store,
+			getEndpointName: getName,
+			newEndpoint:     newEndpoint,
 		}
 	})
 
@@ -185,7 +198,8 @@ var _ = Describe("rawPodCIDRsHandler", func() {
 
 		Expect(handler.Do(context.TODO(), node)).Should(Succeed())
 
-		ep, ok := handler.store.GetEndpoint(nodeName)
+		epName := handler.getEndpointName(nodeName)
+		ep, ok := handler.store.GetEndpoint(epName)
 		Expect(ok).To(BeTrue())
 		Expect(len(ep.Subnets)).Should(Equal(1))
 		Expect(ep.Subnets).To(Equal(node.Spec.PodCIDRs))

@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "connector.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.connector.replicaCount }}
+  replicas: {{ .Values.connector.replicas }}
   selector:
     matchLabels:
       {{- include "connector.labels" . | nindent 6 }}
@@ -59,8 +59,18 @@ spec:
           image: {{ .Values.connector.image.repository }}:{{ .Values.connector.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.connector.image.pullPolicy }}
           args:
-            - --cni-type={{ .Values.cniType }}
+            {{- $cniType := "" -}}
+            {{- range $index, $pod := (lookup "v1" "Pod" "" "").items -}}
+              {{- if hasPrefix "kube-flannel" $pod.metadata.name -}}
+                {{- $cniType = "flannel" -}}
+              {{- end -}}
+              {{- if hasPrefix "calico-node" $pod.metadata.name -}}
+                {{- $cniType = "calico" -}}
+              {{- end -}}
+            {{- end }}
+            - --cni-type={{ $cniType }}
             - --sync-period={{ .Values.connector.syncPeriod }}
+            - --connector-node-addresses={{ include "connector.node.addresses" . }}
             - -v=5
           volumeMounts:
             - name: var-run
@@ -89,10 +99,10 @@ spec:
                 path: certs/tls.crt
               - key: tls.key
                 path: private/tls.key
-            secretName: cloud-connector
+            secretName: connector-tls
         - name: ipsec-secrets
           secret:
             items:
               - key: ipsec.secrets
                 path: ipsec.secrets
-            secretName: cloud-connector
+            secretName: connector-tls

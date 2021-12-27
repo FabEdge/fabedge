@@ -15,7 +15,10 @@
 package routing
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
+	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
+	"github.com/vishvananda/netlink"
 )
 
 type FlannelRouter struct {
@@ -25,14 +28,51 @@ func NewFlannelRouter() *FlannelRouter {
 	return &FlannelRouter{}
 }
 
-func (c *FlannelRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
-	if err := delRoutesNotInConnections(connections, TableStrongswan); err != nil {
+func (r *FlannelRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
+	if err := delRoutesNotInConnections(connections, constants.TableStrongswan); err != nil {
 		return err
 	}
-	return addAllEdgeRoutes(connections, TableStrongswan)
+	return addAllEdgeRoutes(connections, constants.TableStrongswan)
 }
 
-func (c *FlannelRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
-	// delete routes in table 220
+func (r *FlannelRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
 	return delAllEdgeRoutes(conns)
+}
+
+func (r *FlannelRouter) GetLocalPrefixes() ([]string, error) {
+	cni0, err := netlink.LinkByName("cni0")
+	if err != nil {
+		return nil, err
+	}
+
+	routes, err := netlink.RouteList(cni0, netlink.FAMILY_V4)
+	if err != nil {
+		return nil, err
+	}
+
+	var prefixes []string
+	for _, r := range routes {
+		prefixes = append(prefixes, r.Dst.String())
+	}
+
+	return prefixes, nil
+}
+
+func (r *FlannelRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
+	cp := new(ConnectorPrefixes)
+	local, err := r.GetLocalPrefixes()
+	if err != nil {
+		return nil, err
+	}
+	cp.LocalPrefixes = local
+
+	remote, err := GetRemotePrefixes()
+	if err != nil {
+		return nil, err
+	}
+	cp.RemotePrefixes = remote
+
+	cp.NodeName = routeUtil.GetNodeName()
+
+	return cp, nil
 }

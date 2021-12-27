@@ -10,6 +10,8 @@ spec:
   selector:
     matchLabels:
       app: fabedge-operator
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -20,21 +22,30 @@ spec:
           image: fabedge/operator
           imagePullPolicy: IfNotPresent
           args:
+            # 集群名称，必须提供，每个集群名字不能重复
+            - --cluster=fabedge
+            # 集群角色，必须提供，可选值有: host,member. 只能有一个集群是host集群
+            - --cluster-role=host
+            # 当cluster-role是host时必须配置, 保持默认值即可
+            #- --api-server-cert-file=/etc/fabedge/tls.crt
+            #- --api-server-key-file=/etc/fabedge/tls.key
+            # 当集群是member时，必须配置，地址是host集群对外暴露的可访问地址
+            #- --api-server-address=https://10.20.8.20:30303
+            # 当集群是member时，必须配置, token从主集群获取
+            #- --init-token=123467
             # 根据边缘节点的标签配置,可以配置多个, 比如: key1,key2=,key3=value3
             - --edge-labels=node-role.kubernetes.io/edge
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
-            # 如果在边缘节点不部署CNI的组件，配置为true，这样可以由FabEdge来负责边边通信
-            - --agent-enable-edge-ipam=true
-            # 边缘节点的Pod所在的网段, 当agent-enable-edge-ipam为true时需要配置，该网段不可与connector-subnets里的网段重叠
+            # 如果hairpinmode为true, 可以支持pod由service访问自身
+            - --agent-enable-edge-hairpinmode=true
+            # 边缘节点的Pod使用的网段, 当使用Calico时必须配置，该网段不可与connector-subnets里的网段重叠
             - --edge-pod-cidr=10.10.0.0/16
             # 建议在边缘节点不能运行kube-proxy时启用
             - --agent-enable-proxy=false
-            - --agent-masq-outgoing=false
+            - --agent-masq-outgoing=true
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
-            # connector组件所用的configmap名称
-            - --connector-config=connector-config
             # 边缘节点可访问的connector的IP地址或域名，多个地址用逗号分割
             - --connector-public-addresses=10.10.10.10
             # 请提供Service ClusterIP所属的网段
@@ -42,7 +53,22 @@ spec:
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
             - -v=5
-      hostNetwork: true
+          # ports, volumeMounts, readinessProbe配置仅限于cluster-role是host时使用
+          ports:
+            - containerPort: 3030
+              name: apiserver
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/fabedge/
+          readinessProbe:
+            httpGet:
+              port: 3030
+              scheme: HTTPS
+              path: "/api/ca-cert"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
       serviceAccountName: fabedge-operator
       affinity:
         nodeAffinity:
@@ -52,3 +78,13 @@ spec:
                   # 根据选择的边缘系统来配置，避免把operator部署到边缘节点
                   - key: node-role.kubernetes.io/edge
                     operator: DoesNotExist
+      # volumes配置仅限于cluster-role是host时使用
+      volumes:
+        - name: tls
+            secret:
+              items:
+                  - key: tls.crt
+                    path: tls.crt
+                  - key: tls.key
+                    path: tls.key
+              secretName: api-server-tls

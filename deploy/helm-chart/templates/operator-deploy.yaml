@@ -6,7 +6,9 @@ metadata:
   labels:
     {{- include "fabedgeOperator.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.operator.replicaCount }}
+  replicas: {{ .Values.operator.replicas }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "fabedgeOperator.labels" . | nindent 6 }}
@@ -20,26 +22,77 @@ spec:
           image: {{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
           args:
+            - --cluster={{ .Values.operator.cluster.name }}
+            - --cluster-role={{ .Values.operator.cluster.role }}
+            {{- if eq .Values.operator.cluster.role "host" }}
+            - --api-server-cert-file=/etc/fabedge/tls.crt
+            - --api-server-key-file=/etc/fabedge/tls.key
+            - --api-server-listen-address={{ .Values.operator.operatorAPIServer.listenAddress.address }}:{{ .Values.operator.operatorAPIServer.listenAddress.port }}
+            {{- end }}
+            {{- if eq .Values.operator.cluster.role "member" }}
+            - --api-server-address={{ .Values.operator.hostOperatorAPIServer }}
+            - --init-token={{ .Values.operator.initToken }}
+            {{- end }}
             - --edge-pod-cidr={{ .Values.operator.edgePodCIDR }}
-            - --agent-enable-edge-ipam=true
-            - --cni-type={{ .Values.cniType }}
+            {{- $cniType := "" -}}
+            {{- range $index, $pod := (lookup "v1" "Pod" "" "").items -}}
+              {{- if hasPrefix "kube-flannel" $pod.metadata.name -}}
+                {{- $cniType = "flannel" -}}
+              {{- end -}}
+              {{- if hasPrefix "calico-node" $pod.metadata.name -}}
+                {{- $cniType = "calico" -}}
+              {{- end -}}
+            {{- end }}
+            - --cni-type={{ $cniType }}
             - --agent-image={{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
             - --agent-strongswan-image={{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}
-            - --connector-config=connector-config
-            - --edge-labels={{ .Values.operator.edgeLabels }}
-            - --connector-public-addresses={{ .Values.operator.connectorPublicAddresses }}
-            - --connector-subnets={{ .Values.operator.connectorSubnets }}
+            - --edge-labels={{ join "," .Values.operator.edgeLabels }}
+            - --connector-public-addresses={{ join "," .Values.operator.connectorPublicAddresses }}
+            - --connector-subnets={{ join "," .Values.operator.serviceClusterIPRanges }}
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
             - --agent-masq-outgoing={{ .Values.operator.masqOutgoing }}
-            - --agent-enable-proxy={{ .Values.operator.enableProxy }}
+            {{- $enableProxy := false -}}
+            {{- range $index, $crd := (lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "").items -}}
+              {{- if eq $crd.metadata.name "devices.devices.kubeedge.io" -}}
+                {{- $enableProxy = true -}}
+              {{- end -}}
+            {{- end }}
+            - --agent-enable-proxy={{ $enableProxy }}
             - -v=5
+          {{- if eq .Values.operator.cluster.role "host" }}
+          ports:
+            - containerPort: 3030
+              name: apiserver
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/fabedge/
+          readinessProbe:
+            httpGet:
+              port: 3030
+              scheme: HTTPS
+              path: "/api/ca-cert"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
+          {{- end }}
           {{- if .Values.operator.resources }}
           resources:
 {{ toYaml .Values.operator.resources | indent 12 }}
           {{- end }}
-      hostNetwork: true
       serviceAccountName: {{ .Values.operator.name }}
       {{- if .Values.operator.affinity }}
       affinity:
 {{ toYaml .Values.operator.affinity | indent 8 }}
+      {{- end }}
+      {{- if eq .Values.operator.cluster.role "host" }}
+      volumes:
+      - name: tls
+        secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          secretName: api-server-tls
       {{- end }}

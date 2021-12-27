@@ -15,28 +15,33 @@
 package cert
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"time"
 )
 
 type Manager interface {
-	// SignCert Create a cert/key pair from CA with specified config
-	SignCert(cfg Config) (certDER []byte, keyDER []byte, err error)
+	// NewCertKey Create a cert/key pair from CA with specified config
+	NewCertKey(cfg Config) (certDER []byte, keyDER []byte, err error)
+	SignCert(csr []byte) ([]byte, error)
 	VerifyCert(cert *x509.Certificate, usages []x509.ExtKeyUsage) error
 	VerifyCertInPEM(certPEM []byte, usages []x509.ExtKeyUsage) error
+	GetCACert() *x509.Certificate
 	GetCACertPEM() []byte
 }
 
 type manager struct {
-	caCertPEM []byte
-	caCert    *x509.Certificate
-	caKey     *rsa.PrivateKey
-	certPool  *x509.CertPool
+	caCertPEM   []byte
+	caCert      *x509.Certificate
+	caKey       *rsa.PrivateKey
+	certPool    *x509.CertPool
+	validPeriod time.Duration
 }
 
-func NewManger(caDER, caKeyDER []byte) (Manager, error) {
+func NewManger(caDER, caKeyDER []byte, validPeriod time.Duration) (Manager, error) {
 	caCert, err := x509.ParseCertificate(caDER)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse a caCert from the given ASN.1 DER data, err: %v", err)
@@ -51,10 +56,11 @@ func NewManger(caDER, caKeyDER []byte) (Manager, error) {
 	pool.AddCert(caCert)
 
 	return &manager{
-		caCertPEM: EncodeCertPEM(caDER),
-		caCert:    caCert,
-		caKey:     caKey,
-		certPool:  pool,
+		caCertPEM:   EncodeCertPEM(caDER),
+		caCert:      caCert,
+		caKey:       caKey,
+		certPool:    pool,
+		validPeriod: validPeriod,
 	}, nil
 }
 
@@ -62,8 +68,35 @@ func (m manager) GetCACertPEM() []byte {
 	return m.caCertPEM
 }
 
-func (m manager) SignCert(cfg Config) ([]byte, []byte, error) {
+func (m manager) GetCACert() *x509.Certificate {
+	return m.caCert
+}
+
+func (m manager) NewCertKey(cfg Config) ([]byte, []byte, error) {
+	cfg.ValidityPeriod = m.validPeriod
+
 	return NewCertFromCA(m.caCert, m.caKey, cfg)
+}
+
+func (m manager) SignCert(csr []byte) ([]byte, error) {
+	req, err := x509.ParseCertificateRequest(csr)
+	if err != nil {
+		return nil, err
+	}
+
+	template, err := buildCertTemplate(Config{
+		CommonName:     req.Subject.CommonName,
+		Organization:   req.Subject.Organization,
+		DNSNames:       req.DNSNames,
+		IPs:            req.IPAddresses,
+		ValidityPeriod: m.validPeriod,
+		Usages:         ExtKeyUsagesServerAndClient,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return x509.CreateCertificate(rand.Reader, template, m.caCert, req.PublicKey, m.caKey)
 }
 
 func (m manager) VerifyCert(cert *x509.Certificate, usages []x509.ExtKeyUsage) error {

@@ -1,0 +1,14 @@
+# 只有host集群才需要生成
+apiVersion: v1
+kind: Service
+metadata:
+  name: fabedge-operator-api
+spec:
+  selector:
+    app: fabedge-operator
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 3030
+      targetPort: 3030
+      nodePort: 30303

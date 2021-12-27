@@ -35,21 +35,28 @@ const (
 )
 
 type Context struct {
-	KubeConfig        string
-	EdgeLabels        string
-	GenReport         bool
-	ReportFile        string
-	WaitTimeout       int64
-	PingTimeout       int64
-	CurlTimeout       int64
-	NetToolImage      string
-	PreserveResources string
-	ShowExecError     bool
+	MultiClusterConfigDir string
+	KubeConfig            string
+	EdgeLabels            string
+	GenReport             bool
+	ReportFile            string
+	WaitTimeout           int64
+	PingTimeout           int64
+	CurlTimeout           int64
+	NetToolImage          string
+	PreserveResources     string
+	ShowExecError         bool
+}
+
+func (c Context) IsMultiClusterTest() bool {
+	return len(c.MultiClusterConfigDir) > 0
 }
 
 var TestContext Context
 
 func RegisterAndHandleFlags() {
+	flag.StringVar(&TestContext.MultiClusterConfigDir, "multi-cluster-kube-config-dir", "",
+		"Multi cluster kubeconfig each named by it's own host IP, all stored in this dir for testing")
 	flag.StringVar(&TestContext.KubeConfig, "kube-config", clientcmd.RecommendedHomeFile,
 		"Path to config containing embedded authinfo for kubernetes.")
 	flag.StringVar(&TestContext.PreserveResources, "preserve-resources", string(PreserveResourcesOnFailure),
@@ -72,6 +79,7 @@ func RegisterAndHandleFlags() {
 		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 
 	flag.Parse()
+
 	// Turn on verbose by default to get spec names
 	config.DefaultReporterConfig.Verbose = true
 
@@ -94,9 +102,12 @@ func RegisterAndHandleFlags() {
 		fatalf("curl-timeout is too small")
 	}
 
-	_, err := LoadConfig()
-	if err != nil {
-		fatalf("cannot create kube client: %s", err)
+	if !TestContext.IsMultiClusterTest() {
+		// local cluster e2e-test
+		_, err := LoadConfig()
+		if err != nil {
+			fatalf("cannot create kube client: %s", err)
+		}
 	}
 
 	parsedEdgeLabels, err := parseLabels(TestContext.EdgeLabels)

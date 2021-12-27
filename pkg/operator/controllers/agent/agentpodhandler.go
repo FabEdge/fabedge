@@ -36,14 +36,15 @@ var _ Handler = &agentPodHandler{}
 type agentPodHandler struct {
 	namespace string
 
-	logLevel        int
-	agentImage      string
-	strongswanImage string
-	imagePullPolicy corev1.PullPolicy
-	useXfrm         bool
-	masqOutgoing    bool
-	enableProxy     bool
-	enableIPAM      bool
+	logLevel          int
+	agentImage        string
+	strongswanImage   string
+	imagePullPolicy   corev1.PullPolicy
+	useXfrm           bool
+	masqOutgoing      bool
+	enableProxy       bool
+	enableIPAM        bool
+	enableHairpinMode bool
 
 	client client.Client
 	log    logr.Logger
@@ -126,6 +127,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						"tls.crt",
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
 						fmt.Sprintf("--enable-ipam=%t", handler.enableIPAM),
+						fmt.Sprintf("--enable-hairpinmode=%t", handler.enableHairpinMode),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
