@@ -1,18 +1,18 @@
-# FabEdge User manual
-
-[toc]
+# FabEdge User Guide
 
 English | [中文](user-guide_zh.md)
 
-## Use the community
+[toc]
 
-By default, the pod on the edge node can only access the cloud pod and the node, and the pod on the edge node cannot communicate with each other, in order to avoid unnecessary waste caused by the establishment of too many tunnels on the edge node. In order to make the edge nodes that need to communicate accessible to each other, we put forward the concept of community. When several edge nodes need to communicate with each other, a community can be established, and the nodes that need to communicate can be put into the list of community members, so that these community members can access each other.  
+## Use community
 
-After multi-cluster communication is implemented, communities can also be used to organize clusters that need to communicate with each other.  
+By default, the pods on the edge node can only access the pods in cloud nodes. For the pods on the edge nodes to communicate with each other directly without going through the cloud, we can define a community.
 
-Creating a community is very simple. Suppose we now have an edge cluster, which we call "beijing" when deployed, and there are three edge nodes edge1, edge2, and edge3 in the cluster.  
+Communities can also be used to organize multiple clusters which need to communicate with each other.  
 
-Create the following community:  
+Assume there are two clusters, `beijng` and `shanghai`.  in the `beijing` cluster, there are there edge nodes of `edge1`, `edge2`, and `edge3`
+
+Create the following community to enable the communication between edge pods on the nodes of edge1/2/3 in cluster `beijing`
 
 ```yaml
 apiVersion: fabedge.io/v1alpha1
@@ -26,9 +26,7 @@ spec:
     - beijing.edge3
 ```
 
-> Note: The endpoint_name of a node is "cluster_name. node_name ". 
-
-If we now want to communicate between "beijing"cluster and "shanghai" cluster ,we can create the following cluster:  
+Create the following community to enable the communicate between `beijing` cluster and `shanghai` cluster 
 
 ```yaml
 apiVersion: fabedge.io/v1alpha1
@@ -41,11 +39,11 @@ spec:
     - shanghai.connector
 ```
 
-> Note: The member name is "cluster_name.connector".
 
-## Register the cluster
 
-Multi-cluster communication requires us to register endpoint information of each cluster in the host cluster:
+## Register the member cluster
+
+It is required to register the endpoint information of each member cluster into the host cluster for cross-cluster communication.
 
 1. Create a cluster resource in the host cluster: 
 
@@ -56,7 +54,7 @@ Multi-cluster communication requires us to register endpoint information of each
      name: beijing
    ```
 
-2. Check the token
+2. Get the token
 
    ```shell
    # kubectl describe cluster beijing
@@ -65,12 +63,9 @@ Multi-cluster communication requires us to register endpoint information of each
    Kind:         Cluster
    Spec:
      Token:   eyJhbGciOi--omitted--4PebW68A
-   
    ```
-
-   > Note: Within validity period, the token is used to initialize the member cluster.
-
-3. Deploy the FabEdge in a member cluster using the token generated in the first step. The operator of the member cluster reports the connector information of the cluster to the host cluster .
+   
+3. Deploy FabEdge in the member cluster using the token. 
 
    ```yaml
    # kubectl get cluster beijing -o yaml

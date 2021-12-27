@@ -1,41 +1,38 @@
-# FabEdge installation and deployment
-
-[toc]
+# FabEdge Installation Guide
 
 English | [中文](install_zh.md)
 
-## Conception
+[toc]
 
-- Cloud cluster: a standard K8S cluster located in the cloud, providing cloud services.
-- Edge node: Use edge computing framework such as KubeEdge to add a node to the cloud cluster and become one of its nodes to provide edge capabilities.
--  Edge cluster: a standard K8S cluster located on the edge to provide edge services.
+## Concepts
 
-Clusters be classified into two types based on roles:
+- **Cloud cluster**: a standard K8S cluster located in the cloud, providing the cloud part services.
+- **Edge cluster**: a standard K8S cluster located on the edge to provide edge part services.
 
-- host cluster：a cloud cluster that manages communication between member clusters. The first cluster deployed by FabEdge must be the host cluster.
-- member cluster：an edge cluster that registers with the host cluster and reports the endpoint network configuration of the cluster for multi-cluster communication.
+- **Host cluster**：a cloud cluster which manages the communication of member clusters. The first cluster deployed by FabEdge must be the host cluster.
+- **Member cluster**：an edge cluster that registers with the host cluster and reports the endpoint network configuration of the cluster for multi-cluster communication.
+- **Edge node** : a node is joined into the cloud cluster to provide edge part services using edge computing framework such as KubeEdge.
 
-Community： CRD defined by FabEdge, which can be used in two scenarios.
-
-- Defines the communication between edge nodes in the cluster.
-- Defines cross cluster communication.
-
+- **Community** : CRD defined by FabEdge,  used in two scenarios.
+  - Defines the communication between edge nodes
+  - Defines the communication between member clusters
 
 
-## Precondition
+
+## Prerequisite
 
 - Kubernetes (v1.18.8)
 - Flannel (v0.14.0) or Calico (v3.16.5)
 
 
 
-## Environmental preparation
+## Environment preparation
 
-1. Make sure that the firewall or security group allows the following protocols and ports.
+1. Make sure the the firewall or security group allows the following protocols and ports.
 
    - ESP(50)，UDP/500，UDP/4500
 
-1. Install helm for each cluster.
+1. Install helm for each cluster
 
      ```shell
      $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
@@ -46,9 +43,9 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
 
 
 
-## Deploying FabEdge in host cluster 
+## Deploying FabEdge in the host cluster 
 
-1. The current cluster configuration information is obtained for future use.
+1. Get the cluster information for future use
 
    ```shell
    $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
@@ -60,7 +57,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    service-cluster-ip-range : 10.233.0.0/18
    ```
 
-2. Label each edge node.
+2. To label all edge node with `node-role.kubernetes.io/edge`
 
    ```shell
    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
@@ -76,7 +73,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    node1    Ready    <none>   22h   v1.18.2
    ```
    
-3. On the master node, modify the CNI DaemonSet and forbid running on the edge nodes. 
+3. On the master node, modify the CNI DaemonSet and prevent it from running on the edge nodes. 
 
    ```bash
    $ cat > cni-ds.patch.yaml << EOF
@@ -103,7 +100,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
    ```
 
-4. Verify that each edge nodes  are not running  any CNI components.
+4. Verify there is **no** any CNI component running on the any edge nodes
 
    ```shell
    $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
@@ -112,7 +109,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    calico-node-z2fmf                         1/1     Running   0          62s   10.20.8.20    master
    ```
 
-5. Select a node running connector in the cloud and label it. 
+5. Select one or two nodes to run connector and label it with `node-role.kubernetes.io/connector`
 
    ```shell
    $ kubectl label no node1 node-role.kubernetes.io/connector=
@@ -124,9 +121,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    node1    Ready    connector   5h23m   v1.18.2
    ```
 
-   > Note: Select nodes that allow normal PODS to run, and do not have the stain of not being able to schedule, otherwise the deployment will fail.  
-
-6. Prepare values.yaml file.
+6. Prepare the values.yaml file.
 
    ```shell
    $ cat > values.yaml << EOF
@@ -147,28 +142,28 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    EOF
    ```
    
-   > Description：
+   > Note：
    >
-   > **edgePodCIDR**：If calico is used, it must be configured. If Flannel is used, this parameter cannot be configured.
+   > **edgePodCIDR**：it must be set, if use calico; it can not be set if Flannel is used.
    >
-   > **connectorPublicAddresses**: The selected address of the node running the `connector` service to ensure that edge nodes can access it.  
+   > **connectorPublicAddresses**:  The ip address of the selected node to run the `connector` service.  Make sure all edge nodes can reach it.
    >
-   > **serviceClusterIPRanges**: network segment used by services in cloud cluster, `service_cluster_ip_range` output by `get_cluster_info` script. 
+   > **serviceClusterIPRanges**:  the network segment used by services in cloud cluster,  the output of `service_cluster_ip_range` in `get_cluster_info` script. 
    >
-   > **cluster**: Configure the cluster name and the cluster role, the cluster name must not conflict, the first cluster must be the host cluster.  
+   > **cluster**: Configure the cluster name and the cluster role, the cluster name must be unique, the first cluster in FabEdge scope must be host cluster.  
    >
-   > **operatorAPIServer**: Configures the `NodePort` of the `operator apiserver` component.  
+   > **operatorAPIServer**: Configures the `NodePort` of the `operator api server` service
    
-7. Install Fabedge.
+7. Deploy Fabedge.
 
    ```
    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
    ```
 
-8. Verify that services are normal on **management node**.
+8. Verify that services are running on the master node
 
    ```shell
-   # Verify that nodes are ready.
+   # Verify all nodes are ready.
    $ kubectl get no
    NAME     STATUS   ROLES       AGE     VERSION
    edge1    Ready    edge        5h22m   v1.18.2
@@ -176,7 +171,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    master   Ready    master      5h29m   v1.18.2
    node1    Ready    connector   5h23m   v1.18.2
    
-   # Verify that the Kubernetes service is normal.
+   # Verify Kubernetes service is normal.
    $ kubectl get po -n kube-system
    NAME                                       READY   STATUS    RESTARTS   AGE
    controlplane-master                        4/4     Running   0          159m
@@ -187,7 +182,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    kube-proxy-47c5j                           1/1     Running   0          153m
    kube-proxy-4fckj                           1/1     Running   0          152m
    
-   # Verify that the FabEdge service is normal.
+   # Verify FabEdge service is normal.
    $ kubectl get po -n fabedge
    NAME                               READY   STATUS    RESTARTS   AGE
    connector-5947d5f66-hnfbv          2/2     Running   0          35m
@@ -196,7 +191,7 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    
    ```
    
-9. Add edge nodes that need to communicate directly to the same `community`.
+9. Add all edge nodes which need to communicate directly into one `community`.
 
    ```shell
    $ cat > node-community.yaml << EOF
@@ -213,16 +208,15 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    $ kubectl apply -f node-community.yaml
    ```
 
-   > In this example, edge nodes edge1 and edge2 of the cluster FabEdge are added to a same community to allow direct communication.
 
 
 
-## Deploy FabEdge on a member cluster (optional)
+## Deploy FabEdge in the member cluster (optional)
 
-1. Add a member cluster named "beijing" to get token for future registration.
+1. In the host cluster, to add a member cluster named "beijing" and get the token 
 
    ```shell
-   # Perform the operation on the master node in the host cluster.
+   # execute on the master node in the host cluster.
    $ cat > beijing.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Cluster
@@ -236,10 +230,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    eyJ------omitted-----9u0
    ```
 
-2. Obtain the current cluster configuration information for future use.
+2. Get the cluster information for future use.
 
    ```shell
-   # Operate on the local member cluster.
+   # execute on the local member cluster.
    $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
    This may take some time. Please wait.
    
@@ -249,10 +243,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    service-cluster-ip-range : 10.234.0.0/18
    ```
 
-3. Label all **edge nodes** 
+3. To label all edge node with `node-role.kubernetes.io/edge`
 
    ```shell
-   # Operate on the local member cluster.
+   # execute on the local member cluster.
    $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
    node/edge1 labeled
    $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
@@ -266,10 +260,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    node1    Ready    <none>   22h   v1.18.2
    ```
 
-4. On the master node, modify the **DaemonSet** of the existing **CNI** to prohibit running on the edge node.
+4. On the master node, modify the **DaemonSet** of the existing **CNI** to prevent it from running on the edge node.
 
    ```bash
-   # Operate on the local member cluster.
+   # Execute on the local member cluster.
    $ cat > cni-ds.patch.yaml << EOF
    spec:
      template:
@@ -287,14 +281,14 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
                    operator: DoesNotExist
    EOF
    
-   # If using Flannel
+   # If Flannel is used
    $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat cni-ds.patch.yaml)"
    
-   # If using Calico
+   # If Calico is used
    $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
    ```
 
-5. Verify that **all edge nodes**  are not running any CNI components.
+5. Verify there is **no** any CNI component running on the any edge nodes
 
    ```shell
    $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
@@ -302,10 +296,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1   
    ```
 
-6. Select a node running connector in the cloud and label it. `node1` is used as an example:
+6. Select one or two nodes to run connector and label it with `node-role.kubernetes.io/connector`
 
    ```shell
-   # Operate on the local member cluster.
+   # Excute on the local member cluster.
    $ kubectl label no node1 node-role.kubernetes.io/connector=
    
    $ kubectl get node
@@ -316,14 +310,14 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    node1    Ready    connector   5h23m   v1.18.2
    ```
 
-   > Node：
+   > Note：
    >
-   > Select nodes that allow normal pod to run, and do not have the stain of not being able to dispatch, or the deployment will fail.  
+   > To select nodes that allow normal pod to run, and can not have the taint of NoSchedule, or the deployment will fail.  
 
-7. Prepare the values.yaml file 
+7. Prepare the helm values.yaml file 
 
    ```shell
-   # Operate on the local member cluster.
+   # Excute on the local member cluster.
    
    $ cat > values.yaml << EOF
    operator:
@@ -344,17 +338,19 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    EOF
    ```
    
-   > Description：
+   > Note：
    >
-   > **edgePodCIDR**：If calico is used, it must be configured; If Flannel is used, this parameter cannot be configured.
+   > Note：
    >
-   > **connectorPublicAddresses**: The selected address of the node running the `connector` service to ensure that edge nodes can access it.  
+   > **edgePodCIDR**：it must be set, if use calico; it can not be set if Flannel is used.
    >
-   > **serviceClusterIPRanges**: network segment used by services in cloud cluster, `service_cluster_ip_range` output by `get_cluster_info` script. 
+   > **connectorPublicAddresses**:  The ip address of the selected node to run the `connector` service.  Make sure all edge nodes can reach it.
    >
-   > **cluster**: Configure the cluster name and the cluster role, the cluster name must not conflict, the first cluster must be the host role.  
+   > **serviceClusterIPRanges**:  the network segment used by services in cloud cluster,  the output of `service_cluster_ip_range` in `get_cluster_info` script. 
    >
-   > **operatorAPIServer**: Configures the `NodePor`t of the `Operator Apiserver` component. 
+   > **cluster**: Configure the cluster name and the cluster role, the cluster name must be unique, the first cluster in FabEdge scope must be host cluster, the others are member role.
+   >
+   > **operatorAPIServer**: Configures the url of the `Operator api server` component. 
    
 8. Install FabEdge 
 
@@ -362,10 +358,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
    ```
 
-9. Verify that services are normal on **management node**.
+9. Verify that services are running on master
 
    ```shell
-   # Operate on the local member cluster.
+   # Execute on the local member cluster.
    
    # Verify that nodes are ready.
    $ kubectl get no
@@ -399,10 +395,10 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
 
 ## Create a multi-cluster Community (optional）
 
-1. Add the cluster that needs to communicate to a Community.
+1. Add the clusters that need to communicate into one community.
 
    ```shell
-   # Operate on the host cluster
+   # Execute on the host cluster
    $ cat > community.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Community
@@ -410,21 +406,21 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
      name: connectors
    spec:
      members:
-       - fabedge.connector  
+       - fabedge.connector  #{cluster_name}.connector
        - beijing.connector    
    EOF
    
    $ kubectl apply -f community.yaml
    ```
    
-   > **members** is a list of endpoint names. 
 
 
-## Configuration related to edge computing framework  
 
-### If using KubeEdge
+## framework-dependent Configuration
 
-1. Modify edgecore configuration on **each edge node**.
+### If KubeEdge is used
+
+1. Modify edgecore configuration on **all edge nodes**.
 
    ```shell
    $ vi /etc/kubeedge/config/edgecore.yaml
@@ -452,9 +448,9 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
    $ systemctl restart edgecore
    ```
 
-### If using SuperEdge
+### If SuperEdge is used
 
-1. Check the service status, if not Ready, remove the pod and then rebuild.
+1. Check the pod status. If  any pod is not ready,  to delete and rebuild it. 
 
     ```shell
     $ kubectl get po -n edge-system
@@ -482,21 +478,21 @@ Community： CRD defined by FabEdge, which can be used in two scenarios.
 
 1. The pod on the master node cannot communicate with edge pod.
 
-    SupeEdge default with a stain on the master node：node-role.kubernetes.io/master:NoSchedule,so  don't start fabedge-cloud-agent, causing pod communication on master node to fail. If necessary, the DaemonSet configuration of the fabedge-cloud-agent can be modified to tolerate this stain.  
+    SupeEdge has a taint of `node-role.kubernetes.io/master:NoSchedule` on master node by default, so fabedge-cloud-agent is not running on it. If needed, to update the DaemonSet of the fabedge-cloud-agent to tolerate it.  
 
 
 
-## Configurations related to CNI
+## CNI-depent Configurations
 
-### If using Calico
+### If Calico is used
 
-No matter what clusters, as long as the cluster uses Calico, add all Pod and Service network segments of other clusters to Calico of the current cluster to prevent Calico from doing source address translation, resulting in communication failure.  
+Regardless the cluster role, add all Pod and Service network segments of all other clusters to the cluster with Calico, which prevents Calico from doing source address translation.  
 
-For example: host (Calico)  + member (Calico) + member(Flannel)
+one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (Flannel)
 
-* Operate on the master node of the host (Calico) cluster, then configure the addresses of the other two member clusters into Calico of the host cluster.  
-* Operate on the master node of the Member (Calico) cluster,then configure the addresses of the additional host (Calico) and member(Flannel) clusters to Calico of the host cluster.
-* member(Flannel) No operation required. 
+* on the host (Calico) cluster, to add the addresses of the member (Calico) cluster and the member(Flannel) cluster
+* on the member1 (Calico) cluster, to add the addresses of the host (Calico) cluster and the member(Flannel) cluster
+* on the member2 (Flannel) cluster, there is NO any configuration required. 
 
 ```shell
 $ cat > cluster-cidr-pool.yaml << EOF
@@ -530,12 +526,11 @@ EOF
 $ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 ```
 
-> **cidr**:  `cluster-cidr` and `service-cluster-ip-range` are output by `get_cluster_info.sh` of the added cluster.
 
 
-## FaQs
+## FAQ
 
-1. If asymmetric routes exist on some networks, disable **rp_filter** on the cloud node  
+1. If asymmetric routes exist, to disable **rp_filter** on all cloud node  
    ```shell
    $ sudo for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done 
    # save the configuration.
@@ -544,7 +539,7 @@ $ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
    net.ipv4.conf.all.rp_filter=0
    ```
 
-1. If Error is display：“Error: cannot re-use a name that is still in use”. Uninstall fabedge and try again.
+1. If Error with：“Error: cannot re-use a name that is still in use”.   to uninstall fabedge and try again.
    ```shell
    $ helm uninstall -n fabedge fabedge
    release "fabedge" uninstalled

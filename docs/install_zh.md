@@ -490,7 +490,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
 
 ### 如果使用Calico
 
-不论是什么集群角色,只要集群使用Calico，就将其它所有集群的Pod和Service的网段加入当前集群的Calico,防止Calico做源地址转换，导致不能通讯。
+不论是什么集群角色, 只要集群使用Calico，就要将其它所有集群的Pod和Service的网段加入当前集群的Calico, 防止Calico做源地址转换，导致不能通讯。
 
 例如: host (Calico)  + member (Calico) + member(Flannel)
 
