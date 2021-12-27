@@ -6,11 +6,11 @@
 
 <img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="40%">  
 
-FabEdge是一款基于kubernetes构建的，专注于边缘计算场景的容器网络方案，支持KubeEdge/SuperEdge/OpenYurt等主流边缘计算框架。 FabEdge解决了边缘计算场景下容器网络配置管理复杂，网络割裂互不通信，缺少服务发现、拓扑感知能力，无法提供就近访问等问题，使能云边、边边之间的业务协同。
+FabEdge是一款基于kubernetes构建的，专注于边缘计算场景的容器网络方案，支持KubeEdge/SuperEdge/OpenYurt等主流边缘计算框架。 FabEdge解决了边缘计算场景下容器网络配置管理复杂，网络割裂互不通信，缺少拓扑感知能力，无法提供就近访问等问题，使能云边、边边之间的业务协同。
 
-FabEdge不仅支持边缘节点（通过KubeEdge等边缘计算框架加入集群的远程节点），还支持边缘集群（独立的远程的K8S集群）。 
+FabEdge不仅支持边缘节点（通过KubeEdge等边缘计算框架加入集群的远程节点），还支持边缘集群（独立的远程K8S集群）。 
 
-FabEdge支持弱网环境，如4/5G，WiFi，等，适用于物联网，车联网、智慧城市、智慧园区等场景。
+FabEdge支持弱网环境，如4/5G，WiFi等，适用于物联网，车联网、智慧城市、智慧园区等场景。
 
 ## 特性
 
@@ -35,7 +35,7 @@ FabEdge支持弱网环境，如4/5G，WiFi，等，适用于物联网，车联�
 * FabEdge包括的组件：Operators, Connector，Agent和Cloud-Agent
 * Operator运行在云端任意的节点，通过监听节点，服务等K8S资源，为每个Agent维护一个ConfigMap，包括了本Agent需要的路由信息，比如子网，端点，负载均衡规则等，同时为每个Agent维护一个Secret，包括CA证书，节点证书等。Operator也负责Agent自身的管理，包括创建，更新，删除等。
 * Connector运行在云端选定的节点，负责管理从边缘节点发起的隧道，在边缘节点和云端集群之间转发流量。从Connector节点到云端其它非Connector节点的流量转发仍然依靠云端CNI。
-* Cloud-Agent运行在集群中所有非边缘，非Connector的节点，它负责管理到远程的路由。  
+* Cloud-Agent运行在集群中所有非边缘，非Connector的节点，它负责管理本节点到远端的路由。  
 * Agent运行在每个边缘节点上， 它使用自己的ConfigMap和Secret的信息，发起到云端Connector和其它边缘节点的隧道，负责本节点的路由，负责均衡，iptables规则的管理。
 
 ## 兼容矩阵
