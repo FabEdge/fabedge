@@ -7,12 +7,13 @@ require (
 	github.com/bep/debounce v1.2.0
 	github.com/coreos/go-iptables v0.6.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-chi/chi/v5 v5.0.0
 	github.com/go-logr/logr v0.3.0
+	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/hashicorp/memberlist v0.1.3
 	github.com/jjeffery/stringset v1.0.2
+	github.com/miekg/dns v1.1.25 // indirect
 	github.com/moby/ipvs v1.0.1
 	github.com/olekukonko/tablewriter v0.0.1
 	github.com/onsi/ginkgo v1.14.1
