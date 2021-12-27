@@ -8,9 +8,11 @@
 
 English | [中文](README_zh.md)
 
-FabEdge is a secure edge networking solution based on Kubernetes. It enables cloud-edge, edge-edge collaboration and solves the problems including complex  configuration management, network isolation, lack of topology-aware routing, etc.
+FabEdge is a secure edge networking solution based on Kubernetes. It enables cloud-edge, edge-edge collaboration and solves the problems including complex  configuration management, network isolation, lack of topology-aware routing, etc. 
 
-FabEdge supports weak transport network, such as 4/5G, WiFi，LoRa, etc. It is suitable for scenarios such as IoT (Internet of Things),  IoV (Internet of Vehicles), etc.
+FabEdge is able to manage the network of not only the edge nodes, but also the edge clusters. 
+
+FabEdge supports weak transport network, such as 4/5G, WiFi, etc. It is suitable for scenarios such as IoT (Internet of Things),  IoV (Internet of Vehicles), etc.
 
 ## Features
 * **Kubernetes Native**: Compatible with Kubernetes, transparent to applications.  
@@ -25,14 +27,14 @@ FabEdge supports weak transport network, such as 4/5G, WiFi，LoRa, etc. It is s
 * **Easy to use**: designed using operator pattern, minimized ongoing operation effort.  
 
 ## How it works
-<img src="docs/images/fabedge-arch-v2.jpeg" alt="fabedge-arch-v2" style="zoom:48%;" />
+<img src="docs/images/fabedge-arch.jpeg" alt="fabedge-arch" style="zoom:48%;" />
 
 * The cloud can be any Kubernetes cluster with supported CNI network plug-in, including Calico, Flannel, etc.
 * FabEdge builds a layer 3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
-* Fabedge consists of three key components: **Operators, Connector and Agent**
+* Fabedge consists of **Operators, Connector, Agent, Cloud-Agent**.
 * Operator monitors k8s resources such as node, service, and endpoint in the cloud, and creates a configmap for each edge node, which contains the  configuration information such as the subnet, tunnel, and load balancing rules. The operator is also responsible to manage the life cycle of agent pod for each edge node.  
 * Connector is responsible to terminate the tunnels from edge nodes, and forward traffic between the cloud and the edge. It relies on the cloud CNI plug-in to forward traffic to other non-connector nodes in the cloud.
-* The edge node uses the existing k8s CNI plug-in bridge and host-local.  
+* Cloud-Agent runs on the non-connector nodes in the cluster and manages the routes to remote peers.
 * Each edge node runs an agent and consumes its own configmap including the following functions:
     - Manage the configuration file of the CNI plug-in of this node
     - Manage the tunnels of this node
