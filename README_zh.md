@@ -27,7 +27,7 @@ FabEdge支持弱网环境，如4/5G，WiFi等，适用于物联网，车联网�
 
 ## 工作原理
 
-<img src="docs/images/FabEdge-Arch.jpeg" alt="fabedge-arch" style="zoom:48%;" />
+<img src="docs/images/FabEdge-Arch.jpg" alt="fabedge-arch"/>
 
 * KubeEdge等边缘计算框架建立了控制面，把边缘节点加入云端K8S集群，使得可以在边缘节点上下发Pod等资源；FabEdge在此基础上建立了一个三层的数据转发面，使得Pod和Pod之间可以直接通讯。
 * 云端可以是任何K8S集群，目前支持的CNI包括Calico， Flannel。

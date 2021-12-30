@@ -27,7 +27,7 @@ FabEdge supports weak transport network, such as 4/5G, WiFi, etc. It is suitable
 * **Easy to use**: designed using operator pattern, minimized ongoing operation effort.  
 
 ## How it works
-<img src="docs/images/FabEdge-Arch.jpeg" alt="fabedge-arch" style="zoom:48%;" />
+<img src="docs/images/FabEdge-Arch.jpg" alt="fabedge-arch" />
 
 * The cloud can be any Kubernetes cluster with supported CNI network plug-in, including Calico, Flannel, etc.
 * FabEdge builds a layer 3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
