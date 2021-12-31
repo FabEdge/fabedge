@@ -42,7 +42,7 @@ spec:
 
 
 
-## 注册集群
+## 注册边缘集群
 
 多集群通信需要把各个集群的端点信息在主集群注册：
 
@@ -91,3 +91,15 @@ spec:
        type: Connector
      token: eyJhbGciOi--省略--4PebW68A
    ```
+
+
+
+## 为边缘节点指定公网地址
+
+对于公有云的场景，云主机一般只配置了私有地址，导致FabEdge无法建立边缘到边缘的隧道。这种情况下可以为云主机申请一个公网地址，加入节点的注解，FabEdge将自动使用这个公网地址建立隧道，而不是私有地址。
+
+```shell
+# 为边缘节点edge1指定公网地址60.247.88.194
+kubectl annotate node edge1 "fabedge.io/node-public-addresses=60.247.88.194"
+```
+

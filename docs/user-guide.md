@@ -41,7 +41,7 @@ spec:
 
 
 
-## Register the member cluster
+## Register member cluster
 
 It is required to register the endpoint information of each member cluster into the host cluster for cross-cluster communication.
 
@@ -88,4 +88,15 @@ It is required to register the endpoint information of each member cluster into 
        type: Connector
      token: eyJhbGciOi--omit--4PebW68A
    ```
+
+
+
+## Assign public address for edge node
+
+In public cloud, the virtual machine has only private address, which prevents from FabEdge to establish the edge-to-edge tunnels. In this case, the user can apply a public address for the virtual machine and add it to the annotation of the edge node. FabEdge will use this public address to establish the tunnel instead of the private one.
+
+```shell
+#assign public address of 60.247.88.194 to node edge1
+kubectl annotate node edge1 "fabedge.io/node-public-addresses=60.247.88.194"
+```
 
