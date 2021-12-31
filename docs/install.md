@@ -19,14 +19,14 @@ English | [中文](install_zh.md)
 
 
 
-## Prerequisite
+## Prerequisites
 
 - Kubernetes (v1.18.8)
 - Flannel (v0.14.0) or Calico (v3.16.5)
 
 
 
-## Environment preparation
+## Preparations
 
 1. Make sure the the firewall or security group allows the following protocols and ports.
 
@@ -213,10 +213,10 @@ English | [中文](install_zh.md)
 
 ## Deploy FabEdge in the member cluster (optional)
 
-1. In the host cluster, to add a member cluster named "beijing" and get the token 
+1. In the host cluster, add a member cluster named "beijing" for example and get the token for regestration. 
 
    ```shell
-   # execute on the master node in the host cluster.
+   # run on the master node in the host cluster.
    $ cat > beijing.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Cluster
@@ -230,95 +230,10 @@ English | [中文](install_zh.md)
    eyJ------omitted-----9u0
    ```
 
-2. Get the cluster information for future use.
+7. In the local member cluster, prepare the helm values.yaml file 
 
    ```shell
-   # execute on the local member cluster.
-   $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
-   This may take some time. Please wait.
-   
-   clusterDNS               : 169.254.25.10
-   clusterDomain            : root-cluster
-   cluster-cidr             : 10.234.64.0/18
-   service-cluster-ip-range : 10.234.0.0/18
-   ```
-
-3. To label all edge node with `node-role.kubernetes.io/edge`
-
-   ```shell
-   # execute on the local member cluster.
-   $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
-   node/edge1 labeled
-   $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
-   node/edge2 labeled
-   
-   $ kubectl get no
-   NAME     STATUS   ROLES    AGE   VERSION
-   edge1    Ready    edge     22h   v1.18.2
-   edge2    Ready    edge     22h   v1.18.2
-   master   Ready    master   22h   v1.18.2
-   node1    Ready    <none>   22h   v1.18.2
-   ```
-
-4. On the master node, modify the **DaemonSet** of the existing **CNI** to prevent it from running on the edge node.
-
-   ```bash
-   # Execute on the local member cluster.
-   $ cat > cni-ds.patch.yaml << EOF
-   spec:
-     template:
-       spec:
-         affinity:
-           nodeAffinity:
-             requiredDuringSchedulingIgnoredDuringExecution:
-               nodeSelectorTerms:
-               - matchExpressions:
-                 - key: kubernetes.io/os
-                   operator: In
-                   values:
-                   - linux
-                 - key: node-role.kubernetes.io/edge
-                   operator: DoesNotExist
-   EOF
-   
-   # If Flannel is used
-   $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat cni-ds.patch.yaml)"
-   
-   # If Calico is used
-   $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
-   ```
-
-5. Verify there is **no** any CNI component running on the any edge nodes
-
-   ```shell
-   $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
-   kube-flannel-79l8h               1/1     Running   0          3d19h   10.20.8.24    master         
-   kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1   
-   ```
-
-6. Select one or two nodes to run connector and label it with `node-role.kubernetes.io/connector`
-
-   ```shell
-   # Excute on the local member cluster.
-   $ kubectl label no node1 node-role.kubernetes.io/connector=
-   
-   $ kubectl get node
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   ```
-
-   > Note：
-   >
-   > To select nodes that allow normal pod to run, and can not have the taint of NoSchedule, or the deployment will fail.  
-
-7. Prepare the helm values.yaml file 
-
-   ```shell
-   # Excute on the local member cluster.
-   
+   # run on master
    $ cat > values.yaml << EOF
    operator:
      # edgePodCIDR: 10.10.0.0/16 
@@ -328,67 +243,17 @@ English | [中文](install_zh.md)
      - 10.234.0.0/18
    
      cluster:
-       name: beijing
-       role: member
+       name: beijing 
+       role: member    # must be "member"
      
-     hostOperatorAPIServer: https://10.20.8.28:30303
+     hostOperatorAPIServer: https://10.20.8.28:30303  # the url of the Operator api server in host cluster 
      
      initToken: eyJ------omitted-----9u0
    
    EOF
    ```
    
-   > Note：
-   >
-   > Note：
-   >
-   > **edgePodCIDR**：it must be set, if use calico; it can not be set if Flannel is used.
-   >
-   > **connectorPublicAddresses**:  The ip address of the selected node to run the `connector` service.  Make sure all edge nodes can reach it.
-   >
-   > **serviceClusterIPRanges**:  the network segment used by services in cloud cluster,  the output of `service_cluster_ip_range` in `get_cluster_info` script. 
-   >
-   > **cluster**: Configure the cluster name and the cluster role, the cluster name must be unique, the first cluster in FabEdge scope must be host cluster, the others are member role.
-   >
-   > **operatorAPIServer**: Configures the url of the `Operator api server` component. 
-   
-8. Install FabEdge 
-
-   ```
-   $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
-   ```
-
-9. Verify that services are running on master
-
-   ```shell
-   # Execute on the local member cluster.
-   
-   # Verify that nodes are ready.
-   $ kubectl get no
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   
-   # Verify that the Kubernetes service is normal.
-   $ kubectl get po -n kube-system
-   NAME                                       READY   STATUS    RESTARTS   AGE
-   controlplane-master                        4/4     Running   0          159m
-   coredns-546565776c-44xnj                   1/1     Running   0          159m
-   coredns-546565776c-7vvnl                   1/1     Running   0          159m
-   kube-flannel-ds-hbb7j                      1/1     Running   0          28m
-   kube-flannel-ds-zmwbd                      1/1     Running   0          28m
-   kube-proxy-47c5j                           1/1     Running   0          153m
-   kube-proxy-4fckj                           1/1     Running   0          152m
-   
-   # Verify that the FabEdge service is normal.
-   $ kubectl get po -n fabedge
-   NAME                               READY   STATUS    RESTARTS   AGE
-   connector-5947d5f66-hnfbv          2/2     Running   0          35m
-   fabedge-agent-edge1                2/2     Running   0          22s
-   fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
-   ```
+8.  The others are same as in the host cluster.  See the previous section for details.
 
 
 
@@ -398,7 +263,7 @@ English | [中文](install_zh.md)
 1. Add the clusters that need to communicate into one community.
 
    ```shell
-   # Execute on the host cluster
+   # run on the host cluster
    $ cat > community.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Community

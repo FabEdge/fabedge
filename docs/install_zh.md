@@ -4,18 +4,15 @@
 
 ## 概念
 
-- 云端集群：一个标准的K8S集群，位于云端，主要提供云端的服务
-- 边缘节点： 使用KubeEdge等边缘计算框架，将一个节点加入云端集群，成为它的一个节点，提供边缘能力
-- 边缘集群：一个标准的K8S集群，位于边缘侧，主要提供边缘服务
+- **云端集群**：一个标准的K8S集群，位于云端，提供云端的计算能力
+- **边缘节点**： 使用KubeEdge等边缘计算框架，将一个节点加入云端集群，提供边缘计算能力
+- **边缘集群**：一个标准的K8S集群，位于边缘侧，提供边缘计算能力
 
-集群按角色分可为两类：
-- host集群：一个云端集群，用于管理member集群的跨集群通讯（FabEdge部署的第一个集群必须是host集群）
-- member集群：一个边缘集群，注册到host集群，上报本集群端点网络配置，用于多集群通讯
-
-Community：FabEdge定义的CRD，有两种使用场景：
-
-- 定义集群内边缘节点之间的通讯
-- 定义跨集群之间的通讯
+- **host集群**：选定的一个云端集群，用于管理其它集群的跨集群通讯（FabEdge部署的第一个集群必须是host集群）
+- **member集群**：一个边缘集群，注册到host集群，上报本集群端点网络配置信息，用于多集群通讯
+- **Community**：FabEdge定义的CRD，有两种场景：
+  - 定义一个集群内多个边缘节点之间的通讯
+  - 定义多个边缘集群之间的通讯
 
 
 
@@ -43,7 +40,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
 
 
 
-## 在host集群上部署FabEdge
+## 在host集群里部署FabEdge
 
 1. 获取当前集群配置信息，供后面使用
 
@@ -73,9 +70,11 @@ Community：FabEdge定义的CRD，有两种使用场景：
    node1    Ready    <none>   22h   v1.18.2
    ```
    
-3. 在master节点上，修改cni的DaemonSet，禁止在边缘节点上运行
+3. 修改CNI的配置，禁止其在边缘节点上运行
 
    ```bash
+   # 在master节点上执行
+   
    $ cat > cni-ds.patch.yaml << EOF
    spec:
      template:
@@ -93,14 +92,14 @@ Community：FabEdge定义的CRD，有两种使用场景：
                    operator: DoesNotExist
    EOF
    
-   # 如果使用Flannel
+   # 如果是Flannel
    $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat cni-ds.patch.yaml)"
    
-   # 如果使用Calico
+   # 如果是Calico
    $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
    ```
 
-4. 确认**所有边缘节点**上**没有**运行**任何**cni的组件
+4. 确认**所有边缘节点**上**没有**运行**任何**CNI的组件
 
    ```shell
    $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
@@ -109,7 +108,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
    calico-node-z2fmf                         1/1     Running   0          62s   10.20.8.20    master
    ```
 
-5. 在云端选取一个运行connector的节点，并为它做标记，以node1为例
+5. 在云端选取一个节点运行connector，为它做标记，以node1为例
 
    ```shell
    $ kubectl label no node1 node-role.kubernetes.io/connector=
@@ -121,22 +120,23 @@ Community：FabEdge定义的CRD，有两种使用场景：
    node1    Ready    connector   5h23m   v1.18.2
    ```
 
-   > 注意：选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
+   > 注意：选取的节点要允许运行普通的Pod，不要有不能调度的污点，否则部署会失败
 
 6. 准备values.yaml文件
 
    ```shell
+   # 在master上执行
    $ cat > values.yaml << EOF
    operator:
-     # edgePodCIDR: 10.10.0.0/16 
+     edgePodCIDR: 10.10.0.0/16   # 如果使用calico，必须配置；如果使用Flannel，不能配置
      connectorPublicAddresses:
      - 10.20.8.28
      serviceClusterIPRanges:
      - 10.233.0.0/18
        
      cluster:
-       name: fabedge
-       role: host
+       name: fabedge  # 集群的名字
+       role: host     # 集群角色，第一个集群必须是host
      
      operatorAPIServer:
        nodePort: 30303
@@ -146,15 +146,13 @@ Community：FabEdge定义的CRD，有两种使用场景：
    
    > 说明：
    >
-   > **edgePodCIDR**：如果使用calico，必须配置；如果使用Flannel，不能配置。
+   > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问
    >
-   > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
+   > **serviceClusterIPRanges**: 云端集群中的service使用的网段，get_cluster_info脚本输出的service_cluster_ip_range
    >
-   > **serviceClusterIPRanges**: 云端集群中的service使用的网段，get_cluster_info脚本输出的service_cluster_ip_range。
+   > **cluster**: 配置集群名称和集群角色，集群名字不能冲突， 第一个集群必须是host角色
    >
-   > **cluster**: 配置集群名称和集群角色，集群名字不能冲突， 第一个集群必须是host角色。
-   >
-   > **operatorAPIServer**: 配置Operator apiserver组件的NodePort。
+   > **operatorAPIServer**: Operator API server使用的NodePort
    
 7. 安装FabEdge 
 
@@ -162,10 +160,10 @@ Community：FabEdge定义的CRD，有两种使用场景：
    $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
    ```
 
-8. 在**管理节点**上确认服务正常
+8. 确认服务正常
 
    ```shell
-   # 确认节点就绪
+   # 在master上执行
    $ kubectl get no
    NAME     STATUS   ROLES       AGE     VERSION
    edge1    Ready    edge        5h22m   v1.18.2
@@ -173,7 +171,6 @@ Community：FabEdge定义的CRD，有两种使用场景：
    master   Ready    master      5h29m   v1.18.2
    node1    Ready    connector   5h23m   v1.18.2
    
-   # 确认Kubernetes服务正常
    $ kubectl get po -n kube-system
    NAME                                       READY   STATUS    RESTARTS   AGE
    controlplane-master                        4/4     Running   0          159m
@@ -184,7 +181,6 @@ Community：FabEdge定义的CRD，有两种使用场景：
    kube-proxy-47c5j                           1/1     Running   0          153m
    kube-proxy-4fckj                           1/1     Running   0          152m
    
-   # 确认FabEdge服务正常
    $ kubectl get po -n fabedge
    NAME                               READY   STATUS    RESTARTS   AGE
    connector-5947d5f66-hnfbv          2/2     Running   0          35m
@@ -193,9 +189,10 @@ Community：FabEdge定义的CRD，有两种使用场景：
    
    ```
    
-9. 把需要直接通讯的边缘节点加入同一个Community
+9. 为需要通讯的边缘节点创建Community
 
    ```shell
+   # 在master节点执行
    $ cat > node-community.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Community
@@ -209,199 +206,64 @@ Community：FabEdge定义的CRD，有两种使用场景：
    
    $ kubectl apply -f node-community.yaml
    ```
-
-   > 本例表示将集群fabedge的边缘节点edge1和edge2加入同一个 community，允许直接通讯
-
+   
 
 
-## 在member集群上部署FabEdge（可选）
 
-1. 添加一个名字叫“beijing”的成员集群，获取Token供注册使用
+## 在member集群里部署FabEdge（可选）
+
+1. 在**host集群**，添加一个名字叫“beijing”的成员集群，获取Token供注册使用
 
    ```shell
-   # 在host集群master节点上操作
+   # 在master节点上执行
    $ cat > beijing.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Cluster
    metadata:
-     name: beijing
+     name: beijing # 集群名字
    EOF
    
    $ kubectl apply -f beijing.yaml
    
    $ kubectl get cluster beijing -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
-   eyJ------省略了很长内容-----9u0
+   eyJ------省略内容-----9u0 
    ```
 
-2. 获取当前集群配置信息，供后面使用
+7. 在**成员集群**，准备values.yaml文件
 
    ```shell
-   # 在本成员集群上操作
-   $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
-   This may take some time. Please wait.
-   
-   clusterDNS               : 169.254.25.10
-   clusterDomain            : root-cluster
-   cluster-cidr             : 10.234.64.0/18
-   service-cluster-ip-range : 10.234.0.0/18
-   ```
-
-3. 为**所有边缘节点**添加标签
-
-   ```shell
-   # 在本成员集群上操作
-   $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
-   node/edge1 labeled
-   $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
-   node/edge2 labeled
-   
-   $ kubectl get no
-   NAME     STATUS   ROLES    AGE   VERSION
-   edge1    Ready    edge     22h   v1.18.2
-   edge2    Ready    edge     22h   v1.18.2
-   master   Ready    master   22h   v1.18.2
-   node1    Ready    <none>   22h   v1.18.2
-   ```
-
-4. 在master节点上，修改现有cni的DaemonSet，禁止在边缘节点上运行
-
-   ```bash
-   # 在本成员集群上操作
-   $ cat > cni-ds.patch.yaml << EOF
-   spec:
-     template:
-       spec:
-         affinity:
-           nodeAffinity:
-             requiredDuringSchedulingIgnoredDuringExecution:
-               nodeSelectorTerms:
-               - matchExpressions:
-                 - key: kubernetes.io/os
-                   operator: In
-                   values:
-                   - linux
-                 - key: node-role.kubernetes.io/edge
-                   operator: DoesNotExist
-   EOF
-   
-   # 如果使用Flannel
-   $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat cni-ds.patch.yaml)"
-   
-   # 如果使用Calico
-   $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
-   ```
-
-5. 确认**所有边缘节点**上**没有**运行**任何**cni的组件
-
-   ```shell
-   $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
-   kube-flannel-79l8h               1/1     Running   0          3d19h   10.20.8.24    master         
-   kube-flannel-8j9bp               1/1     Running   0          3d19h   10.20.8.23    node1   
-   ```
-
-6. 在云端选取一个运行connector的节点，并为它做标记，以node1为例
-
-   ```shell
-   # 在本成员集群上操作
-   $ kubectl label no node1 node-role.kubernetes.io/connector=
-   
-   $ kubectl get node
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   ```
-
-   > 注意：
-   >
-   > 选取的节点要允许运行普通的POD，不要有不能调度的污点，否则部署会失败。
-
-7. 准备values.yaml文件
-
-   ```shell
-   # 在本成员集群上操作
-   
+   # 在master上执行
    $ cat > values.yaml << EOF
    operator:
-     # edgePodCIDR: 10.10.0.0/16 
+     edgePodCIDR: 10.10.0.0/16  # 如果使用calico，必须配置；如果使用Flannel，不能配置
      connectorPublicAddresses:
      - 10.20.8.12
      serviceClusterIPRanges:
      - 10.234.0.0/18
    
      cluster:
-       name: beijing
-       role: member
+       name: beijing # 集群名字
+       role: member  # 必须是“member”
      
-     hostOperatorAPIServer: https://10.20.8.28:30303
+     hostOperatorAPIServer: https://10.20.8.28:30303  # host集群里operator api server的地址
      
-     initToken: eyJ------省略了很长内容-----9u0
+     initToken: eyJ------省略内容-----9u0   # 在host集群添加成员集群时生成的token
    
    EOF
    ```
    
-   > 说明：
-   >
-   > **edgePodCIDR**：如果使用calico，必须配置；如果使用Flannel，不能配置。
-   >
-   > **connectorPublicAddresses**: 前面选取的，运行connector服务的节点的地址，确保能够被边缘节点访问。
-   >
-   > **serviceClusterIPRanges**: 云端集群中的service使用的网段，get_cluster_info脚本输出的service_cluster_ip_range。
-   >
-   > **cluster**: 配置集群名称和集群角色， 集群名字必须唯一，角色是member
-   >
-   > **hostOperatorAPIServer**: 配置host集群中配置Operator所在节点的IP地址和nodePort。
-   >
-   > **initToken**: 在host集群添加成员集群时生成的token
+8. 其它步骤和host集群的部署相同，这里不再重复，请参考前面章节。
+
    
-8. 安装FabEdge 
+   
 
-   ```
-   $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
-   ```
 
-9. 在**管理节点**上确认服务正常
+## 创建集群Community（可选）
+
+1. 在host集群，把需要通讯的集群加入一个Community
 
    ```shell
-   # 在本成员集群上操作
-   
-   # 确认节点就绪
-   $ kubectl get no
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    <none>      5h22m   v1.18.2
-   edge2    Ready    <none>      5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   
-   # 确认Kubernetes服务正常
-   $ kubectl get po -n kube-system
-   NAME                                       READY   STATUS    RESTARTS   AGE
-   controlplane-master                        4/4     Running   0          159m
-   coredns-546565776c-44xnj                   1/1     Running   0          159m
-   coredns-546565776c-7vvnl                   1/1     Running   0          159m
-   kube-flannel-ds-hbb7j                      1/1     Running   0          28m
-   kube-flannel-ds-zmwbd                      1/1     Running   0          28m
-   kube-proxy-47c5j                           1/1     Running   0          153m
-   kube-proxy-4fckj                           1/1     Running   0          152m
-   
-   # 确认FabEdge服务正常
-   $ kubectl get po -n fabedge
-   NAME                               READY   STATUS    RESTARTS   AGE
-   connector-5947d5f66-hnfbv          2/2     Running   0          35m
-   fabedge-agent-edge1                2/2     Running   0          22s
-   fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
-   ```
-
-
-
-
-## 创建多集群Community （可选）
-
-1. 把需要通讯的集群加入一个Community
-
-   ```shell
-   # 在host集群中操作
+   # 在master节点操作
    $ cat > community.yaml << EOF
    apiVersion: fabedge.io/v1alpha1
    kind: Community
@@ -409,15 +271,14 @@ Community：FabEdge定义的CRD，有两种使用场景：
      name: connectors
    spec:
      members:
-       - fabedge.connector  
-       - beijing.connector    
+       - fabedge.connector   # {集群名字}.connector
+       - beijing.connector   # {集群名字}.connector
    EOF
    
    $ kubectl apply -f community.yaml
    ```
    
-   > members是**端点名**的列表，这个例子表示将集群fabedge和beijing加入同一个community，允许直接通讯
-   >
+
 
 
 ## 和边缘计算框架相关的配置
@@ -457,6 +318,7 @@ Community：FabEdge定义的CRD，有两种使用场景：
 1. 检查服务状态，如果不Ready，要删除Pod重建
 
     ```shell
+    # 在master节点执行
     $ kubectl get po -n edge-system
     application-grid-controller-84d64b86f9-29svc   1/1     Running   0          15h
     application-grid-wrapper-master-pvkv8          1/1     Running   0          15h
@@ -490,13 +352,13 @@ Community：FabEdge定义的CRD，有两种使用场景：
 
 ### 如果使用Calico
 
-不论是什么集群角色, 只要集群使用Calico，就要将其它所有集群的Pod和Service的网段加入当前集群的Calico, 防止Calico做源地址转换，导致不能通讯。
+不论是什么集群角色, 只要集群使用Calico，就要将其它所有集群的Pod和Service的网段加入当前集群的Calico配置,  防止Calico做源地址转换，导致不能通讯。
 
-例如: host (Calico)  + member (Calico) + member(Flannel)
+例如: host (Calico)  + member1 (Calico) + member2 (Flannel)
 
-* 在host (Calico) 集群的master节点进行操作将另外两个member集群的地址配置到host集群的Calico中。
-* 在 member (Calico)集群的master节点进行操作将另外host (Calico) 和member(Flannel)集群的地址配置到host集群的Calico中。
-* member(Flannel)无需操作。
+* 在host (Calico) 集群的master节点操作，将member1 (Calico)，member2 (Flannel)地址配置到host集群的Calico中。
+* 在member1 (Calico)集群的master节点操作，将host (Calico) ，member2 (Flannel)地址配置到member1集群的Calico中。
+* 在member2 (Flannel)无需任何操作。
 
 ```shell
 $ cat > cluster-cidr-pool.yaml << EOF
@@ -533,6 +395,7 @@ $ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 > **cidr**: 被添加集群的get_cluster_info.sh输出的cluster-cidr和service-cluster-ip-range
 
 
+
 ## 常见问题
 
 1. 有的网络环境存在非对称路由，需要在云端节点关闭rp_filter
@@ -544,8 +407,7 @@ $ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
    net.ipv4.conf.all.rp_filter=0
    ```
 
-1. 报错：“Error: cannot re-use a name that is still in use”，
-   这是因为fabedge已经安装，使用以下命令卸载后重试。
+1. 报错：“Error: cannot re-use a name that is still in use”。这是因为fabedge已经安装，使用以下命令卸载后重试。
    ```shell
    $ helm uninstall -n fabedge fabedge
    release "fabedge" uninstalled
