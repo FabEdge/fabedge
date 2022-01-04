@@ -285,7 +285,16 @@
 
 ### 如果使用KubeEdge
 
-1. 在**每个边缘节点**上修改edgecore配置
+1. 确认nodelocaldns在**边缘节点**正常运行
+
+   ```shell
+   $ kubectl get po -n kube-system -o wide | grep nodelocaldns
+   nodelocaldns-ckpb4                              1/1     Running        1          6d5h    10.22.46.15     node1    <none>           <none>
+   nodelocaldns-drmlz                              0/1     Running        0          2m50s   10.22.46.40     edge1   <none>           <none>
+   nodelocaldns-vbxf9                              1/1     Running        1          4h6m    10.22.46.23     master   <none>           <none>
+   ```
+   
+2. 在**每个边缘节点**上修改edgecore配置
 
    ```shell
    $ vi /etc/kubeedge/config/edgecore.yaml
@@ -300,14 +309,14 @@
        cniCacheDirs: /var/lib/cni/cache
        cniConfDir: /etc/cni/net.d
        networkPluginName: cni
-       networkPluginMTU: 1500
-       # get_cluster_info脚本输出的clusterDNS
-       clusterDNS: "169.254.25.10"
-       # get_cluster_info脚本输出的clusterDomain
-       clusterDomain: "root-cluster"
+       networkPluginMTU: 1500   
+       clusterDNS: 169.254.25.10        # get_cluster_info脚本输出的clusterDNS
+       clusterDomain: "root-cluster"    # get_cluster_info脚本输出的clusterDomain
    ```
 
-2. 在**每个边缘节点**上重启edgecore
+   > **clusterDNS**：如果没有启用nodelocaldns，请使用coredns service的地址
+
+3. 在**每个边缘节点**上重启edgecore
 
    ```shell
    $ systemctl restart edgecore
