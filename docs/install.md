@@ -285,7 +285,15 @@ English | [中文](install_zh.md)
 
 ### If KubeEdge is used
 
-1. Modify edgecore configuration on **all edge nodes**.
+1. Make sure `nodelocaldns` is running on **all edge nodes**
+
+   ```
+   $ kubectl get po -n kube-system -o wide | grep nodelocaldns
+   nodelocaldns-ckpb4                              1/1     Running        1          6d5h    10.22.46.15     node1    <none>           <none>
+   nodelocaldns-drmlz                              0/1     Running        0          2m50s   10.22.46.40     edge1   <none>           <none>
+   nodelocaldns-vbxf9                              1/1     Running        1          4h6m    10.22.46.23     master   <none>           <none>
+   
+2. Modify edgecore configuration on **all edge nodes**.
 
    ```shell
    $ vi /etc/kubeedge/config/edgecore.yaml
@@ -300,14 +308,14 @@ English | [中文](install_zh.md)
        cniCacheDirs: /var/lib/cni/cache
        cniConfDir: /etc/cni/net.d
        networkPluginName: cni
-       networkPluginMTU: 1500
-       # Get clusterDNS for get_cluster_info script output.
-       clusterDNS: "169.254.25.10"
-       # Get clusterDomain for get_cluster_info script output.
-       clusterDomain: "root-cluster"
+       networkPluginMTU: 1500    
+       clusterDNS: 169.254.25.10      #  clusterDNS of get_cluster_info script output    
+       clusterDomain: root-cluster  # clusterDomain of get_cluster_info script output
    ```
 
-2. Restart edgecore on **each edge node**.
+   > clusterDNS: if `nodelocaldns` is not enabled,  please use the service ip of `cordons`
+
+3. Restart edgecore on **each edge node**.
 
    ```shell
    $ systemctl restart edgecore
