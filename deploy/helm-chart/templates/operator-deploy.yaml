@@ -34,16 +34,7 @@ spec:
             - --init-token={{ .Values.operator.initToken }}
             {{- end }}
             - --edge-pod-cidr={{ .Values.operator.edgePodCIDR }}
-            {{- $cniType := "" -}}
-            {{- range $index, $pod := (lookup "v1" "Pod" "" "").items -}}
-              {{- if hasPrefix "kube-flannel" $pod.metadata.name -}}
-                {{- $cniType = "flannel" -}}
-              {{- end -}}
-              {{- if hasPrefix "calico-node" $pod.metadata.name -}}
-                {{- $cniType = "calico" -}}
-              {{- end -}}
-            {{- end }}
-            - --cni-type={{ $cniType }}
+            - --cni-type={{ include "cniType" . }}
             - --agent-image={{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag | default .Chart.AppVersion }}
             - --agent-strongswan-image={{ .Values.strongswan.image.repository }}:{{ .Values.strongswan.image.tag | default .Chart.AppVersion }}
             - --edge-labels={{ join "," .Values.operator.edgeLabels }}
