@@ -32,3 +32,24 @@ release: {{ .Release.Name }}
     {{- end -}}
   {{- end -}}
 {{- end }}
+
+{{- define "cniType" -}}
+  {{- if .Values.cniType -}}
+    {{- .Values.cniType -}}
+  {{- else -}}
+    {{- $cniTypeVar := "" -}}
+    {{- range $index, $pod := (lookup "v1" "Pod" "" "").items -}}
+      {{- if hasPrefix "kube-flannel" $pod.metadata.name -}}
+        {{- $cniTypeVar = "flannel" -}}
+      {{- end -}}
+      {{- if hasPrefix "calico-node" $pod.metadata.name -}}
+        {{- $cniTypeVar = "calico" -}}
+      {{- end -}}
+    {{- end }}
+    {{- if $cniTypeVar -}}
+      {{- $cniTypeVar -}}
+    {{- else -}}
+      {{- "flannel" -}}
+    {{- end -}}
+  {{- end }}
+{{- end }}
