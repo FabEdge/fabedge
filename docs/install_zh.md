@@ -207,9 +207,11 @@
    $ kubectl apply -f node-community.yaml
    ```
    
+1. 根据使用的[边缘计算框架](#和边缘计算框架相关的配置)修改相关配置
 
+2. 根据使用的[CNI](#和CNI相关的配置)修改相关配置
 
-
+   
 ## 在member集群里部署FabEdge（可选）
 
 1. 在**host集群**，添加一个名字叫“beijing”的成员集群，获取Token供注册使用
