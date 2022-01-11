@@ -14,14 +14,6 @@ KUBECONFIG_DEFAULT_PATH=/root/.kube/config
 TIMEOUT=300
 # EDGE_LABELS=""
 
-<<<<<<< HEAD
-# edge-labels is used to select edge nodes
-# kubedge: node-role.kubernetes.io/edge
-# superedge: superedge.io/edge-node=enable
-# openyurt: openyurt.io/is-edge-worker=true
-
-./fabedge-e2e.test -wait-timeout 600 -ping-timeout 300 -curl-timeout 300 --edge-labels "node-role.kubernetes.io/edge"
-=======
 function usage() {
   echo "USAGE:"
   echo "  prepare-kubeconfig  [clusters_kubeconfig_store_dir] [cluster_ip_list_file_path]
@@ -110,4 +102,3 @@ case $1 in
   ;;
 esac
 
->>>>>>> support multi cluster e2e test (#232)
