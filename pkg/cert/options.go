@@ -32,6 +32,10 @@ type GlobalOptions struct {
 	CASecret string
 	CACert   string
 	CAKey    string
+
+	Remote           bool
+	APIServerAddress string
+	Token            string
 }
 
 func (opts *GlobalOptions) AddFlags(fs *flag.FlagSet) {
@@ -39,6 +43,10 @@ func (opts *GlobalOptions) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&opts.CASecret, "ca-secret", "fabedge-ca", "The name of ca secret, the CLI by default read CA cert/key from secret")
 	fs.StringVar(&opts.CACert, "ca-cert", "", "The CA cert filename, provide it if you prefer file")
 	fs.StringVar(&opts.CAKey, "ca-key", "", "The CA cert key filename, provide it if you prefer file")
+
+	fs.BoolVar(&opts.Remote, "remote", false, "Generate or verify certificates remotely")
+	fs.StringVar(&opts.APIServerAddress, "api-server-address", "", "The address of host cluster's API server")
+	fs.StringVar(&opts.Token, "token", "", "Authentication token, not necessary when verifying certificate")
 }
 
 func (opts *GlobalOptions) CAIsFromSecret() bool {
@@ -88,6 +96,15 @@ func (opts *CertOptions) AsConfig(cn string, isCA bool, usages []x509.ExtKeyUsag
 		DNSNames:       opts.DNSNames,
 		ValidityPeriod: timeutil.Days(opts.ValidityPeriod),
 		Usages:         usages,
+	}
+}
+
+func (opts *CertOptions) AsRequest(cn string) certutil.Request {
+	return certutil.Request{
+		CommonName:   cn,
+		Organization: opts.Organization,
+		IPs:          opts.GetIPs(),
+		DNSNames:     opts.DNSNames,
 	}
 }
 
