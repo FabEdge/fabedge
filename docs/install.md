@@ -193,22 +193,22 @@ English | [中文](install_zh.md)
    
 9. Add all edge nodes which need to communicate directly into one `community`.
 
-   ```shell
-   $ cat > node-community.yaml << EOF
-   apiVersion: fabedge.io/v1alpha1
-   kind: Community
-   metadata:
-     name: connectors
-   spec:
-     members:
-       - fabedge.edge1
-       - fabedge.edge2  
-   EOF
-   
-   $ kubectl apply -f node-community.yaml
-   ```
-
-
+    ```shell
+    $ cat > node-community.yaml << EOF
+    apiVersion: fabedge.io/v1alpha1
+    kind: Community
+    metadata:
+      name: connectors
+    spec:
+      members:
+        - fabedge.edge1
+        - fabedge.edge2  
+    EOF
+    
+    $ kubectl apply -f node-community.yaml
+    ```
+1. Modify [framework-dependent configuration](#framework-dependent-configuration) 
+1. Modify [CNI-dependent configuration](#cni-dependent-configurations)
 
 
 ## Deploy FabEdge in the member cluster (optional)
@@ -355,7 +355,7 @@ English | [中文](install_zh.md)
 
 
 
-## CNI-depent Configurations
+## CNI-dependent Configurations
 
 ### If Calico is used
 
