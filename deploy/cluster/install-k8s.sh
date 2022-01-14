@@ -3,7 +3,8 @@ set -e
 
 CONTAINER_MANAGER=${CONTAINER_MANAGER:-docker}
 CONTAINER_NAME=installer
-IMAGE_NAME=fabedge/installer:latest
+IMAGE_VERSION=${IMAGE_VERSION:-v0.3}
+IMAGE_NAME=fabedge/installer:${IMAGE_VERSION}
 EXTRA_VARS="container_manager=${CONTAINER_MANAGER} ${EXTRA_VARS}"
 HOST_VARS=$@
 
