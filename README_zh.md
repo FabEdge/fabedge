@@ -69,7 +69,7 @@ FabEdge和现有的K8S CNI，比如Calico，Flannel，并不冲突。就像在�
 · 邮箱: fabedge@beyondcent.com  
 · 扫描加入微信群
 
-<img src="https://user-images.githubusercontent.com/88021699/132612921-9c5b872e-f44d-4e6c-b854-16853669028a.png" width="20%">
+<img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
 
 ## 许可
 FabEdge遵循Apache 2.0 许可。

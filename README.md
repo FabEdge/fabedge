@@ -68,7 +68,7 @@ Any question, feel free to reach us in the following ways:
 · Email: fabedge@beyondcent.com  
 · Scan the QR code to join WeChat Group
 
-<img src="https://user-images.githubusercontent.com/88021699/132612921-9c5b872e-f44d-4e6c-b854-16853669028a.png" width="20%">
+<img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
 
 ## License
 FabEdge is under the Apache 2.0 license. See the [LICENSE](https://github.com/FabEdge/fabedge/blob/main/LICENSE) file for details. 
