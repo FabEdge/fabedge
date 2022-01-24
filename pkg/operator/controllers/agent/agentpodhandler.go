@@ -59,14 +59,19 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 	err := handler.client.Get(ctx, ObjectKey{Name: agentPodName, Namespace: handler.namespace}, &oldPod)
 	switch {
 	case err == nil:
-		newPod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
-		if newPod.Labels[constants.KeyPodHash] == oldPod.Labels[constants.KeyPodHash] {
+		needRestart := ctx.Value(keyRestartAgent) == errRestartAgent
+		if !needRestart {
+			newPod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
+			needRestart = newPod.Labels[constants.KeyPodHash] != oldPod.Labels[constants.KeyPodHash]
+		}
+
+		if !needRestart {
 			return nil
 		}
 
 		// we will not create agent pod now because pod termination may last for a long time,
 		// during that time, create pod may get collision error
-		log.V(3).Info("agent pod may be out of date, delete it")
+		log.V(3).Info("need to restart pod, delete it now")
 		err = handler.client.Delete(context.TODO(), &oldPod)
 		if err != nil {
 			log.Error(err, "failed to delete agent pod")
