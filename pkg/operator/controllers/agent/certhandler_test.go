@@ -61,7 +61,7 @@ var _ = Describe("CertHandler", func() {
 		nodeName := getNodeName()
 		node = newNode(nodeName, "10.40.20.181", "2.2.1.128/26")
 
-		Expect(handler.Do(context.Background(), node)).Should(Succeed())
+		Expect(handler.Do(context.Background(), node)).Should(Equal(errRestartAgent))
 	})
 
 	It("should ensure a valid certificate and a private key for specified node's agent", func() {
@@ -85,7 +85,7 @@ var _ = Describe("CertHandler", func() {
 
 		time.Sleep(time.Second)
 
-		Expect(handler.Do(context.Background(), node)).Should(Succeed())
+		Expect(handler.Do(context.Background(), node)).Should(Equal(errRestartAgent))
 
 		By("Checking if TLS secret updated")
 		secret = corev1.Secret{}
