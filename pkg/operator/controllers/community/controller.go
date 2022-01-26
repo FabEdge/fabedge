@@ -16,11 +16,10 @@ package community
 
 import (
 	"context"
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctlpkg "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -28,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
@@ -89,7 +89,7 @@ func (ctl *communityController) Reconcile(ctx context.Context, request reconcile
 
 	ctl.store.SaveCommunity(types.Community{
 		Name:    community.Name,
-		Members: stringset.New(community.Spec.Members...),
+		Members: sets.NewString(community.Spec.Members...),
 	})
 	return reconcile.Result{}, nil
 }

@@ -15,10 +15,10 @@
 package types
 
 import (
-	"github.com/jjeffery/stringset"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type Community struct {
 	Name    string
-	Members stringset.Set
+	Members sets.String
 }

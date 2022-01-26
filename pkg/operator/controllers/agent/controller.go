@@ -198,7 +198,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, nil
 	}
 
-	ctl.edgeNameSet.Add(node.Name)
+	ctl.edgeNameSet.Insert(node.Name)
 	for _, handler := range ctl.handlers {
 		if err := handler.Do(ctx, node); err != nil {
 			if err == errRestartAgent {
@@ -218,7 +218,7 @@ func (ctl *agentController) shouldSkip(node corev1.Node) bool {
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
-	if !ctl.edgeNameSet.Contains(nodeName) {
+	if !ctl.edgeNameSet.Has(nodeName) {
 		return nil
 	}
 
@@ -229,6 +229,6 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 		}
 	}
 
-	ctl.edgeNameSet.Remove(nodeName)
+	ctl.edgeNameSet.Delete(nodeName)
 	return nil
 }

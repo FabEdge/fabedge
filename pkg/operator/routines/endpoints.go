@@ -12,7 +12,6 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/apiserver"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
-	"github.com/jjeffery/stringset"
 )
 
 type UpdateEndpointsFunc func(endpoints []apis.Endpoint) error
@@ -52,7 +51,7 @@ func LoadEndpointsAndCommunities(interval time.Duration, store storepkg.Interfac
 			currentCommunitySet.Insert(name)
 			store.SaveCommunity(types.Community{
 				Name:    name,
-				Members: stringset.New(members...),
+				Members: sets.NewString(members...),
 			})
 		}
 

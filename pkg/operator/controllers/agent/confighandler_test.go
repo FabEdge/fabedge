@@ -17,12 +17,12 @@ package agent
 import (
 	"context"
 
-	"github.com/jjeffery/stringset"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
@@ -75,7 +75,7 @@ var _ = Describe("ConfigHandler", func() {
 		}
 		testCommunity = types.Community{
 			Name:    "test",
-			Members: stringset.New(edge2Endpoint.Name, getEndpointName(nodeName)),
+			Members: sets.NewString(edge2Endpoint.Name, getEndpointName(nodeName)),
 		}
 
 		agentConfigName = getAgentConfigMapName(nodeName)

@@ -25,7 +25,6 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
@@ -131,10 +130,10 @@ func (m *Manager) mainNetwork() error {
 }
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
-	newNames := stringset.New()
+	newNames := sets.NewString()
 
 	for _, peer := range conf.Peers {
-		newNames.Add(peer.Name)
+		newNames.Insert(peer.Name)
 
 		conn := tunnel.ConnConfig{
 			Name: peer.Name,
@@ -172,7 +171,7 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 	m.log.V(5).Info("clean useless tunnels")
 	for _, name := range oldNames {
-		if newNames.Contains(name) {
+		if newNames.Has(name) {
 			continue
 		}
 

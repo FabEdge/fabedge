@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jjeffery/stringset"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -131,17 +131,17 @@ func WaitForNamespacesDeleted(client client.Client, namespaces []string, timeout
 		})
 }
 
-func GetEdgeNodeNames(cli client.Client) (stringset.Set, error) {
+func GetEdgeNodeNames(cli client.Client) (sets.String, error) {
 	var nodes corev1.NodeList
 	err := cli.List(context.TODO(), &nodes)
 	if err != nil {
 		return nil, err
 	}
 
-	nameSet := stringset.New()
+	nameSet := sets.NewString()
 	for _, node := range nodes.Items {
 		if nodeutil.IsEdgeNode(node) {
-			nameSet.Add(node.Name)
+			nameSet.Insert(node.Name)
 		}
 	}
 
@@ -162,7 +162,7 @@ func ListCloudAndEdgePods(cli client.Client, opts ...client.ListOption) (cloudPo
 	}
 
 	for _, pod := range pods.Items {
-		if edgeNames.Contains(pod.Spec.NodeName) {
+		if edgeNames.Has(pod.Spec.NodeName) {
 			edgePods = append(edgePods, pod)
 		} else {
 			cloudPods = append(cloudPods, pod)
