@@ -401,6 +401,15 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.Containers[0].VolumeMounts).To(Equal(agentVolumeMounts))
 	})
 
+	It("should delete agent pod if errRestartAgent is passed in context", func() {
+		ctx := context.WithValue(context.Background(), keyRestartAgent, errRestartAgent)
+		Expect(handler.Do(ctx, node)).Should(Succeed())
+
+		pod := corev1.Pod{}
+		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
+		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
+	})
+
 	It("should delete agent pod if is not matched to expected pod spec", func() {
 		var pod corev1.Pod
 		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())

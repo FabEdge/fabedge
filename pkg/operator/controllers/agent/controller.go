@@ -16,6 +16,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -34,12 +35,17 @@ import (
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
+// errRestartAgent is used to signal controller put restartAgent in context
+var errRestartAgent = fmt.Errorf("restart agent")
+
 const (
 	controllerName              = "agent-controller"
 	agentConfigTunnelFileName   = "tunnels.yaml"
 	agentConfigServicesFileName = "services.yaml"
 	agentConfigTunnelsFilepath  = "/etc/fabedge/tunnels.yaml"
 	agentConfigServicesFilepath = "/etc/fabedge/services.yaml"
+
+	keyRestartAgent = "restartAgent"
 )
 
 type ObjectKey = client.ObjectKey
@@ -195,6 +201,10 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 	ctl.edgeNameSet.Add(node.Name)
 	for _, handler := range ctl.handlers {
 		if err := handler.Do(ctx, node); err != nil {
+			if err == errRestartAgent {
+				ctx = context.WithValue(ctx, keyRestartAgent, err)
+				continue
+			}
 			return reconcile.Result{}, err
 		}
 	}

@@ -73,7 +73,9 @@ func (m manager) GetCACert() *x509.Certificate {
 }
 
 func (m manager) NewCertKey(cfg Config) ([]byte, []byte, error) {
-	cfg.ValidityPeriod = m.validPeriod
+	if cfg.ValidityPeriod > m.validPeriod {
+		cfg.ValidityPeriod = m.validPeriod
+	}
 
 	return NewCertFromCA(m.caCert, m.caKey, cfg)
 }

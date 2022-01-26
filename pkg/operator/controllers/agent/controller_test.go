@@ -16,208 +16,242 @@ package agent
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/operator/allocator"
-	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
-	certutil "github.com/fabedge/fabedge/pkg/util/cert"
-	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
-	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
-	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
 
 var _ = Describe("AgentController", func() {
 	const (
-		timeout         = 2 * time.Second
-		namespace       = "default"
-		agentImage      = "fabedge/agent:latest"
-		strongswanImage = "strongswan:5.9.1"
+		testNamespace = "fabedge"
 	)
 
 	var (
-		requests    chan reconcile.Request
-		store       storepkg.Interface
-		alloc       allocator.Interface
-		ctx         context.Context
-		cancel      context.CancelFunc
-		certManager certutil.Manager
-		newNode     = newNodePodCIDRsInAnnotations
-		edgeNameSet *types.SafeStringSet
+		newNode    = newNodePodCIDRsInAnnotations
+		handlers   []Handler
+		controller *agentController
 	)
 
-	BeforeEach(func() {
-		getName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=StrongSwan, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
-
-		store = storepkg.NewStore()
-		alloc, _ = allocator.New("2.2.0.0/16")
-
-		caCertDER, caKeyDER, _ := certutil.NewSelfSignedCA(certutil.Config{
-			CommonName:     certutil.DefaultCAName,
-			Organization:   []string{certutil.DefaultOrganization},
-			IsCA:           true,
-			ValidityPeriod: timeutil.Days(365),
-		})
-		certManager, _ = certutil.NewManger(caCertDER, caKeyDER, timeutil.Days(365))
-
-		mgr, err := manager.New(cfg, manager.Options{
-			MetricsBindAddress:     "0",
-			HealthProbeBindAddress: "0",
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		cnf := Config{
-			Namespace: namespace,
-
-			AgentImage:           agentImage,
-			StrongswanImage:      strongswanImage,
-			CertManager:          certManager,
-			GetEndpointName:      getName,
-			CertOrganization:     certutil.DefaultOrganization,
-			Allocator:            alloc,
-			Store:                store,
-			NewEndpoint:          newEndpoint,
-			GetConnectorEndpoint: getConnectorEndpoint,
+	JustBeforeEach(func() {
+		log := klogr.New().WithName(controllerName)
+		controller = &agentController{
+			handlers:    handlers,
+			edgeNameSet: types.NewSafeStringSet(),
+			client:      k8sClient,
+			log:         log,
 		}
-
-		edgeNameSet = types.NewSafeStringSet()
-		reconciler := reconcile.Reconciler(&agentController{
-			handlers:    initHandlers(cnf, k8sClient, mgr.GetLogger()),
-			client:      mgr.GetClient(),
-			edgeNameSet: edgeNameSet,
-			log:         mgr.GetLogger().WithName(controllerName),
-		})
-		reconciler, requests = testutil.WrapReconcile(reconciler)
-		c, err := controller.New(
-			controllerName,
-			mgr,
-			controller.Options{
-				Reconciler: reconciler,
-			},
-		)
-		Expect(err).ShouldNot(HaveOccurred())
-
-		err = c.Watch(
-			&source.Kind{Type: &corev1.Node{}},
-			&handler.EnqueueRequestForObject{},
-		)
-		Expect(err).ShouldNot(HaveOccurred())
-
-		ctx, cancel = context.WithCancel(context.Background())
-		go func() {
-			defer GinkgoRecover()
-			Expect(mgr.Start(ctx)).To(Succeed())
-		}()
 	})
 
-	AfterEach(func() {
-		cancel()
-
-		Expect(testutil.PurgeAllSecrets(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllConfigMaps(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllPods(k8sClient, client.InNamespace(namespace))).Should(Succeed())
-		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(namespace))).Should(Succeed())
+	JustAfterEach(func() {
+		Expect(testutil.PurgeAllSecrets(k8sClient, client.InNamespace(testNamespace))).Should(Succeed())
+		Expect(testutil.PurgeAllConfigMaps(k8sClient, client.InNamespace(testNamespace))).Should(Succeed())
+		Expect(testutil.PurgeAllPods(k8sClient, client.InNamespace(testNamespace))).Should(Succeed())
+		Expect(testutil.PurgeAllNodes(k8sClient, client.InNamespace(testNamespace))).Should(Succeed())
 	})
 
-	It("skip reconciling if a node has no ip", func() {
-		nodeName := getNodeName()
-		node := newNode(nodeName, "", "")
+	Describe("Reconcile", func() {
+		Context("node has neither edge labels nor ips", func() {
+			var handler *FuncHandler
+			BeforeEach(func() {
+				handler = &FuncHandler{}
+				handlers = []Handler{handler}
+			})
 
-		err := k8sClient.Create(context.Background(), &node)
-		Expect(err).ShouldNot(HaveOccurred())
+			It("skip executing handlers if a node has no ip", func() {
+				nodeName := getNodeName()
+				node := newNode(nodeName, "", "")
 
-		// create event
-		Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
+				err := k8sClient.Create(context.Background(), &node)
+				Expect(err).ShouldNot(HaveOccurred())
 
-		node = corev1.Node{}
-		err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
+				_, err = controller.Reconcile(context.Background(), reconcile.Request{
+					NamespacedName: ObjectKey{
+						Name: nodeName,
+					},
+				})
+				Expect(err).Should(BeNil())
+
+				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeFalse())
+				Expect(handler.DoContext).Should(BeNil())
+				Expect(handler.UndoContext).Should(BeNil())
+			})
+
+			It("skip executing handlers if a node has no edge labels", func() {
+				nodeName := getNodeName()
+				node := newNode(nodeName, "10.40.20.181", "")
+				node.Labels = nil
+
+				err := k8sClient.Create(context.Background(), &node)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, err = controller.Reconcile(context.Background(), reconcile.Request{
+					NamespacedName: ObjectKey{
+						Name: nodeName,
+					},
+				})
+				Expect(err).Should(BeNil())
+
+				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeFalse())
+				Expect(handler.DoContext).Should(BeNil())
+				Expect(handler.UndoContext).Should(BeNil())
+			})
+		})
+
+		Context("node has edge labels and has ips", func() {
+			var (
+				nodeName     string
+				node         corev1.Node
+				firstHandler *FuncHandler
+				lastHandler  *FuncHandler
+			)
+
+			BeforeEach(func() {
+				firstHandler = &FuncHandler{
+					ErrorForDo: errRestartAgent,
+				}
+				lastHandler = &FuncHandler{}
+				handlers = []Handler{firstHandler, lastHandler}
+			})
+
+			JustBeforeEach(func() {
+				nodeName = getNodeName()
+				node = newNode(nodeName, "10.40.20.181", "")
+
+				err := k8sClient.Create(context.Background(), &node)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				_, err = controller.Reconcile(context.Background(), reconcile.Request{
+					NamespacedName: ObjectKey{
+						Name: nodeName,
+					},
+				})
+				Expect(err).Should(BeNil())
+			})
+
+			It("should record node name in edgeNameSet", func() {
+				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeTrue())
+			})
+
+			It("execute Do method of each handlers in order", func() {
+				Expect(firstHandler.DoContext).NotTo(BeNil())
+				Expect(lastHandler.DoContext).NotTo(BeNil())
+
+				Expect(firstHandler.UndoContext).To(BeNil())
+				Expect(lastHandler.UndoContext).To(BeNil())
+			})
+
+			It("pass errRestartAgent in context to next handlers if a handler return errRestartAgent", func() {
+				Expect(lastHandler.DoContext.Value(keyRestartAgent)).To(Equal(errRestartAgent))
+			})
+
+			It("return error if Do method of any handler return a error but errRestartAgent", func() {
+				firstHandler = &FuncHandler{ErrorForDo: fmt.Errorf("some error")}
+				lastHandler = &FuncHandler{}
+				controller.edgeNameSet = types.NewSafeStringSet()
+				controller.handlers = []Handler{firstHandler, lastHandler}
+
+				_, err := controller.Reconcile(context.Background(), reconcile.Request{
+					NamespacedName: ObjectKey{
+						Name: nodeName,
+					},
+				})
+				Expect(err).To(Equal(firstHandler.ErrorForDo))
+
+				Expect(lastHandler.DoContext).To(BeNil())
+				Expect(controller.edgeNameSet.Contains(nodeName)).To(BeTrue())
+			})
+
+			When("node is deleted or lose edge labels", func() {
+				DescribeTable("execute Undo method of each handlers", func(action func() error) {
+					Expect(action()).Should(Succeed())
+
+					_, err := controller.Reconcile(context.Background(), reconcile.Request{
+						NamespacedName: ObjectKey{
+							Name: nodeName,
+						},
+					})
+					Expect(err).To(BeNil())
+
+					Expect(lastHandler.UndoContext).NotTo(BeNil())
+					Expect(firstHandler.UndoContext).NotTo(BeNil())
+					Expect(controller.edgeNameSet.Contains(nodeName)).To(BeFalse())
+				},
+					Entry("delete node", func() error {
+						return k8sClient.Delete(context.Background(), &node)
+					}),
+
+					Entry("remove edge labels", func() error {
+						node.Labels = nil
+						return k8sClient.Update(context.Background(), &node)
+					}),
+				)
+
+				It("stop execute Undo if Undo of any handler return error", func() {
+					firstHandler = &FuncHandler{}
+					lastHandler = &FuncHandler{ErrorForUndo: fmt.Errorf("some error")}
+					controller.handlers = []Handler{firstHandler, lastHandler}
+
+					Expect(k8sClient.Delete(context.Background(), &node)).To(Succeed())
+
+					_, err := controller.Reconcile(context.Background(), reconcile.Request{
+						NamespacedName: ObjectKey{
+							Name: nodeName,
+						},
+					})
+					Expect(err).To(Equal(lastHandler.ErrorForUndo))
+
+					// also check if handlers are executed in reverse order
+					Expect(lastHandler.UndoContext).NotTo(BeNil())
+					Expect(firstHandler.UndoContext).To(BeNil())
+				})
+			})
+		})
 	})
-
-	It("skip reconciling if a node has no edge labels", func() {
-		nodeName := getNodeName()
-		node := newNode(nodeName, "10.40.20.181", "")
-		node.Labels = nil
-
-		err := k8sClient.Create(context.Background(), &node)
-		Expect(err).ShouldNot(HaveOccurred())
-
-		// create event
-		Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-
-		node = corev1.Node{}
-		err = k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(node.Annotations[constants.KeyPodSubnets]).Should(BeEmpty())
-	})
-
-	When("an edge node event comes", func() {
-		var nodeName string
-		var node corev1.Node
-
-		BeforeEach(func() {
-			nodeName = getNodeName()
-			node = newNode(nodeName, "10.40.20.181", "")
-
-			err := k8sClient.Create(context.Background(), &node)
-			Expect(err).ShouldNot(HaveOccurred())
-			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-		})
-
-		It("should record node name in edgeNameSet", func() {
-			Expect(edgeNameSet.Contains(nodeName)).Should(BeTrue())
-		})
-
-		It("should ensure a agent pod for each node", func() {
-			var pod corev1.Pod
-			agentPodName := getAgentPodName(nodeName)
-			err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-
-		It("should ensure a certificate/private key secret for each node", func() {
-			var secret corev1.Secret
-			secretName := getCertSecretName(nodeName)
-			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
-		})
-
-		It("should ensure a tunnels configmap for each node", func() {
-			var cm corev1.ConfigMap
-			configName := getAgentConfigMapName(nodeName)
-			Expect(k8sClient.Get(ctx, ObjectKey{Namespace: namespace, Name: configName}, &cm)).Should(Succeed())
-		})
-
-		It("should execute Undo method of handlers if this node is not found", func() {
-			Expect(k8sClient.Delete(context.Background(), &node)).Should(Succeed())
-			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-			testutil.DrainChan(requests, time.Second)
-
-			Expect(edgeNameSet.Contains(node.Name)).Should(BeFalse())
-		})
-
-		It("should execute Undo method of handlers if this node has no edge labels", func() {
-			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
-
-			node.Labels = nil
-			Expect(k8sClient.Update(context.Background(), &node)).Should(Succeed())
-			Eventually(requests, timeout).Should(ReceiveKey(ObjectKey{Name: nodeName}))
-			testutil.DrainChan(requests, timeout)
-
-			Expect(edgeNameSet.Contains(node.Name)).Should(BeFalse())
-		})
-	})
-
 })
+
+var _ Handler = &FuncHandler{}
+
+type FuncHandler struct {
+	DoFunc   func(ctx context.Context, node corev1.Node) error
+	UndoFunc func(ctx context.Context, nodeName string) error
+
+	ErrorForDo   error
+	ErrorForUndo error
+
+	DoContext   context.Context
+	UndoContext context.Context
+
+	Node     corev1.Node
+	NodeName string
+}
+
+func (fh *FuncHandler) Do(ctx context.Context, node corev1.Node) error {
+	fh.DoContext = ctx
+	fh.Node = node
+
+	if fh.DoFunc == nil {
+		return fh.ErrorForDo
+	} else {
+		return fh.DoFunc(ctx, node)
+	}
+}
+
+func (fh *FuncHandler) Undo(ctx context.Context, nodeName string) error {
+	fh.UndoContext = ctx
+	fh.NodeName = nodeName
+
+	if fh.UndoFunc == nil {
+		return fh.ErrorForUndo
+	} else {
+		return fh.UndoFunc(ctx, nodeName)
+	}
+}
