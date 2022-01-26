@@ -27,10 +27,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jjeffery/stringset"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -578,7 +578,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 	for _, community := range communities.Items {
 		store.SaveCommunity(types.Community{
 			Name:    community.Name,
-			Members: stringset.New(community.Spec.Members...),
+			Members: sets.NewString(community.Spec.Members...),
 		})
 	}
 

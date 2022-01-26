@@ -15,9 +15,9 @@
 package store_test
 
 import (
-	"github.com/jjeffery/stringset"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -54,12 +54,12 @@ var _ = Describe("Store", func() {
 		Expect(e).To(Equal(e1))
 
 		nameSet := store.GetAllEndpointNames()
-		Expect(nameSet.Contains(e1.Name)).To(BeTrue())
-		Expect(nameSet.Contains(e2.Name)).To(BeTrue())
+		Expect(nameSet.Has(e1.Name)).To(BeTrue())
+		Expect(nameSet.Has(e2.Name)).To(BeTrue())
 
 		nameSet = store.GetLocalEndpointNames()
-		Expect(nameSet.Contains(e1.Name)).To(BeFalse())
-		Expect(nameSet.Contains(e2.Name)).To(BeTrue())
+		Expect(nameSet.Has(e1.Name)).To(BeFalse())
+		Expect(nameSet.Has(e2.Name)).To(BeTrue())
 
 		endpoints2 := store.GetEndpoints(e1.Name, e2.Name)
 		Expect(endpoints2).To(ContainElement(e1))
@@ -71,17 +71,17 @@ var _ = Describe("Store", func() {
 		Expect(e).NotTo(Equal(e1))
 
 		nameSet = store.GetLocalEndpointNames()
-		Expect(nameSet.Contains(e2.Name)).To(BeFalse())
+		Expect(nameSet.Has(e2.Name)).To(BeFalse())
 	})
 
 	It("can support community CRUD operations", func() {
 		c1 := types.Community{
 			Name:    "nginx",
-			Members: stringset.New("edge1", "edge2"),
+			Members: sets.NewString("edge1", "edge2"),
 		}
 		c2 := types.Community{
 			Name:    "apache",
-			Members: stringset.New("edge1", "edge2", "edge3"),
+			Members: sets.NewString("edge1", "edge2", "edge3"),
 		}
 
 		store.SaveCommunity(c1)
@@ -101,7 +101,7 @@ var _ = Describe("Store", func() {
 
 		c2 = types.Community{
 			Name:    "apache",
-			Members: stringset.New("edge1", "edge3"),
+			Members: sets.NewString("edge1", "edge3"),
 		}
 		store.SaveCommunity(c2)
 		communities = store.GetCommunitiesByEndpoint("edge2")

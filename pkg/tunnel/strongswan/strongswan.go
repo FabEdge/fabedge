@@ -17,14 +17,15 @@ package strongswan
 import (
 	"encoding/pem"
 	"fmt"
-	"github.com/jjeffery/stringset"
 	"io/ioutil"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/strongswan/govici/vici"
+	"k8s.io/apimachinery/pkg/util/sets"
+
+	"github.com/fabedge/fabedge/pkg/tunnel"
 )
 
 var _ tunnel.Manager = &StrongSwanManager{}
@@ -94,8 +95,8 @@ func (m StrongSwanManager) ListConnNames() ([]string, error) {
 	return names, err
 }
 
-func (m StrongSwanManager) listSANames(ike string) (stringset.Set, error) {
-	var names stringset.Set
+func (m StrongSwanManager) listSANames(ike string) (sets.String, error) {
+	names := sets.NewString()
 
 	request := vici.NewMessage()
 	if err := request.Set("ike", ike); err != nil {
@@ -114,7 +115,7 @@ func (m StrongSwanManager) listSANames(ike string) (stringset.Set, error) {
 				for _, name := range msg.Keys() {
 					children := msg.Get(name).(*vici.Message).Get("child-sas").(*vici.Message)
 					for _, child := range children.Keys() {
-						names.Add(children.Get(child).(*vici.Message).Get("name").(string))
+						names.Insert(children.Get(child).(*vici.Message).Get("name").(string))
 					}
 				}
 			}
@@ -138,7 +139,7 @@ func (m StrongSwanManager) InitiateConn(name string) error {
 	}
 
 	for _, child := range childNames {
-		if childSANames.Contains(child) {
+		if childSANames.Has(child) {
 			continue
 		}
 		if err = m.initiateSA(&name, &child); err != nil {

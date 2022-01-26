@@ -80,7 +80,7 @@ var _ = Describe("AgentController", func() {
 				})
 				Expect(err).Should(BeNil())
 
-				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeFalse())
+				Expect(controller.edgeNameSet.Has(nodeName)).Should(BeFalse())
 				Expect(handler.DoContext).Should(BeNil())
 				Expect(handler.UndoContext).Should(BeNil())
 			})
@@ -100,7 +100,7 @@ var _ = Describe("AgentController", func() {
 				})
 				Expect(err).Should(BeNil())
 
-				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeFalse())
+				Expect(controller.edgeNameSet.Has(nodeName)).Should(BeFalse())
 				Expect(handler.DoContext).Should(BeNil())
 				Expect(handler.UndoContext).Should(BeNil())
 			})
@@ -138,7 +138,7 @@ var _ = Describe("AgentController", func() {
 			})
 
 			It("should record node name in edgeNameSet", func() {
-				Expect(controller.edgeNameSet.Contains(nodeName)).Should(BeTrue())
+				Expect(controller.edgeNameSet.Has(nodeName)).Should(BeTrue())
 			})
 
 			It("execute Do method of each handlers in order", func() {
@@ -167,7 +167,7 @@ var _ = Describe("AgentController", func() {
 				Expect(err).To(Equal(firstHandler.ErrorForDo))
 
 				Expect(lastHandler.DoContext).To(BeNil())
-				Expect(controller.edgeNameSet.Contains(nodeName)).To(BeTrue())
+				Expect(controller.edgeNameSet.Has(nodeName)).To(BeTrue())
 			})
 
 			When("node is deleted or lose edge labels", func() {
@@ -183,7 +183,7 @@ var _ = Describe("AgentController", func() {
 
 					Expect(lastHandler.UndoContext).NotTo(BeNil())
 					Expect(firstHandler.UndoContext).NotTo(BeNil())
-					Expect(controller.edgeNameSet.Contains(nodeName)).To(BeFalse())
+					Expect(controller.edgeNameSet.Has(nodeName)).To(BeFalse())
 				},
 					Entry("delete node", func() error {
 						return k8sClient.Delete(context.Background(), &node)
