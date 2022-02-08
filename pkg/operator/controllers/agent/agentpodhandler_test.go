@@ -56,6 +56,7 @@ var _ = Describe("AgentPodHandler", func() {
 		nodeName := getNodeName()
 		agentPodName = getAgentPodName(nodeName)
 		node = newNode(nodeName, "10.40.20.181", "2.2.2.2/26")
+		node.UID = "123456"
 
 		Expect(handler.Do(context.TODO(), node)).To(Succeed())
 	})
@@ -65,6 +66,7 @@ var _ = Describe("AgentPodHandler", func() {
 		agentPodName := getAgentPodName(node.Name)
 		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
 		Expect(err).ShouldNot(HaveOccurred())
+		expectOwnerReference(&pod, node)
 
 		// pod
 		Expect(pod.Spec.NodeName).To(Equal(node.Name))

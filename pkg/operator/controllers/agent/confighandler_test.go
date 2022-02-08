@@ -80,6 +80,7 @@ var _ = Describe("ConfigHandler", func() {
 
 		agentConfigName = getAgentConfigMapName(nodeName)
 		node = newNode(nodeName, "10.40.20.181", "2.2.1.128/26")
+		node.UID = "123456"
 
 		store.SaveEndpoint(edge2Endpoint)
 		store.SaveEndpoint(newEndpoint(node))
@@ -92,6 +93,7 @@ var _ = Describe("ConfigHandler", func() {
 		var cm corev1.ConfigMap
 		err := k8sClient.Get(context.Background(), ObjectKey{Name: agentConfigName, Namespace: namespace}, &cm)
 		Expect(err).ShouldNot(HaveOccurred())
+		expectOwnerReference(&cm, node)
 
 		configData, ok := cm.Data[agentConfigServicesFileName]
 		Expect(ok).Should(BeTrue())
@@ -110,6 +112,7 @@ var _ = Describe("ConfigHandler", func() {
 				edge2Endpoint,
 			},
 		}
+		Expect(conf).Should(Equal(expectedConf))
 		Expect(conf).Should(Equal(expectedConf))
 		Expect(conf.Peers[0].Type).Should(Equal(apis.Connector))
 		Expect(conf.Peers[1].Type).Should(Equal(apis.EdgeNode))
@@ -136,6 +139,7 @@ var _ = Describe("ConfigHandler", func() {
 		var cm corev1.ConfigMap
 		err := k8sClient.Get(context.Background(), ObjectKey{Name: agentConfigName, Namespace: namespace}, &cm)
 		Expect(err).ShouldNot(HaveOccurred())
+		expectOwnerReference(&cm, node)
 
 		configData, ok := cm.Data[agentConfigTunnelFileName]
 		Expect(ok).Should(BeTrue())
