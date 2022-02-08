@@ -1,38 +1,37 @@
 package types
 
 import (
-	"fmt"
 	"sync"
 
-	"github.com/jjeffery/stringset"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type SafeStringSet struct {
-	set *stringset.Set
+	set sets.String
 	mux sync.RWMutex
 }
 
 func NewSafeStringSet(v ...string) *SafeStringSet {
 	set := &SafeStringSet{
-		set: new(stringset.Set),
+		set: make(sets.String),
 	}
 
-	set.Add(v...)
+	set.Insert(v...)
 
 	return set
 }
 
-func (s *SafeStringSet) Add(value ...string) {
+func (s *SafeStringSet) Insert(value ...string) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
-	s.set.Add(value...)
+	s.set.Insert(value...)
 }
 
-func (s *SafeStringSet) Remove(value ...string) {
+func (s *SafeStringSet) Delete(value ...string) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	s.set.Remove(value...)
+	s.set.Delete(value...)
 }
 
 func (s *SafeStringSet) Len() int {
@@ -42,51 +41,23 @@ func (s *SafeStringSet) Len() int {
 	return s.set.Len()
 }
 
-func (s *SafeStringSet) Contains(v string) bool {
+func (s *SafeStringSet) Has(v string) bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
-	return s.set.Contains(v)
+	return s.set.Has(v)
 }
 
 func (s *SafeStringSet) Equal(o *SafeStringSet) bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
-	return s.set.Equal(*o.set)
+	return s.set.Equal(o.set)
 }
 
-func (s *SafeStringSet) Values() []string {
+func (s *SafeStringSet) List() []string {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
-	return s.set.Values()
-}
-
-func (s *SafeStringSet) Join(sep string) string {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-
-	return s.set.Join(sep)
-}
-
-func (s *SafeStringSet) String() string {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-
-	return s.set.String()
-}
-
-func (s *SafeStringSet) GoString() string {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-
-	return s.set.GoString()
-}
-
-func (s *SafeStringSet) Format(f fmt.State, c rune) {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-
-	s.set.Format(f, c)
+	return s.set.List()
 }

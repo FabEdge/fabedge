@@ -17,7 +17,6 @@ package connector
 import (
 	"context"
 	"crypto/x509"
-	"github.com/jjeffery/stringset"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
@@ -185,7 +185,7 @@ var _ = Describe("Controller", func() {
 		store.SaveEndpoint(alienConnector)
 		store.SaveCommunity(types.Community{
 			Name:    "connectors",
-			Members: stringset.New(alienConnector.Name, config.Endpoint.Name),
+			Members: sets.NewString(alienConnector.Name, config.Endpoint.Name),
 		})
 
 		time.Sleep(interval + time.Second)

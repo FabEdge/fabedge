@@ -20,11 +20,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerpkg "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -74,7 +74,7 @@ type controller struct {
 	client client.Client
 	log    logr.Logger
 
-	nodeNameSet stringset.Set
+	nodeNameSet sets.String
 	nodeCache   map[string]Node
 	mux         sync.RWMutex
 }
@@ -85,7 +85,7 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 	ctl := &controller{
 		Config: cnf,
 
-		nodeNameSet: stringset.New(),
+		nodeNameSet: sets.NewString(),
 		nodeCache:   make(map[string]Node),
 		client:      mgr.GetClient(),
 		log:         mgr.GetLogger().WithName(controllerName),
@@ -276,12 +276,12 @@ func (ctl *controller) getPeers() []apis.Endpoint {
 	nameSet := ctl.Store.GetLocalEndpointNames()
 	for _, community := range ctl.Store.GetCommunitiesByEndpoint(connectorName) {
 		for name := range community.Members {
-			nameSet.Add(name)
+			nameSet.Insert(name)
 		}
 	}
-	nameSet.Remove(connectorName)
+	nameSet.Delete(connectorName)
 
-	endpoints := ctl.Store.GetEndpoints(nameSet.Values()...)
+	endpoints := ctl.Store.GetEndpoints(nameSet.List()...)
 
 	peers := make([]apis.Endpoint, 0, len(endpoints))
 	for _, ep := range endpoints {
@@ -324,11 +324,11 @@ func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
 
 	ctl.mux.Lock()
 	defer ctl.mux.Unlock()
-	if ctl.nodeNameSet.Contains(node.Name) {
+	if ctl.nodeNameSet.Has(node.Name) {
 		return
 	}
 
-	ctl.nodeNameSet.Add(node.Name)
+	ctl.nodeNameSet.Insert(node.Name)
 	ctl.nodeCache[node.Name] = Node{
 		Name:     node.Name,
 		IP:       ip,
@@ -344,11 +344,11 @@ func (ctl *controller) removeNode(nodeName string) {
 	ctl.mux.Lock()
 	defer ctl.mux.Unlock()
 
-	if !ctl.nodeNameSet.Contains(nodeName) {
+	if !ctl.nodeNameSet.Has(nodeName) {
 		return
 	}
 
-	ctl.nodeNameSet.Remove(nodeName)
+	ctl.nodeNameSet.Delete(nodeName)
 	delete(ctl.nodeCache, nodeName)
 
 	ctl.rebuildConnectorEndpoint()
@@ -381,7 +381,7 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 	nodeSubnets := make([]string, 0, len(ctl.nodeCache))
 
 	subnets = append(subnets, ctl.ProvidedSubnets...)
-	for _, nodeName := range ctl.nodeNameSet.Values() {
+	for _, nodeName := range ctl.nodeNameSet.List() {
 		node := ctl.nodeCache[nodeName]
 
 		subnets = append(subnets, node.PodCIDRs...)

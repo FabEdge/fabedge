@@ -21,10 +21,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -376,7 +376,7 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 
 	serviceInfo := p.serviceMap[serviceKey]
 	// collect node which has endpoints changes
-	changedNodeNames := stringset.New()
+	changedNodeNames := sets.NewString()
 
 	// add new endpoints
 	for port := range newES.Ports {
@@ -405,7 +405,7 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 
 			added := p.addEndpointToNode(ep.NodeName, servicePortName, endpoint)
 			if serviceChanged || added {
-				changedNodeNames.Add(ep.NodeName)
+				changedNodeNames.Insert(ep.NodeName)
 			}
 		}
 		serviceInfo.EndpointMap[port] = endpointSet
@@ -440,7 +440,7 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 				delete(serviceInfo.EndpointToNodes, endpoint)
 				p.removeEndpointFromNode(ep.NodeName, servicePortName, endpoint)
 
-				changedNodeNames.Add(ep.NodeName)
+				changedNodeNames.Insert(ep.NodeName)
 			}
 
 			if portRemoved {

@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/jjeffery/stringset"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -117,7 +117,7 @@ var _ = Describe("APIServer", func() {
 		Expect(k8sClient.Create(context.Background(), &community)).Should(Succeed())
 		store.SaveCommunity(types.Community{
 			Name:    community.Name,
-			Members: stringset.New(community.Spec.Members...),
+			Members: sets.NewString(community.Spec.Members...),
 		})
 
 		server, err = apiserver.New(apiserver.Config{

@@ -12,7 +12,6 @@ require (
 	github.com/go-logr/logr v0.3.0
 	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/hashicorp/memberlist v0.1.3
-	github.com/jjeffery/stringset v1.0.2
 	github.com/miekg/dns v1.1.25 // indirect
 	github.com/moby/ipvs v1.0.1
 	github.com/olekukonko/tablewriter v0.0.1

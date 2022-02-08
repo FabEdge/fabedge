@@ -19,11 +19,11 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
@@ -123,17 +123,17 @@ func (handler *configHandler) buildNetworkConf(nodeName string) netconf.NetworkC
 
 func (handler *configHandler) getPeers(name string) []apis.Endpoint {
 	store := handler.store
-	nameSet := stringset.New()
+	nameSet := sets.NewString()
 
 	for _, community := range store.GetCommunitiesByEndpoint(name) {
-		nameSet.Add(community.Members.Values()...)
+		nameSet.Insert(community.Members.List()...)
 	}
-	nameSet.Remove(name)
+	nameSet.Delete(name)
 
 	endpoints := make([]apis.Endpoint, 0, len(nameSet)+1)
 	// always put connector endpoint first
 	endpoints = append(endpoints, handler.getConnectorEndpoint())
-	endpoints = append(endpoints, store.GetEndpoints(nameSet.Values()...)...)
+	endpoints = append(endpoints, store.GetEndpoints(nameSet.List()...)...)
 
 	return endpoints
 }
