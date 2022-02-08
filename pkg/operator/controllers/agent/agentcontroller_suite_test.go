@@ -113,3 +113,18 @@ func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
 		},
 	}
 }
+
+func expectOwnerReference(obj client.Object, node corev1.Node) {
+	ownerReferences := obj.GetOwnerReferences()
+	t := true
+
+	Expect(len(ownerReferences)).To(Equal(1))
+	Expect(ownerReferences[0]).To(Equal(metav1.OwnerReference{
+		APIVersion:         "v1",
+		Kind:               "Node",
+		Name:               node.Name,
+		UID:                node.UID,
+		Controller:         &t,
+		BlockOwnerDeletion: &t,
+	}))
+}
