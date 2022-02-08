@@ -25,7 +25,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
@@ -80,6 +82,12 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 	case errors.IsNotFound(err):
 		log.V(5).Info("Agent pod is not found, create it now")
 		newPod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
+
+		if err = controllerutil.SetControllerReference(&node, newPod, scheme.Scheme); err != nil {
+			log.Error(err, "failed to set ownerReference to TLS secret")
+			return err
+		}
+
 		err = handler.client.Create(ctx, newPod)
 		if err != nil {
 			log.Error(err, "failed to create agent pod")

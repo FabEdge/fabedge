@@ -21,12 +21,10 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	ctrlpkg "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	handlerpkg "sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -101,21 +99,14 @@ func AddToManager(cnf Config) error {
 		edgeNameSet: types.NewSafeStringSet(),
 		handlers:    initHandlers(cnf, cli, log),
 	}
-	c, err := controller.New(
-		controllerName,
-		mgr,
-		controller.Options{
-			Reconciler: reconciler,
-		},
-	)
-	if err != nil {
-		return err
-	}
 
-	return c.Watch(
-		&source.Kind{Type: &corev1.Node{}},
-		&handlerpkg.EnqueueRequestForObject{},
-	)
+	return ctrlpkg.NewControllerManagedBy(mgr).
+		For(&corev1.Node{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
+		Owns(&corev1.Pod{}).
+		Named(controllerName).
+		Complete(reconciler)
 }
 
 func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {

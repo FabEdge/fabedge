@@ -60,6 +60,7 @@ var _ = Describe("CertHandler", func() {
 
 		nodeName := getNodeName()
 		node = newNode(nodeName, "10.40.20.181", "2.2.1.128/26")
+		node.UID = "123456"
 
 		Expect(handler.Do(context.Background(), node)).Should(Equal(errRestartAgent))
 	})
@@ -68,6 +69,7 @@ var _ = Describe("CertHandler", func() {
 		var secret corev1.Secret
 		secretName := getCertSecretName(node.Name)
 		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+		expectOwnerReference(&secret, node)
 
 		By("Checking TLS secret")
 		caCertPEM, certPEM := secretutil.GetCACert(secret), secretutil.GetCert(secret)
@@ -90,6 +92,7 @@ var _ = Describe("CertHandler", func() {
 		By("Checking if TLS secret updated")
 		secret = corev1.Secret{}
 		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+		expectOwnerReference(&secret, node)
 
 		caCertPEM, certPEM = secretutil.GetCACert(secret), secretutil.GetCert(secret)
 		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())

@@ -24,7 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
@@ -85,6 +87,11 @@ func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
 			},
 		}
 
+		if err = controllerutil.SetControllerReference(&node, configMap, scheme.Scheme); err != nil {
+			log.Error(err, "failed to set ownerReference to configmap")
+			return err
+		}
+
 		return handler.client.Create(ctx, configMap)
 	}
 
@@ -94,6 +101,11 @@ func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
 	}
 
 	agentConfig.Data[agentConfigTunnelFileName] = configData
+	if err = controllerutil.SetControllerReference(&node, &agentConfig, scheme.Scheme); err != nil {
+		log.Error(err, "failed to set ownerReference to configmap")
+		return err
+	}
+
 	err = handler.client.Update(ctx, &agentConfig)
 	if err != nil {
 		log.Error(err, "failed to update agent configmap")

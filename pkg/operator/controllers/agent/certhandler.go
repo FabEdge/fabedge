@@ -22,7 +22,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -64,6 +66,11 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 			return err
 		}
 
+		if err = controllerutil.SetControllerReference(&node, &secret, scheme.Scheme); err != nil {
+			log.Error(err, "failed to set ownerReference to TLS secret")
+			return err
+		}
+
 		err = handler.client.Create(ctx, &secret)
 		if err != nil {
 			log.Error(err, "failed to create secret")
@@ -84,6 +91,11 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 	secret, err = handler.buildCertAndKeySecret(secretName, node)
 	if err != nil {
 		log.Error(err, "failed to recreate cert and key for agent")
+		return err
+	}
+
+	if err = controllerutil.SetControllerReference(&node, &secret, scheme.Scheme); err != nil {
+		log.Error(err, "failed to set ownerReference to TLS secret")
 		return err
 	}
 
