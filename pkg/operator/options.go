@@ -76,7 +76,7 @@ type Options struct {
 	Namespace        string
 	EdgePodCIDR      string
 	EndpointIDFormat string
-	EdgeLabels       []string
+	EdgeLabels       map[string]string
 	CNIType          string
 
 	CASecretName     string
@@ -111,12 +111,12 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
-	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
+	flag.StringToStringVar(&opts.EdgeLabels, "edge-labels", map[string]string{"node-role.kubernetes.io/edge": ""}, "Labels to filter edge nodes, e.g. key2=,key3=value3")
 
+	flag.StringToStringVar(&opts.Connector.ConnectorLabels, "connector-labels", map[string]string{"app": "fabedge-connector"}, "The labels used to find connector pods, e.g. key2=,key3=value3")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
-	flag.StringToStringVar(&opts.Connector.ConnectorLabels, "connector-labels", map[string]string{"app": "fabedge-connector"}, "The labels used to find connector pods, e.g. key2=,key3=value3")
 
 	flag.StringVar(&opts.Agent.AgentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
 	flag.StringVar(&opts.Agent.StrongswanImage, "agent-strongswan-image", "fabedge/strongswan:latest", "The image of strongswan container of agent pod")
@@ -150,22 +150,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 func (opts *Options) Complete() (err error) {
 	opts.CNIType = strings.TrimSpace(opts.CNIType)
 
-	parsedEdgeLabels := make(map[string]string)
-	for _, label := range opts.EdgeLabels {
-		parts := strings.Split(label, "=")
-		switch len(parts) {
-		case 1:
-			parsedEdgeLabels[parts[0]] = ""
-		case 2:
-			if parts[0] == "" {
-				return fmt.Errorf("label's key must not be empty")
-			}
-			parsedEdgeLabels[parts[0]] = parts[1]
-		default:
-			return fmt.Errorf("wrong edge label format: %s", strings.Join(parts, "="))
-		}
-	}
-	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
+	nodeutil.SetEdgeNodeLabels(opts.EdgeLabels)
 
 	var (
 		getEdgePodCIDRs  types.PodCIDRsGetter
@@ -332,12 +317,12 @@ func (opts Options) Validate() (err error) {
 		return fmt.Errorf("edge labels is needed")
 	}
 
-	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
-		return fmt.Errorf("connector public addresses is needed")
-	}
-
 	if len(opts.Connector.ConnectorLabels) == 0 {
 		return fmt.Errorf("connector labels is needed")
+	}
+
+	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
+		return fmt.Errorf("connector public addresses is needed")
 	}
 
 	for _, subnet := range opts.Connector.ProvidedSubnets {

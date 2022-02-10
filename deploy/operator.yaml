@@ -33,8 +33,8 @@ spec:
             #- --api-server-address=https://10.20.8.20:30303
             # 当集群是member时，必须配置, token从主集群获取
             #- --init-token=123467
-            # 根据边缘节点的标签配置,可以配置多个, 比如: key1,key2=,key3=value3
-            - --edge-labels=node-role.kubernetes.io/edge
+            # 根据边缘节点的标签配置,可以配置多个, 比如: key2=,key3=value3
+            - --edge-labels=node-role.kubernetes.io/edge=
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
             # 如果hairpinmode为true, 可以支持pod由service访问自身
@@ -46,6 +46,8 @@ spec:
             - --agent-masq-outgoing=true
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
+            # connectorPod的标签，用来查找connector Pod
+            - --connector-labels=app=fabedge-connector
             # 边缘节点可访问的connector的IP地址或域名，多个地址用逗号分割
             - --connector-public-addresses=10.10.10.10
             # 请提供Service ClusterIP所属的网段
