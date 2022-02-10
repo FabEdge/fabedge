@@ -16,6 +16,7 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -58,6 +59,7 @@ type Config struct {
 	ProvidedSubnets []string
 	GetPodCIDRs     types.PodCIDRsGetter
 	CertManager     certutil.Manager
+	ConnectorLabels map[string]string
 
 	CertOrganization string
 	SyncInterval     time.Duration
@@ -80,6 +82,10 @@ type controller struct {
 }
 
 func AddToManager(cnf Config) (types.EndpointGetter, error) {
+	if len(cnf.ConnectorLabels) == 0 {
+		return nil, fmt.Errorf("connector labels is needed")
+	}
+
 	mgr := cnf.Manager
 
 	ctl := &controller{
@@ -121,16 +127,22 @@ func AddToManager(cnf Config) (types.EndpointGetter, error) {
 func (ctl *controller) SyncConnectorConfig(ctx context.Context) error {
 	tick := time.NewTicker(ctl.SyncInterval)
 
-	ctl.updateConfigMapIfNeeded()
-	ctl.generateCertIfNeeded()
+	ctl.operateConnector()
 	for {
 		select {
 		case <-tick.C:
-			ctl.updateConfigMapIfNeeded()
-			ctl.generateCertIfNeeded()
+			ctl.operateConnector()
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+func (ctl *controller) operateConnector() {
+	ctl.updateConfigMapIfNeeded()
+	generated := ctl.generateCertIfNeeded()
+	if generated {
+		ctl.restartConnectorPods()
 	}
 }
 
@@ -195,7 +207,7 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 	}
 }
 
-func (ctl *controller) generateCertIfNeeded() {
+func (ctl *controller) generateCertIfNeeded() bool {
 	key := client.ObjectKey{
 		Name:      constants.ConnectorTLSName,
 		Namespace: ctl.Namespace,
@@ -210,40 +222,62 @@ func (ctl *controller) generateCertIfNeeded() {
 	if err != nil {
 		if !errors.IsNotFound(err) {
 			ctl.log.Error(err, "failed to get secret")
-			return
+			return false
 		}
 
 		log.V(5).Info("TLS secret for connector is not found, generate it now")
 		secret, err = ctl.buildCertAndKeySecret(key)
 		if err != nil {
 			log.Error(err, "failed to create cert and key for connector")
-			return
+			return false
 		}
 
 		err = ctl.client.Create(ctx, &secret)
 		if err != nil {
 			log.Error(err, "failed to create secret")
+			return false
 		}
-		return
+
+		return true
 	}
 
 	certPEM := secretutil.GetCert(secret)
 	err = ctl.CertManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
 	if err == nil {
 		log.V(5).Info("cert is verified")
-		return
+		return false
 	}
 
 	log.Error(err, "failed to verify cert, need to regenerate a cert for connector")
 	secret, err = ctl.buildCertAndKeySecret(key)
 	if err != nil {
 		log.Error(err, "failed to recreate cert and key for connector")
-		return
+		return false
 	}
 
 	err = ctl.client.Update(ctx, &secret)
 	if err != nil {
 		log.Error(err, "failed to save secret")
+		return false
+	}
+
+	return true
+}
+
+func (ctl *controller) restartConnectorPods() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	var podList corev1.PodList
+	if err := ctl.client.List(ctx, &podList, client.MatchingLabels(ctl.ConnectorLabels)); err != nil {
+		ctl.log.Error(err, "failed to list connector pods")
+		return
+	}
+
+	for _, pod := range podList.Items {
+		if err := ctl.client.Delete(ctx, &pod); err != nil {
+			ctl.log.Error(err, "failed to delete connector")
+		}
 	}
 }
 
