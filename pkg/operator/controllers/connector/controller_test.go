@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 package connector
 
 import (
@@ -24,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -36,22 +36,28 @@ import (
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Controller", func() {
 	var (
-		store        storepkg.Interface
-		ctx          context.Context
-		cancel       context.CancelFunc
-		namespace    string
-		interval     time.Duration
-		config       Config
-		node1, edge1 corev1.Node
+		store           storepkg.Interface
+		ctx             context.Context
+		cancel          context.CancelFunc
+		namespace       string
+		interval        time.Duration
+		config          Config
+		node1, edge1    corev1.Node
+		connectorPod    corev1.Pod
+		connectorLabels = map[string]string{
+			"app": "fabedge-connector",
+		}
 
 		getConnectorEndpoint types.EndpointGetter
 		certManager          certutil.Manager
+		getConnectName       = testutil.GenerateGetNameFunc("connector")
 	)
 
 	BeforeEach(func() {
@@ -61,6 +67,8 @@ var _ = Describe("Controller", func() {
 		interval = 2 * time.Second
 
 		store = storepkg.NewStore()
+
+		connectorPod = createConnectorPod(getConnectName(), namespace, connectorLabels)
 
 		node1 = newNormalNode("192.168.1.2", "10.10.10.64/26")
 		edge1 = newEdgeNode("10.20.40.183", "2.2.0.65/26")
@@ -102,6 +110,8 @@ var _ = Describe("Controller", func() {
 			ProvidedSubnets: []string{"10.10.10.1/26"},
 			Namespace:       namespace,
 			SyncInterval:    interval,
+
+			ConnectorLabels: connectorLabels,
 		}
 		getConnectorEndpoint, err = AddToManager(config)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -264,6 +274,31 @@ var _ = Describe("Controller", func() {
 		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
 		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
 	})
+
+	It("should delete connector pods if a tls secret is generated", func() {
+		expectConnectorDeleted(connectorPod, interval+time.Second)
+
+		By("Create a new connector Pod")
+		connectorPod = createConnectorPod(getConnectName(), namespace, connectorLabels)
+
+		By("Changing TLS secret with expired cert")
+		key := client.ObjectKey{
+			Name:      constants.ConnectorTLSName,
+			Namespace: config.Namespace,
+		}
+		var secret corev1.Secret
+		Expect(k8sClient.Get(context.Background(), key, &secret)).Should(Succeed())
+
+		certDER, keyDER, _ := certManager.NewCertKey(certutil.Config{
+			CommonName:     getConnectorEndpoint().Name,
+			ValidityPeriod: time.Second,
+		})
+		secret.Data[corev1.TLSCertKey] = certutil.EncodeCertPEM(certDER)
+		secret.Data[corev1.TLSPrivateKeyKey] = certutil.EncodePrivateKeyPEM(keyDER)
+		Expect(k8sClient.Update(context.Background(), &secret)).Should(Succeed())
+
+		expectConnectorDeleted(connectorPod, 2*interval)
+	})
 })
 
 func newNormalNode(ip, subnets string) corev1.Node {
@@ -292,4 +327,41 @@ func newEdgeNode(ip, subnets string) corev1.Node {
 	node.Labels = edgeLabels
 
 	return node
+}
+
+func createConnectorPod(name, namespace string, labels map[string]string) corev1.Pod {
+	connector := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "nginx",
+					Image: "nginx:latest",
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Create(context.Background(), &connector)).To(Succeed())
+
+	return connector
+}
+
+func expectConnectorDeleted(pod corev1.Pod, timeout time.Duration) {
+	key := client.ObjectKey{
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
+	}
+
+	EventuallyWithOffset(1, func() bool {
+		err := k8sClient.Get(context.Background(), key, &pod)
+		if err == nil {
+			return pod.DeletionTimestamp != nil
+		} else {
+			return errors.IsNotFound(err)
+		}
+	}, timeout).Should(BeTrue())
 }
