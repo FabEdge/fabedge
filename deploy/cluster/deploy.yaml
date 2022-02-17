@@ -1,5 +1,0 @@
-- playbook: /opt/ansible/pre-deploy.yml
-- playbook: /opt/kubespray/cluster.yml
-- playbook: /opt/ansible/post-deploy.yml
-- playbook: /opt/ansible/cloudcore.yml
-- playbook: /opt/ansible/iptables-persistent.yml

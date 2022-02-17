@@ -1,6 +1,0 @@
----
-- fail:
-    msg: "unsupported action: {{ cloudcore_action }}"
-  when: cloudcore_action not in cloudcore_supported_actions
-
-- include_tasks: "{{ cloudcore_action }}.yml"
