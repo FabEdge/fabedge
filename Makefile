@@ -79,9 +79,6 @@ fabedge-images: ${IMAGES}
 strongswan-image:
 	docker build -t fabedge/strongswan:latest -f build/strongswan/Dockerfile .
 
-installer-image:
-	docker build -t fabedge/installer:latest -f build/installer/Dockerfile .
-
 clean:
 	go clean -cache -testcache
 	rm -rf ${OUTPUT_DIR}

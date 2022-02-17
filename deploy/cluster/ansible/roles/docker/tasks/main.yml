@@ -1,6 +1,0 @@
----
-- fail:
-    msg: "unsupported action: {{ docker_action }}"
-  when: docker_action not in docker_supported_actions
-
-- include_tasks: "{{ docker_action }}.yml"
