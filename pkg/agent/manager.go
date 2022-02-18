@@ -158,6 +158,8 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 		}
 
 		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
+		// this may lead to duplicate child sa in strongswan since sometimes two agents try to initiate
+		// the same connection on each side at the same time
 		if err := m.tm.InitiateConn(peer.Name); err != nil {
 			m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
 		}
