@@ -317,7 +317,7 @@ func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
 	return corev1.Container{
 		Name:            "environment-prepare",
 		Image:           handler.agentImage,
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		ImagePullPolicy: handler.imagePullPolicy,
 		Command: []string{
 			"env_prepare.sh",
 		},
