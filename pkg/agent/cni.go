@@ -22,8 +22,9 @@ type CNINetConf struct {
 }
 
 type IPAMConfig struct {
-	Type   string     `json:"type"`
-	Ranges []RangeSet `json:"ranges"`
+	Type           string     `json:"type"`
+	Ranges         []RangeSet `json:"ranges"`
+	ReservedIPDays int        `json:"reservedIPDays,omitempty"`
 }
 
 type RangeSet []Range
@@ -38,6 +39,7 @@ type BridgeConfig struct {
 	IsDefaultGateway bool       `json:"isDefaultGateway,omitempty"`
 	ForceAddress     bool       `json:"forceAddress,omitempty"`
 	HairpinMode      bool       `json:"hairpinMode,omitempty"`
+	ReservedMACDays  int        `json:"reservedMACDays,omitempty"`
 	IPAM             IPAMConfig `json:"ipam"`
 }
 

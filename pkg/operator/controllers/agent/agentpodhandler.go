@@ -47,6 +47,7 @@ type agentPodHandler struct {
 	enableProxy       bool
 	enableIPAM        bool
 	enableHairpinMode bool
+	reserveIPMACDays  int
 
 	client client.Client
 	log    logr.Logger
@@ -141,6 +142,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
 						fmt.Sprintf("--enable-ipam=%t", handler.enableIPAM),
 						fmt.Sprintf("--enable-hairpinmode=%t", handler.enableHairpinMode),
+						fmt.Sprintf("--reserve-ip-mac-days=%d", handler.reserveIPMACDays),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
