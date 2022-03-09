@@ -52,6 +52,7 @@ var _ = Describe("AgentPodHandler", func() {
 			enableIPAM:        true,
 			enableHairpinMode: true,
 			reserveIPMACDays:  7,
+			networkPluginMTU:  1400,
 		}
 
 		nodeName := getNodeName()
@@ -223,6 +224,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"--enable-ipam=true",
 			"--enable-hairpinmode=true",
 			"--reserve-ip-mac-days=7",
+			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",
@@ -377,6 +379,7 @@ var _ = Describe("AgentPodHandler", func() {
 			"--enable-ipam=false",
 			"--enable-hairpinmode=true",
 			"--reserve-ip-mac-days=7",
+			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",

@@ -40,6 +40,7 @@ type BridgeConfig struct {
 	ForceAddress     bool       `json:"forceAddress,omitempty"`
 	HairpinMode      bool       `json:"hairpinMode,omitempty"`
 	ReservedMACDays  int        `json:"reservedMACDays,omitempty"`
+	MTU              int        `json:"mtu,omitempty"`
 	IPAM             IPAMConfig `json:"ipam"`
 }
 
