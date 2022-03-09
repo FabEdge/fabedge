@@ -51,6 +51,8 @@ var _ = Describe("AgentPodHandler", func() {
 			log:               klogr.New().WithName("agentPodHandler"),
 			enableIPAM:        true,
 			enableHairpinMode: true,
+			reserveIPMACDays:  7,
+			networkPluginMTU:  1400,
 		}
 
 		nodeName := getNodeName()
@@ -204,8 +206,8 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("env_prepare.sh"))
 		Expect(*pod.Spec.InitContainers[0].SecurityContext.Privileged).To(BeTrue())
 
-		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
-		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
+		Expect(pod.Spec.InitContainers[0].Image).To(Equal(agentImage))
+		Expect(pod.Spec.InitContainers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
 
 		// agent container
 		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
@@ -221,6 +223,8 @@ var _ = Describe("AgentPodHandler", func() {
 			"--masq-outgoing=false",
 			"--enable-ipam=true",
 			"--enable-hairpinmode=true",
+			"--reserve-ip-mac-days=7",
+			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",
@@ -374,6 +378,8 @@ var _ = Describe("AgentPodHandler", func() {
 			"--masq-outgoing=false",
 			"--enable-ipam=false",
 			"--enable-hairpinmode=true",
+			"--reserve-ip-mac-days=7",
+			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
 			"-v=3",

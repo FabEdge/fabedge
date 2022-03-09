@@ -47,6 +47,8 @@ type agentPodHandler struct {
 	enableProxy       bool
 	enableIPAM        bool
 	enableHairpinMode bool
+	reserveIPMACDays  int
+	networkPluginMTU  int
 
 	client client.Client
 	log    logr.Logger
@@ -141,6 +143,8 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						fmt.Sprintf("--masq-outgoing=%t", handler.masqOutgoing),
 						fmt.Sprintf("--enable-ipam=%t", handler.enableIPAM),
 						fmt.Sprintf("--enable-hairpinmode=%t", handler.enableHairpinMode),
+						fmt.Sprintf("--reserve-ip-mac-days=%d", handler.reserveIPMACDays),
+						fmt.Sprintf("--network-plugin-mtu=%d", handler.networkPluginMTU),
 						fmt.Sprintf("--use-xfrm=%t", handler.useXfrm),
 						fmt.Sprintf("--enable-proxy=%t", handler.enableProxy),
 						fmt.Sprintf("-v=%d", handler.logLevel),
@@ -317,7 +321,7 @@ func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
 	return corev1.Container{
 		Name:            "environment-prepare",
 		Image:           handler.agentImage,
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		ImagePullPolicy: handler.imagePullPolicy,
 		Command: []string{
 			"env_prepare.sh",
 		},

@@ -3,6 +3,7 @@ BINARIES := agent connector operator cert cloud-agent
 IMAGES := $(addsuffix -image, ${BINARIES})
 
 VERSION := v0.4.0
+CNI_PLUGIN_VERSION := v1.0.1-fabedge-v0.5.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fabedge/pkg/common/about
@@ -72,7 +73,7 @@ e2e-test:
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}:
-	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile .
+	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile . $(if $(subst agent,,${APP}),,--build-arg pluginVersion=${CNI_PLUGIN_VERSION})
 
 fabedge-images: ${IMAGES}
 

@@ -85,6 +85,8 @@ type Config struct {
 
 	EnableEdgeIPAM        bool
 	EnableEdgeHairpinMode bool
+	ReserveIPMACDays      int
+	NetworkPluginMTU      int
 }
 
 func AddToManager(cnf Config) error {
@@ -162,6 +164,8 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		enableProxy:       cnf.EnableProxy,
 		enableIPAM:        true,
 		enableHairpinMode: cnf.EnableEdgeHairpinMode,
+		reserveIPMACDays:  cnf.ReserveIPMACDays,
+		networkPluginMTU:  cnf.NetworkPluginMTU,
 	})
 
 	return handlers

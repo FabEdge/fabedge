@@ -289,10 +289,13 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		IsDefaultGateway: true,
 		ForceAddress:     true,
 		HairpinMode:      m.EnableHairpinMode,
+		ReservedMACDays:  m.ReserveIPMACDays,
+		MTU:              m.NetworkPluginMTU,
 
 		IPAM: IPAMConfig{
-			Type:   "host-local",
-			Ranges: ranges,
+			Type:           "host-local",
+			Ranges:         ranges,
+			ReservedIPDays: m.ReserveIPMACDays,
 		},
 	}
 
