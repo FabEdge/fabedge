@@ -39,6 +39,8 @@ spec:
             - --cni-type=calico
             # 如果hairpinmode为true, 可以支持pod由service访问自身
             - --agent-enable-edge-hairpinmode=true
+            # 边缘节点保存pod对应IP和MAC记录，设置已删除pod对应的IP和MAC的过期时间，以天为单位，默认7天，0表示不删除记录
+            - --agent-reserve-ip-mac-days=7
             # 边缘节点的Pod使用的网段, 当使用Calico时必须配置，该网段不可与connector-subnets里的网段重叠
             - --edge-pod-cidr=10.10.0.0/16
             # 建议在边缘节点不能运行kube-proxy时启用
