@@ -3,7 +3,7 @@ BINARIES := agent connector operator cert cloud-agent
 IMAGES := $(addsuffix -image, ${BINARIES})
 
 VERSION := v0.4.0
-CNI_PLUGIN_VERSION := v1.0.1-fabedge-v0.5.0
+CNI_PLUGIN_VERSION := v0.1.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 META := github.com/fabedge/fabedge/pkg/common/about
