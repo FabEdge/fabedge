@@ -1,9 +1,0 @@
----
-iptables_persistent_enabled: true
-iptables_persistent_action: deploy
-iptables_persistent_supported_actions:
-  - deploy
-  - reset
-
-iptables_persistent_config_path: "/etc/edge/iptables-persistent/iptables.ini"
-iptables_persistent_script_path: "/usr/local/bin/iptables-persistent.py"

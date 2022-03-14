@@ -16,16 +16,15 @@ package agent
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	ctrlpkg "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	handlerpkg "sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
@@ -34,12 +33,17 @@ import (
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 )
 
+// errRestartAgent is used to signal controller put restartAgent in context
+var errRestartAgent = fmt.Errorf("restart agent")
+
 const (
 	controllerName              = "agent-controller"
 	agentConfigTunnelFileName   = "tunnels.yaml"
 	agentConfigServicesFileName = "services.yaml"
 	agentConfigTunnelsFilepath  = "/etc/fabedge/tunnels.yaml"
 	agentConfigServicesFilepath = "/etc/fabedge/services.yaml"
+
+	keyRestartAgent = "restartAgent"
 )
 
 type ObjectKey = client.ObjectKey
@@ -81,6 +85,8 @@ type Config struct {
 
 	EnableEdgeIPAM        bool
 	EnableEdgeHairpinMode bool
+	ReserveIPMACDays      int
+	NetworkPluginMTU      int
 }
 
 func AddToManager(cnf Config) error {
@@ -95,21 +101,14 @@ func AddToManager(cnf Config) error {
 		edgeNameSet: types.NewSafeStringSet(),
 		handlers:    initHandlers(cnf, cli, log),
 	}
-	c, err := controller.New(
-		controllerName,
-		mgr,
-		controller.Options{
-			Reconciler: reconciler,
-		},
-	)
-	if err != nil {
-		return err
-	}
 
-	return c.Watch(
-		&source.Kind{Type: &corev1.Node{}},
-		&handlerpkg.EnqueueRequestForObject{},
-	)
+	return ctrlpkg.NewControllerManagedBy(mgr).
+		For(&corev1.Node{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
+		Owns(&corev1.Pod{}).
+		Named(controllerName).
+		Complete(reconciler)
 }
 
 func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
@@ -165,6 +164,8 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		enableProxy:       cnf.EnableProxy,
 		enableIPAM:        true,
 		enableHairpinMode: cnf.EnableEdgeHairpinMode,
+		reserveIPMACDays:  cnf.ReserveIPMACDays,
+		networkPluginMTU:  cnf.NetworkPluginMTU,
 	})
 
 	return handlers
@@ -192,9 +193,13 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 		return reconcile.Result{}, nil
 	}
 
-	ctl.edgeNameSet.Add(node.Name)
+	ctl.edgeNameSet.Insert(node.Name)
 	for _, handler := range ctl.handlers {
 		if err := handler.Do(ctx, node); err != nil {
+			if err == errRestartAgent {
+				ctx = context.WithValue(ctx, keyRestartAgent, err)
+				continue
+			}
 			return reconcile.Result{}, err
 		}
 	}
@@ -208,7 +213,7 @@ func (ctl *agentController) shouldSkip(node corev1.Node) bool {
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {
-	if !ctl.edgeNameSet.Contains(nodeName) {
+	if !ctl.edgeNameSet.Has(nodeName) {
 		return nil
 	}
 
@@ -219,6 +224,6 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 		}
 	}
 
-	ctl.edgeNameSet.Remove(nodeName)
+	ctl.edgeNameSet.Delete(nodeName)
 	return nil
 }

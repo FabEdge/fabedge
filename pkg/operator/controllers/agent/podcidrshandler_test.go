@@ -73,7 +73,7 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
 			nameSet := handler.store.GetLocalEndpointNames()
-			Expect(nameSet.Contains(epName)).Should(BeTrue())
+			Expect(nameSet.Has(epName)).Should(BeTrue())
 
 			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
 			Expect(err).Should(BeNil())

@@ -20,11 +20,11 @@ import (
 	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
-	"github.com/jjeffery/stringset"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 var (
-	connNames stringset.Set
+	connNames sets.String
 )
 
 func (m *Manager) readCfgFromFile() error {
@@ -34,7 +34,7 @@ func (m *Manager) readCfgFromFile() error {
 	}
 
 	m.connections = nil
-	connNames = stringset.New()
+	connNames = sets.NewString()
 
 	for _, peer := range nc.Peers {
 
@@ -55,7 +55,7 @@ func (m *Manager) readCfgFromFile() error {
 			RemoteType:        peer.Type,
 		}
 		m.connections = append(m.connections, con)
-		connNames.Add(con.Name)
+		connNames.Insert(con.Name)
 	}
 
 	return nil
@@ -75,7 +75,7 @@ func (m *Manager) syncConnections() error {
 
 	// remove inactive connections
 	for _, name := range oldNames {
-		if !connNames.Contains(name) {
+		if !connNames.Has(name) {
 			if err = m.tm.UnloadConn(name); err != nil {
 				return err
 			}

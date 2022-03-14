@@ -17,12 +17,12 @@ package agent
 import (
 	"context"
 
-	"github.com/jjeffery/stringset"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
@@ -75,11 +75,12 @@ var _ = Describe("ConfigHandler", func() {
 		}
 		testCommunity = types.Community{
 			Name:    "test",
-			Members: stringset.New(edge2Endpoint.Name, getEndpointName(nodeName)),
+			Members: sets.NewString(edge2Endpoint.Name, getEndpointName(nodeName)),
 		}
 
 		agentConfigName = getAgentConfigMapName(nodeName)
 		node = newNode(nodeName, "10.40.20.181", "2.2.1.128/26")
+		node.UID = "123456"
 
 		store.SaveEndpoint(edge2Endpoint)
 		store.SaveEndpoint(newEndpoint(node))
@@ -92,6 +93,7 @@ var _ = Describe("ConfigHandler", func() {
 		var cm corev1.ConfigMap
 		err := k8sClient.Get(context.Background(), ObjectKey{Name: agentConfigName, Namespace: namespace}, &cm)
 		Expect(err).ShouldNot(HaveOccurred())
+		expectOwnerReference(&cm, node)
 
 		configData, ok := cm.Data[agentConfigServicesFileName]
 		Expect(ok).Should(BeTrue())
@@ -110,6 +112,7 @@ var _ = Describe("ConfigHandler", func() {
 				edge2Endpoint,
 			},
 		}
+		Expect(conf).Should(Equal(expectedConf))
 		Expect(conf).Should(Equal(expectedConf))
 		Expect(conf.Peers[0].Type).Should(Equal(apis.Connector))
 		Expect(conf.Peers[1].Type).Should(Equal(apis.EdgeNode))
@@ -136,6 +139,7 @@ var _ = Describe("ConfigHandler", func() {
 		var cm corev1.ConfigMap
 		err := k8sClient.Get(context.Background(), ObjectKey{Name: agentConfigName, Namespace: namespace}, &cm)
 		Expect(err).ShouldNot(HaveOccurred())
+		expectOwnerReference(&cm, node)
 
 		configData, ok := cm.Data[agentConfigTunnelFileName]
 		Expect(ok).Should(BeTrue())

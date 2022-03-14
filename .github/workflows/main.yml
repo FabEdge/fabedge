@@ -16,10 +16,6 @@ jobs:
       matrix:
         include:
         - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/strongswan:5.9.1
-          file: build/strongswan/Dockerfile
-
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: fabedge/connector
           file: build/connector/Dockerfile
 

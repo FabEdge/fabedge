@@ -54,6 +54,22 @@ var _ = Describe("Manager", func() {
 		Expect(manager.VerifyCertInPEM(certutil.EncodeCertPEM(certDER), cfg.Usages)).Should(Succeed())
 	})
 
+	It("should use validPeriod of config passed if the validPeriod is less than validPeriod of manager", func() {
+		cfg := certutil.Config{
+			CommonName:     "test",
+			Organization:   []string{certutil.DefaultOrganization},
+			IsCA:           false,
+			ValidityPeriod: time.Second,
+			Usages:         certutil.ExtKeyUsagesServerAndClient,
+		}
+		certDER, _, err := manager.NewCertKey(cfg)
+		Expect(err).NotTo(HaveOccurred())
+
+		time.Sleep(time.Second)
+		cert, err := x509.ParseCertificate(certDER)
+		Expect(manager.VerifyCert(cert, cfg.Usages)).Should(HaveOccurred())
+	})
+
 	It("should be able to create cert from certificate request", func() {
 		req := certutil.Request{
 			CommonName:   "test",

@@ -22,7 +22,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -64,12 +66,18 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 			return err
 		}
 
+		if err = controllerutil.SetControllerReference(&node, &secret, scheme.Scheme); err != nil {
+			log.Error(err, "failed to set ownerReference to TLS secret")
+			return err
+		}
+
 		err = handler.client.Create(ctx, &secret)
 		if err != nil {
 			log.Error(err, "failed to create secret")
+			return err
 		}
 
-		return err
+		return errRestartAgent
 	}
 
 	certPEM := secretutil.GetCert(secret)
@@ -86,12 +94,17 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 		return err
 	}
 
-	err = handler.client.Update(ctx, &secret)
-	if err != nil {
-		log.Error(err, "failed to save secret")
+	if err = controllerutil.SetControllerReference(&node, &secret, scheme.Scheme); err != nil {
+		log.Error(err, "failed to set ownerReference to TLS secret")
+		return err
 	}
 
-	return err
+	if err = handler.client.Update(ctx, &secret); err != nil {
+		log.Error(err, "failed to save secret")
+		return err
+	}
+
+	return errRestartAgent
 }
 
 func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {

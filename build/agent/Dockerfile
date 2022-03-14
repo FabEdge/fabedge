@@ -1,10 +1,10 @@
 FROM golang:1.16.4 as builder
-ARG pluginVersion=v0.9.1
+ARG pluginVersion=v0.1.0
 COPY . /fabedge
 RUN cd /tmp && git clone https://gitee.com/fabedge/plugins.git && \
-    cd /tmp/plugins && git checkout ${pluginVersion} && bash build_linux.sh -ldflags "-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${pluginVersion}" && \
+    cd /tmp/plugins && git checkout ${pluginVersion} && bash build_linux.sh -ldflags "-extldflags -static -X 'github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${pluginVersion}'" && \
     cd /tmp/plugins/bin && cp bridge host-local loopback portmap bandwidth /tmp/ && \
-    cd /fabedge && make agent CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct && \
+    cd /fabedge && make agent QUICK=1 CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct && \
     chmod a+x /fabedge/pkg/agent/env_prepare.sh && \
     cp /fabedge/pkg/agent/env_prepare.sh /tmp
 

@@ -25,7 +25,6 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
-	"github.com/jjeffery/stringset"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
@@ -131,10 +130,10 @@ func (m *Manager) mainNetwork() error {
 }
 
 func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
-	newNames := stringset.New()
+	newNames := sets.NewString()
 
 	for _, peer := range conf.Peers {
-		newNames.Add(peer.Name)
+		newNames.Insert(peer.Name)
 
 		conn := tunnel.ConnConfig{
 			Name: peer.Name,
@@ -159,6 +158,8 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 		}
 
 		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
+		// this may lead to duplicate child sa in strongswan since sometimes two agents try to initiate
+		// the same connection on each side at the same time
 		if err := m.tm.InitiateConn(peer.Name); err != nil {
 			m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
 		}
@@ -172,7 +173,7 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 
 	m.log.V(5).Info("clean useless tunnels")
 	for _, name := range oldNames {
-		if newNames.Contains(name) {
+		if newNames.Has(name) {
 			continue
 		}
 
@@ -288,10 +289,13 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 		IsDefaultGateway: true,
 		ForceAddress:     true,
 		HairpinMode:      m.EnableHairpinMode,
+		ReservedMACDays:  m.ReserveIPMACDays,
+		MTU:              m.NetworkPluginMTU,
 
 		IPAM: IPAMConfig{
-			Type:   "host-local",
-			Ranges: ranges,
+			Type:           "host-local",
+			Ranges:         ranges,
+			ReservedIPDays: m.ReserveIPMACDays,
 		},
 	}
 

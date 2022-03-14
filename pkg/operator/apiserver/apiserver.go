@@ -218,7 +218,7 @@ func (cfg Config) getEndpointsAndCommunity(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 
-			communitySet[community.Name] = community.Members.Values()
+			communitySet[community.Name] = community.Members.List()
 			for _, name := range communitySet[community.Name] {
 				// skip endpoints which are from child cluster
 				if !strings.HasPrefix(name, clusterName) {

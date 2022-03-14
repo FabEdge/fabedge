@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
+	fclient "github.com/fabedge/fabedge/pkg/operator/client"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
@@ -44,7 +45,7 @@ func NewCertCommand() *cobra.Command {
 	caCmd := &cobra.Command{
 		Use:   "ca [CommonName]",
 		Short: "Create a self-signed CA cert/key pair",
-		Long:  "Create a self-signed CA cert/key pair, by default data will be save to a secret specified by '-ca-secret' flag",
+		Long:  "Create a self-signed CA cert/key pair, by default data will be save to a secret specified by '-ca-secret' flag. CA cert/key pair could not be created remotely",
 		Example: `# Create a self-signed CA with default commonName to secret fabedge-ca
 fabedge-cert gen ca
 
@@ -95,15 +96,44 @@ fabedge-cert gen edge --save-to-file --save-to-secret=false
 		Args:    cobra.MinimumNArgs(1),
 		PreRunE: doValidations(certOptions.Validate),
 		Run: func(cmd *cobra.Command, args []string) {
-			caDER, caKeyDER := getCA(globalOptions)
+			var (
+				caDER      []byte
+				certDER    []byte
+				keyDER     []byte
+				err        error
+				commonName = args[0]
+			)
 
-			commonName := args[0]
-			usages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
-			cfg := certOptions.AsConfig(commonName, false, usages)
+			if !globalOptions.Remote {
+				var caKeyDER []byte
+				caDER, caKeyDER = getCA(globalOptions)
 
-			certDER, keyDER, err := certutil.NewCertFromCA2(caDER, caKeyDER, cfg)
-			if err != nil {
-				exit("failed to create cert/key from ca: %s", err)
+				usages := []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+				cfg := certOptions.AsConfig(commonName, false, usages)
+				certDER, keyDER, err = certutil.NewCertFromCA2(caDER, caKeyDER, cfg)
+				if err != nil {
+					exit("failed to create cert/key from ca: %s", err)
+				}
+			} else {
+				cacert, err := fclient.GetCertificate(globalOptions.APIServerAddress)
+				if err != nil {
+					exit("failed to get CA cert from host cluster: %s", err)
+				}
+
+				var csrDER []byte
+				keyDER, csrDER, err = certutil.NewCertRequest(certOptions.AsRequest(commonName))
+				if err != nil {
+					exit("failed to create certificate request: %s", err)
+				}
+
+				certPool := x509.NewCertPool()
+				certPool.AddCert(cacert.Raw)
+				cert, err := fclient.SignCertByToken(globalOptions.APIServerAddress, globalOptions.Token, csrDER, certPool)
+				if err != nil {
+					exit("failed to create certificate: %s", err)
+				}
+				caDER = cacert.DER
+				certDER = cert.DER
 			}
 
 			if saveOptions.Secret {
@@ -150,7 +180,17 @@ fabedge-cert verify --secret edge --ca-secret=fabedge-ca --namespace=fabedge
 `,
 		PreRunE: doValidations(verifyOptions.Validate),
 		Run: func(cmd *cobra.Command, args []string) {
-			caDER, _ := getCA(globalOptions)
+			var caDER []byte
+
+			if globalOptions.Remote {
+				cacert, err := fclient.GetCertificate(globalOptions.APIServerAddress)
+				if err != nil {
+					exit("failed to get CA cert from host cluster: %s", err)
+				}
+				caDER = cacert.DER
+			} else {
+				caDER, _ = getCA(globalOptions)
+			}
 
 			var certDER []byte
 			if len(verifyOptions.Secret) > 0 {

@@ -134,7 +134,7 @@ var _ = Describe("Controller", func() {
 		Expect(ok).Should(BeTrue())
 
 		for _, member := range community.Spec.Members {
-			Expect(cmm.Members.Values()).Should(ContainElement(member))
+			Expect(cmm.Members.List()).Should(ContainElement(member))
 		}
 	})
 

@@ -27,10 +27,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jjeffery/stringset"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -76,7 +76,7 @@ type Options struct {
 	Namespace        string
 	EdgePodCIDR      string
 	EndpointIDFormat string
-	EdgeLabels       []string
+	EdgeLabels       map[string]string
 	CNIType          string
 
 	CASecretName     string
@@ -111,8 +111,9 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
-	flag.StringSliceVar(&opts.EdgeLabels, "edge-labels", []string{"node-role.kubernetes.io/edge"}, "Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
+	flag.StringToStringVar(&opts.EdgeLabels, "edge-labels", map[string]string{"node-role.kubernetes.io/edge": ""}, "Labels to filter edge nodes, e.g. key2=,key3=value3")
 
+	flag.StringToStringVar(&opts.Connector.ConnectorLabels, "connector-labels", map[string]string{"app": "fabedge-connector"}, "The labels used to find connector pods, e.g. key2=,key3=value3")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
@@ -125,6 +126,8 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
 	flag.BoolVar(&opts.Agent.EnableEdgeHairpinMode, "agent-enable-edge-hairpinmode", true, "Enable edge node pods HairpinMode")
+	flag.IntVar(&opts.Agent.ReserveIPMACDays, "agent-reserve-ip-mac-days", 7, "The days to reserve pod IP and MAC, 0 means forever")
+	flag.IntVar(&opts.Agent.NetworkPluginMTU, "agent-network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
@@ -149,22 +152,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 func (opts *Options) Complete() (err error) {
 	opts.CNIType = strings.TrimSpace(opts.CNIType)
 
-	parsedEdgeLabels := make(map[string]string)
-	for _, label := range opts.EdgeLabels {
-		parts := strings.Split(label, "=")
-		switch len(parts) {
-		case 1:
-			parsedEdgeLabels[parts[0]] = ""
-		case 2:
-			if parts[0] == "" {
-				return fmt.Errorf("label's key must not be empty")
-			}
-			parsedEdgeLabels[parts[0]] = parts[1]
-		default:
-			return fmt.Errorf("wrong edge label format: %s", strings.Join(parts, "="))
-		}
-	}
-	nodeutil.SetEdgeNodeLabels(parsedEdgeLabels)
+	nodeutil.SetEdgeNodeLabels(opts.EdgeLabels)
 
 	var (
 		getEdgePodCIDRs  types.PodCIDRsGetter
@@ -329,6 +317,10 @@ func (opts Options) Validate() (err error) {
 
 	if len(opts.EdgeLabels) == 0 {
 		return fmt.Errorf("edge labels is needed")
+	}
+
+	if len(opts.Connector.ConnectorLabels) == 0 {
+		return fmt.Errorf("connector labels is needed")
 	}
 
 	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
@@ -578,7 +570,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 	for _, community := range communities.Items {
 		store.SaveCommunity(types.Community{
 			Name:    community.Name,
-			Members: stringset.New(community.Spec.Members...),
+			Members: sets.NewString(community.Spec.Members...),
 		})
 	}
 

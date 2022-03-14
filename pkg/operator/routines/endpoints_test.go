@@ -59,7 +59,7 @@ var _ = Describe("LoadEndpointsAndCommunities", func() {
 		time.Sleep(50 * time.Millisecond)
 
 		community, _ := store.GetCommunity("connectors")
-		Expect(community.Members.Values()).Should(ConsistOf(e1.Name, e2.Name))
+		Expect(community.Members.List()).Should(ConsistOf(e1.Name, e2.Name))
 
 		endpoint, _ := store.GetEndpoint(e1.Name)
 		Expect(endpoint).Should(Equal(e1))
@@ -82,11 +82,11 @@ var _ = Describe("LoadEndpointsAndCommunities", func() {
 		Expect(ok).Should(BeFalse())
 
 		community, ok = store.GetCommunity("void")
-		Expect(community.Members.Values()).Should(ConsistOf("edge1", "edge2"))
+		Expect(community.Members.List()).Should(ConsistOf("edge1", "edge2"))
 
 		community, ok = store.GetCommunity("mixed")
 		Expect(ok).Should(BeTrue())
-		Expect(community.Members.Values()).Should(ConsistOf(e1.Name, e3.Name))
+		Expect(community.Members.List()).Should(ConsistOf(e1.Name, e3.Name))
 
 		endpoint, _ = store.GetEndpoint(e1.Name)
 		Expect(endpoint).Should(Equal(e1))
