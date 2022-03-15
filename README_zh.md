@@ -6,7 +6,7 @@
 
 <img src="https://user-images.githubusercontent.com/88021699/132610524-c5adcbd3-d49a-4de4-94de-dab46d4a2ed5.jpg" width="40%">  
 
-FabEdge是一个基于kubernetes构建的，专注于边缘计算场景的容器网络方案，支持KubeEdge/SuperEdge/OpenYurt等主流边缘计算框架。 FabEdge解决了边缘计算场景下容器网络配置管理复杂，网络割裂通信困难，缺少拓扑感知能力，无法提供就近访问等问题，使能云边、边边之间的业务协同。FabEdge支持弱网环境，如4/5G，WiFi等，适用于物联网，车联网、智慧城市等场景。
+FabEdge是一个基于kubernetes构建的，专注于边缘计算的容器网络方案，支持KubeEdge/SuperEdge/OpenYurt等主流边缘计算框架。 FabEdge旨在解决边缘计算场景下网络管理复杂，跨集群通信困难，缺少能自动感知网络拓扑的服务发现等问题，使能云边、边边业务协同。FabEdge支持4/5G，WiFi等弱网环境，适用于物联网，车联网、智慧城市等场景。
 
 FabEdge不仅支持边缘节点（通过KubeEdge等边缘计算框架加入集群的远程节点），还支持边缘集群（独立的K8S集群）。
 
@@ -32,27 +32,18 @@ FabEdge是托管在CNCF下的沙箱项目。
 * KubeEdge等边缘计算框架建立了控制面，把边缘节点加入云端K8S集群，使得可以在边缘节点上下发Pod等资源；FabEdge在此基础上建立了一个三层的数据转发面，使得Pod和Pod之间可以直接通讯。
 * 云端可以是任何K8S集群，目前支持的CNI包括Calico， Flannel。
 * FabEdge使用安全隧道技术，目前支持IPSec。
-* FabEdge包括的组件：Operators, Connector，Agent和Cloud-Agent
+* FabEdge包括的组件：Operators, Connector，Agent和Cloud-Agent。
 * Operator运行在云端任意的节点，通过监听节点，服务等K8S资源，为每个Agent维护一个ConfigMap，包括了本Agent需要的路由信息，比如子网，端点，负载均衡规则等，同时为每个Agent维护一个Secret，包括CA证书，节点证书等。Operator也负责Agent自身的管理，包括创建，更新，删除等。
 * Connector运行在云端选定的节点，负责管理从边缘节点发起的隧道，在边缘节点和云端集群之间转发流量。从Connector节点到云端其它非Connector节点的流量转发仍然依靠云端CNI。
 * Cloud-Agent运行在集群中所有非边缘，非Connector的节点，它负责管理本节点到远端的路由。  
 * Agent运行在每个边缘节点上， 它使用自己的ConfigMap和Secret的信息，发起到云端Connector和其它边缘节点的隧道，负责本节点的路由，负责均衡，iptables规则的管理。
+* Fab-DNS运行在所有FabEdge的集群里，它通过截获DNS请求，提供拓扑感知的跨集群服务发现能力。
 
-## 兼容矩阵
+## FabEdge和传统CNI的区别 
 
-|             | KubeEdge 1.8.0 | SuperEdge  0.5.0 | OpenYurt 0.5.0 |
-| ----------- | -------------- | ---------------- | -------------- |
-| FabEdge 0.3 | ✓              | ✓                | ✓              |
+FabEdge和现有的CNI，比如Calico，Flannel，互为补充，解决不同的问题。就像前面架构图所示，Calico等传统的插件运行在云端K8S集群里，负责云内节点之间的流量转发，FabEdge作为它的一个补充，把网络的能力延伸到了边缘节点和边缘集群，使能了云边，边边通讯。
 
-> 说明：
->
-> 这里只包含了测试过的组合，并不是说其它的组合就不兼容。FabEdge并不严格依赖任何边缘计算框架，所以其它的主流版本大概率是可行的。
-
-## FabEdge和其它CNI的区别 
-
-FabEdge和现有的CNI，比如Calico，Flannel，并不冲突。就像在前面架构图所示，Calico等传统的插件运行在云端K8S集群里，负责云内节点之间的流量转发，FabEdge作为它的一个补充，把网络的能力延伸到了边缘节点和边缘集群，使能了云边，边边通讯。
-
-## 使用手册
+## 用户手册
 
 请参考 [文档](docs/).
 
@@ -71,5 +62,5 @@ FabEdge和现有的CNI，比如Calico，Flannel，并不冲突。就像在前面
 
 <img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
 
-## 许可
+## 软件许可
 FabEdge遵循Apache 2.0 许可。
