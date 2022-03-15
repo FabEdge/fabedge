@@ -2,6 +2,9 @@ OUTPUT_DIR := _output
 BINARIES := agent connector operator cert cloud-agent
 IMAGES := $(addsuffix -image, ${BINARIES})
 
+TAG = $(shell git describe --tags)
+STRONGSWAN_TAG = 5.9.1
+
 VERSION := v0.5.0
 CNI_PLUGIN_VERSION := v0.1.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
@@ -71,14 +74,17 @@ endif
 e2e-test:
 	go test ${LDFLAGS} -c ./test/e2e -o ${OUTPUT_DIR}/fabedge-e2e.test
 
+buildx-install:
+	docker buildx install > /dev/null 2>&1 || true
+
 ${IMAGES}: APP=$(subst -image,,$@)
-${IMAGES}:
-	docker build -t fabedge/${APP}:latest -f build/${APP}/Dockerfile . $(if $(subst agent,,${APP}),,--build-arg pluginVersion=${CNI_PLUGIN_VERSION})
+${IMAGES}: buildx-install
+	docker build -t fabedge/${APP}:${TAG} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) $(if $(subst agent,,${APP}),,--build-arg pluginVersion=${CNI_PLUGIN_VERSION}) -f build/${APP}/Dockerfile .
 
 fabedge-images: ${IMAGES}
 
-strongswan-image:
-	docker build -t fabedge/strongswan:latest -f build/strongswan/Dockerfile .
+strongswan-image: buildx-install
+	docker build -t fabedge/strongswan:${STRONGSWAN_TAG} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/strongswan/Dockerfile .
 
 clean:
 	go clean -cache -testcache

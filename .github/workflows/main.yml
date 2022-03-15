@@ -15,40 +15,25 @@ jobs:
     strategy:
       matrix:
         include:
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/connector
-          file: build/connector/Dockerfile
+        - platform: linux/amd64,linux/arm64,linux/arm/v7
+          target: agent-image
 
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/operator
-          file: build/operator/Dockerfile
+        - platform: linux/amd64,linux/arm64,linux/arm/v7
+          target: connector-image
 
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/agent
-          file: build/agent/Dockerfile
+        - platform: linux/amd64,linux/arm64,linux/arm/v7
+          target: operator-image
 
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/cert
-          file: build/cert/Dockerfile
+        - platform: linux/amd64,linux/arm64,linux/arm/v7
+          target: cert-image
 
-        - platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: fabedge/cloud-agent
-          file: build/cloud-agent/Dockerfile
+        - platform: linux/amd64,linux/arm64,linux/arm/v7
+          target: cloud-agent-image
 
     steps:
     - uses: actions/checkout@v2
-
-    - name: Set tags
-      shell: bash
-      env:
-        TAGS: ${{ matrix.tags }}
-      run: |
-        if [[ ${TAGS} =~ ":" ]]; then
-          echo "::set-output name=tags::${TAGS}"
-        else
-          echo "::set-output name=tags::${TAGS}:${GITHUB_REF##*/}"
-        fi
-      id: set_tags
+      with:
+        fetch-depth: 0
 
     - name: Remove proxies
       run: |
@@ -67,10 +52,8 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Build and push
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        platforms: ${{ matrix.platforms }}
-        push: true
-        tags: ${{ steps.set_tags.outputs.tags }}
-        file: ${{ matrix.file }}
+      run: |
+        make ${target} PLATFORM=${platform} PUSH=true
+      env:
+        platform: ${{ matrix.platform }}
+        target: ${{ matrix.target }}
