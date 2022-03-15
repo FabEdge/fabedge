@@ -51,7 +51,6 @@ var _ = Describe("AgentPodHandler", func() {
 			log:               klogr.New().WithName("agentPodHandler"),
 			enableIPAM:        true,
 			enableHairpinMode: true,
-			reserveIPMACDays:  7,
 			networkPluginMTU:  1400,
 		}
 
@@ -223,7 +222,6 @@ var _ = Describe("AgentPodHandler", func() {
 			"--masq-outgoing=false",
 			"--enable-ipam=true",
 			"--enable-hairpinmode=true",
-			"--reserve-ip-mac-days=7",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
@@ -378,7 +376,6 @@ var _ = Describe("AgentPodHandler", func() {
 			"--masq-outgoing=false",
 			"--enable-ipam=false",
 			"--enable-hairpinmode=true",
-			"--reserve-ip-mac-days=7",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--enable-proxy=false",
