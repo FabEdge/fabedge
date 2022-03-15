@@ -1,65 +1,69 @@
-# FabEdge安装部署
-
 
 [toc]
-
 
 ## 概念
 
 -  **云端集群**：标准的K8S集群，位于云端，提供云端的计算能力 
--  **边缘节点**： 使用KubeEdge等边缘计算框架，加入云端集群的边缘侧节点，提供边缘计算能力 
--  **边缘集群**：标准的K8S集群，位于边缘侧，提供边缘计算能力 
--  **Host集群**：选定的一个云端集群，用于管理其它集群的跨集群通讯，FabEdge部署的第一个集群必须是host集群 
--  **member集群**：一个边缘集群，注册到host集群，上报本集群端点网络配置信息，用于多集群通讯 
--  **Community**：FabEdge定义的CRD，有两种场景： 
-   - 定义一个集群内多个边缘节点之间的通讯
-   - 定义多个边缘集群之间的通讯
+-  **边缘节点**：通过KubeEdge等边缘计算框架，加入云端集群的边缘侧节点，提供边缘计算能力 
+-  **边缘集群**：标准的K8S集群，位于边缘侧，提供边缘计算能力
+-  **主集群**：一个选定的云端集群，用于管理其它集群的跨集群通讯，FabEdge部署的第一个集群必须是主集群 
+-  **成员集群**：一个边缘集群，注册到主集群，上报本集群端点网络配置信息用于多集群通讯 
+-  **Community**：FabEdge定义的CRD，分为两类： 
+   - **节点类型**：定义集群内多个边缘节点之间的通讯
+   - **集群类型**：定义多个边缘集群之间的通讯
 
+## 前提条件
 
-
-## 前置条件
-
-- Kubernetes (v1.18.8)
+- Kubernetes (v1.18.8，1.22.7)
 - Flannel (v0.14.0) 或者 Calico (v3.16.5)
-
-
+- KubeEdge （v1.5）或者 SuperEdge（v0.5.0）或者 OpenYurt（ v0.4.1）
 
 ## 环境准备
 
-1.  确保防火墙或安全组允许以下协议和端口 
+1. 确保防火墙或安全组允许以下协议和端口 
    - ESP(50)，UDP/500，UDP/4500
+2. 获取集群配置信息，供后面使用
+```shell
+$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
+This may take some time. Please wait.
 
-
+clusterDNS               : 169.254.25.10
+clusterDomain            : root-cluster
+cluster-cidr             : 10.233.64.0/18
+service-cluster-ip-range : 10.233.0.0/18
+```
 
 ## 在主集群部署FabEdge
 
-1.  安装FabEdge   
+1. 为**所有边缘节点**添加标签
 ```shell
-$ curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region haidian --edges edge1 --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
+$ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+node/edge1 labeled
+$ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
+node/edge2 labeled
+
+$ kubectl get no
+NAME     STATUS   ROLES    AGE   VERSION
+edge1    Ready    edge     22h   v1.18.2
+edge2    Ready    edge     22h   v1.18.2
+master   Ready    master   22h   v1.18.2
+node1    Ready    <none>   22h   v1.18.2
+```
+
+2.  安装FabEdge   
+```shell
+$ curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region china --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
 ```
 > 说明：
->  
 > **--cluster-name**: 集群名称
->  
 > **--cluster-role**: 集群角色
->  
-> **--edges**: 边缘节点主机名列表，用逗号分隔
->  
+> **--cluster-zone：** 集群所在的区
+> **--cluster-region：**集群所在的区域
 > **--connectors**: connectors所在节点主机名
->  
-> **--connector-public-addresses**: connectors所在节点的ip地址
+> **--connector-public-addresses**: connectors所在节点的ip地址，从边缘节点必须网络可达 
 
-2.  确认**所有边缘节点**上**没有**运行**任何**CNI的组件  
+3.  确认部署正常  
 ```shell
-$ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
-calico-kube-controllers-8b5ff5d58-d2pkj   1/1     Running   0          67m   10.20.8.20    master
-calico-node-t5vww                         1/1     Running   0          38s   10.20.8.28    node1
-calico-node-z2fmf                         1/1     Running   0          62s   10.20.8.20    master
-```
-
-3.  确认服务正常  
-```shell
-# 在master上执行
 $ kubectl get no
 NAME     STATUS   ROLES       AGE     VERSION
 edge1    Ready    edge        5h22m   v1.18.2
@@ -94,14 +98,14 @@ fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
 service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
 ```
 
-4.  为需要通讯的边缘节点创建节点Community  
+4.  为需要通讯的边缘节点创建Community  
 ```shell
 # 在master节点执行
 $ cat > node-community.yaml << EOF
 apiVersion: fabedge.io/v1alpha1
 kind: Community
 metadata:
-  name: connectors
+  name: beijing-edge-nodes
 spec:
   members:
     - beijing.edge1
@@ -114,81 +118,115 @@ $ kubectl apply -f node-community.yaml
 5.  根据使用的[边缘计算框架](#%E5%92%8C%E8%BE%B9%E7%BC%98%E8%AE%A1%E7%AE%97%E6%A1%86%E6%9E%B6%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE)修改相关配置 
 5.  根据使用的[CNI](#%E5%92%8CCNI%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE)修改相关配置 
 
-
-
 ## 在成员集群部署FabEdge
-如果有多集群，须要在每个成员集群部署FabEdge，否则跳过本步
+如果有成员集群，先在主集群注册所有的成员集群，然后在每个成员集群部署FabEdge
 
-1.  在**host集群**，添加一个名字叫“shai”的成员集群，获取Token供注册使用  
+1.  在**主集群**，添加一个名字叫“shanghai”的成员集群，获取Token供注册使用  
 ```shell
 # 在host集群master节点上执行
-$ cat > shai.yaml << EOF
+$ cat > shanghai.yaml << EOF
 apiVersion: fabedge.io/v1alpha1
 kind: Cluster
 metadata:
-  name: shai # 集群名字
+  name: shanghai # 集群名字
 EOF
 
-$ kubectl apply -f shai.yaml
+$ kubectl apply -f shanghai.yaml
 
-$ kubectl get cluster shai -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
+$ kubectl get cluster shanghai -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
 eyJ------省略内容-----9u0
 ```
 
-2.  在**成员集群**安装FabEdage   
+2. 为**所有边缘节点**添加标签
 ```shell
-curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name shai --cluster-role member --cluster-zone shai  --cluster-region pudong --edges edge1 --connectors node1 --chart http://116.62.127.76/fabedge-0.5.0.tgz --server-serviceHub-api-server https://10.22.46.47:30304 --host-operator-api-server https://10.22.46.47:30303 --connector-public-addresses 10.22.46.26 --init-token ey...Jh
+$ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+node/edge1 labeled
+$ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
+node/edge2 labeled
+
+$ kubectl get no
+NAME     STATUS   ROLES    AGE   VERSION
+edge1    Ready    edge     22h   v1.18.2
+edge2    Ready    edge     22h   v1.18.2
+master   Ready    master   22h   v1.18.2
+node1    Ready    <none>   22h   v1.18.2
+```
+
+3. 在**成员集群**安装FabEdage   
+```shell
+curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name shanghai --cluster-role member --cluster-zone shanghai  --cluster-region china --connectors node1 --chart http://116.62.127.76/fabedge-0.5.0.tgz --server-serviceHub-api-server https://10.22.46.47:30304 --host-operator-api-server https://10.22.46.47:30303 --connector-public-addresses 10.22.46.26 --init-token ey...Jh
 ```
 > 说明：
->  
 > **--cluster-name**: 集群名称
->  
 > **--cluster-role**: 集群角色
->  
-> **--edges**: 边缘节点主机名，多个的话edge1,edge2用逗号进行分割
->  
+> **--cluster-zone：** 集群所在的区
+> **--cluster-region：**集群所在的区域
 > **--server-serviceHub-api-server**: host集群serviceHub服务的地址和端口
->  
 > **--host-operator-api-server**: host集群operator-api服务的地址和端口
->  
 > **--connector-public-addresses**: member集群connectors所在节点的ip地址
->  
 > **--init-token**: host集群获取的token
 
+ 4. 确认部署正常 
+```shell
+$ kubectl get no
+NAME     STATUS   ROLES       AGE     VERSION
+edge1    Ready    edge        5h22m   v1.18.2
+edge2    Ready    edge        5h21m   v1.18.2
+master   Ready    master      5h29m   v1.18.2
+node1    Ready    connector   5h23m   v1.18.2
 
+$ kubectl get po -n kube-system
+NAME                                      READY   STATUS    RESTARTS   AGE
+calico-kube-controllers-8b5ff5d58-lqg66   1/1     Running   0          17h
+calico-node-7dkwj                         1/1     Running   0          16h
+calico-node-q95qp                         1/1     Running   0          16h
+coredns-86978d8c6f-qwv49                  1/1     Running   0          17h
+kube-apiserver-master                     1/1     Running   0          17h
+kube-controller-manager-master            1/1     Running   0          17h
+kube-proxy-ls9d7                          1/1     Running   0          17h
+kube-proxy-wj8j9                          1/1     Running   0          17h
+kube-scheduler-master                     1/1     Running   0          17h
+metrics-server-894c64767-f4bvr            2/2     Running   0          17h
+nginx-proxy-node1                         1/1     Running   0          17h
+nodelocaldns-fmx7f                        1/1     Running   0          17h
+nodelocaldns-kcz6b                        1/1     Running   0          17h
+nodelocaldns-pwpm4                        1/1     Running   0          17h
 
+$ kubectl get po -n fabedge
+NAME                                READY   STATUS    RESTARTS   AGE
+fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
+fabedge-agent-edge1                 2/2     Running   0          8m18s
+fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
+fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
+fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
+service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
+```
 ## 启用多集群通讯
-如果使用多集群通讯，须要创建一个集群类型的Community，否则跳过本步。
 
-1.  在host集群，把需要通讯的集群加入一个Community  
+1.  在主集群，把所有须要通讯的集群加入一个Community  
 ```shell
 # 在master节点操作
 $ cat > community.yaml << EOF
 apiVersion: fabedge.io/v1alpha1
 kind: Community
 metadata:
-  name: connectors
+  name: all-clusters
 spec:
   members:
-    - shai.connector   # {集群名字}.connector
-    - beijing.connector   # {集群名字}.connector
+    - shanghai.connector   # {集群名称}.connector
+    - beijing.connector    # {集群名称}.connector
 EOF
 
 $ kubectl apply -f community.yaml
 ```
 
-
 ## 启用多集群服务发现
-如果使用多集群通讯，须要修改集群DNS配置，否则跳过本步。
-须要修改的组件：
+须要修改的集群DNS组件：
+1）如果使用了nodelocaldns，修改nodelocaldns,  其它不用配置。
+2）如果使用SuperEdge edge-coredns，修改coredns + edge-coredns，其它不用配置。
+3）其它情况只需要修改coredns。
 
-- 如果使用了nodelocaldns，只须要修改nodelocaldns，其它不用配置。
-- 如果使用SuperEdge edge-coredns的，修改coredns + edge-coredns，其它不用配置。
-- 其它情况只需要修改coredns。
-
-
-
-1.  配置nodelocaldns
+1.  配置nodelocaldns  
 ```shell
 $ kubectl -n kube-system edit cm nodelocaldns
 global:53 {
@@ -200,7 +238,7 @@ global:53 {
     }
 ```
 
-2.  配置edge-coredns
+2.  配置edge-coredns  
 ```shell
 $ kubectl -n edge-system edit cm edge-coredns
 global {
@@ -208,30 +246,17 @@ global {
 }
 ```
 
-3.  配置coredns
+3.  配置coredns  
 ```shell
 $ kubectl -n kube-system edit cm coredns
 global {
-   forward . 10.109.72.43                  # fabdns的service IP地址
+   forward . 10.109.72.43                 # fabdns的service IP地址
 }
 ```
 > 修改configmap后，须要重启coredns、edge-coredns和nodelocaldns保证变更生效
 
 
-
 ## 与边缘计算框架相关的配置
-获取当前集群配置信息，供后面使用
-```shell
-$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
-This may take some time. Please wait.
-
-clusterDNS               : 169.254.25.10
-clusterDomain            : root-cluster
-cluster-cidr             : 10.233.64.0/18
-service-cluster-ip-range : 10.233.0.0/18
-```
-
-
 ### 如果使用KubeEdge
 
 1.  确认nodelocaldns在**边缘节点**正常运行  
@@ -267,7 +292,6 @@ edged:
 $ systemctl restart edgecore
 ```
 
-
 ### 如果使用SuperEdge
 
 1.  检查服务状态，如果不Ready，要删除Pod重建  
@@ -299,23 +323,7 @@ pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
 2.  master节点上的Pod不能和边缘Pod通讯
 SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent， 导致不能和master节点上的Pod通讯。如果需要，可以修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。 
 
-
-
 ## 与CNI相关的配置
-获取当前集群配置信息，供后面使用
-
-
-```shell
-$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
-This may take some time. Please wait.
-
-clusterDNS               : 169.254.25.10
-clusterDomain            : root-cluster
-cluster-cidr             : 10.233.64.0/18
-service-cluster-ip-range : 10.233.0.0/18
-```
-
-
 ### 如果使用Calico
 不论是什么集群角色, 只要集群使用Calico，就要将其它所有集群的Pod和Service的网段加入当前集群的Calico配置,  防止Calico做源地址转换，导致不能通讯。
 例如: host (Calico)  + member1 (Calico) + member2 (Flannel)
@@ -359,7 +367,7 @@ $ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 ## 
 ## 常见问题
 
-1.  有的网络环境存在非对称路由，需要在云端节点关闭rp_filter  
+1.  有的网络环境存在非对称路由，须要在云端所有节点关闭rp_filter  
 ```shell
 $ sudo for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done 
 # 保存配置
