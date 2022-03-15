@@ -188,7 +188,7 @@ $ kubectl apply -f community.yaml
 
 
 
-1.  配置nodelocaldns  
+1.  配置nodelocaldns
 ```shell
 $ kubectl -n kube-system edit cm nodelocaldns
 global:53 {
@@ -196,23 +196,23 @@ global:53 {
         cache 30
         reload
         bind 169.254.25.10                 # 本地bind地址，参考其它配置段中的bind
-        forward . 10.233.12.205            # fandns的service IP地址
+        forward . 10.233.12.205            # fabdns的service IP地址
     }
 ```
 
-2.  配置edge-coredns  
+2.  配置edge-coredns
 ```shell
 $ kubectl -n edge-system edit cm edge-coredns
 global {
-   forward . 10.244.51.126                 # fandns的service IP地址
+   forward . 10.244.51.126                 # fabdns的service IP地址
 }
 ```
 
-3.  配置coredns  
+3.  配置coredns
 ```shell
 $ kubectl -n kube-system edit cm coredns
 global {
-   forward . 10.109.72.43                 # fandns的service IP地址
+   forward . 10.109.72.43                  # fabdns的service IP地址
 }
 ```
 > 修改configmap后，须要重启coredns、edge-coredns和nodelocaldns保证变更生效
