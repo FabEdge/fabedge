@@ -126,7 +126,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
 	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
 	flag.BoolVar(&opts.Agent.EnableEdgeHairpinMode, "agent-enable-edge-hairpinmode", true, "Enable edge node pods HairpinMode")
-	flag.IntVar(&opts.Agent.ReserveIPMACDays, "agent-reserve-ip-mac-days", 7, "The days to reserve pod IP and MAC, 0 means forever")
 	flag.IntVar(&opts.Agent.NetworkPluginMTU, "agent-network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")

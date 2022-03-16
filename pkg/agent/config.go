@@ -52,7 +52,6 @@ type Config struct {
 
 	EnableIPAM        bool
 	EnableHairpinMode bool
-	ReserveIPMACDays  int
 	NetworkPluginMTU  int
 	CNI               CNI
 
@@ -69,7 +68,6 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 
 	fs.BoolVar(&cfg.EnableIPAM, "enable-ipam", true, "enable the IPAM feature")
 	fs.BoolVar(&cfg.EnableHairpinMode, "enable-hairpinmode", true, "enable the Hairpin feature")
-	fs.IntVar(&cfg.ReserveIPMACDays, "reserve-ip-mac-days", 7, "The days to reserve pod IP and MAC, 0 means forever")
 	fs.IntVar(&cfg.NetworkPluginMTU, "network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
 	fs.StringVar(&cfg.CNI.ConfDir, "cni-conf-path", "/etc/cni/net.d", "cni version")
