@@ -57,13 +57,13 @@
 	```shell
 	$ curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region china --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
 	```
-> 说明：   
-> **--cluster-name**: 集群名称  
-> **--cluster-role**: 集群角色  
-> **--cluster-zone：** 集群所在的区  
-> **--cluster-region：**集群所在的区域  
-> **--connectors**: connectors所在节点主机名  
-> **--connector-public-addresses**: connectors所在节点的ip地址，从边缘节点必须网络可达  
+    > 说明：   
+    > **--cluster-name**: 集群名称  
+    > **--cluster-role**: 集群角色  
+    > **--cluster-zone：** 集群所在的区  
+    > **--cluster-region：**集群所在的区域  
+    > **--connectors**: connectors所在节点主机名  
+    > **--connector-public-addresses**: connectors所在节点的ip地址，从边缘节点必须网络可达  
 
 3.  确认部署正常  
 	
