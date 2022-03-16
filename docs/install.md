@@ -24,7 +24,7 @@
    - ESP(50)，UDP/500，UDP/4500
 2. Collect the configuration of the current cluster
 
-	```shell
+   ```shell
 	$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 	
@@ -32,7 +32,7 @@
 	clusterDomain            : root-cluster
 	cluster-cidr             : 10.233.64.0/18
 	service-cluster-ip-range : 10.233.0.0/18
-```
+    ```
 
 ## Deploy FabEdge on the host cluster
 
