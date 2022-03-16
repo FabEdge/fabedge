@@ -1,363 +1,326 @@
-# FabEdge Installation Guide
-
-English | [中文](install_zh.md)
 
 [toc]
 
-## Concepts
+## Terminology
 
-- **Cloud cluster**: a standard K8S cluster located in the cloud, providing the cloud part services.
-- **Edge cluster**: a standard K8S cluster located on the edge to provide edge part services.
+-  **Cloud Cluster**：a standard k8s cluster, located at the cloud side, providing the cloud computing capability.
+-  **Edge Cluster**: a standard k8s cluster, located at the edge side, providing the edge computing capability.
+-  **Edge Node**:  a k8s node, located at the edge side, joining the cloud cluster using the framework, such as KubeEdge.
+-  **Host Cluster**:  a selective cloud cluster, used to manage the cross-cluster communication. The 1st cluster deployed by FabEdge must be host cluster.
+-  **Member Cluster**: an edge cluster, registered into the host cluster,  reports the network information to host cluster. 
+-  **Community**：K8S CRD defined by FabEdge，there are two types： 
+   - **Node Type**： to define the communication between nodes within the same cluster
+   - **Cluster Type**：to define the cross-cluster communication
 
-- **Host cluster**：a cloud cluster which manages the communication of member clusters. The first cluster deployed by FabEdge must be the host cluster.
-- **Member cluster**：an edge cluster that registers with the host cluster and reports the endpoint network configuration of the cluster for multi-cluster communication.
-- **Edge node** : a node is joined into the cloud cluster to provide edge part services using edge computing framework such as KubeEdge.
+## Prerequisite
 
-- **Community** : CRD defined by FabEdge,  used in two scenarios.
-  - Defines the communication between edge nodes
-  - Defines the communication between member clusters
-
-
-
-## Prerequisites
-
-- Kubernetes (v1.18.8)
+- Kubernetes (v1.18.8，1.22.7)
 - Flannel (v0.14.0) or Calico (v3.16.5)
+- KubeEdge （v1.5）or SuperEdge（v0.5.0）or OpenYurt（ v0.4.1）
 
+## Preparation
 
-
-## Preparations
-
-1. Make sure the the firewall or security group allows the following protocols and ports.
-
+1. Make sure the folloing ports are allowed by firewall or security group. 
    - ESP(50)，UDP/500，UDP/4500
+2. Collect the configuration of the current cluster
+```shell
+$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
+This may take some time. Please wait.
 
-1. Install helm for each cluster
+clusterDNS               : 169.254.25.10
+clusterDomain            : root-cluster
+cluster-cidr             : 10.233.64.0/18
+service-cluster-ip-range : 10.233.0.0/18
+```
 
-     ```shell
-     $ wget https://get.helm.sh/helm-v3.6.3-linux-amd64.tar.gz
-     $ tar -xf helm-v3.6.3-linux-amd64.tar.gz
-     $ cp linux-amd64/helm /usr/bin/helm 
-     ```
-     
+## Deploy FabEdge on the host cluster
 
+1. Label **all** edge nodes
+```shell
+$ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+node/edge1 labeled
+$ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
+node/edge2 labeled
 
+$ kubectl get no
+NAME     STATUS   ROLES    AGE   VERSION
+edge1    Ready    edge     22h   v1.18.2
+edge2    Ready    edge     22h   v1.18.2
+master   Ready    master   22h   v1.18.2
+node1    Ready    <none>   22h   v1.18.2
+```
 
-## Deploying FabEdge in the host cluster 
+2.  Deploy FabEdge   
+```shell
+$ curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region china --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
+```
+> Note：
+> 
+> **--connectors**: names of k8s nodes which connectors are located
+> 
+> **--connector-public-addresses**:  ip addresses of k8s nodes which connectors are located  
 
-1. Get the cluster information for future use
+3.  Verify the deployment  
+```shell
+$ kubectl get no
+NAME     STATUS   ROLES       AGE     VERSION
+edge1    Ready    edge        5h22m   v1.18.2
+edge2    Ready    edge        5h21m   v1.18.2
+master   Ready    master      5h29m   v1.18.2
+node1    Ready    connector   5h23m   v1.18.2
 
-   ```shell
-   $ curl -s http://116.62.127.76/get_cluster_info.sh | bash -
-   This may take some time. Please wait.
-   
-   clusterDNS               : 169.254.25.10
-   clusterDomain            : root-cluster
-   cluster-cidr             : 10.233.64.0/18
-   service-cluster-ip-range : 10.233.0.0/18
-   ```
+$ kubectl get po -n kube-system
+NAME                                      READY   STATUS    RESTARTS   AGE
+calico-kube-controllers-8b5ff5d58-lqg66   1/1     Running   0          17h
+calico-node-7dkwj                         1/1     Running   0          16h
+calico-node-q95qp                         1/1     Running   0          16h
+coredns-86978d8c6f-qwv49                  1/1     Running   0          17h
+kube-apiserver-master                     1/1     Running   0          17h
+kube-controller-manager-master            1/1     Running   0          17h
+kube-proxy-ls9d7                          1/1     Running   0          17h
+kube-proxy-wj8j9                          1/1     Running   0          17h
+kube-scheduler-master                     1/1     Running   0          17h
+metrics-server-894c64767-f4bvr            2/2     Running   0          17h
+nginx-proxy-node1                         1/1     Running   0          17h
+nodelocaldns-fmx7f                        1/1     Running   0          17h
+nodelocaldns-kcz6b                        1/1     Running   0          17h
+nodelocaldns-pwpm4                        1/1     Running   0          17h
 
-2. To label all edge node with `node-role.kubernetes.io/edge`
+$ kubectl get po -n fabedge
+NAME                                READY   STATUS    RESTARTS   AGE
+fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
+fabedge-agent-edge1                 2/2     Running   0          8m18s
+fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
+fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
+fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
+service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
+```
 
-   ```shell
-   $ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
-   node/edge1 labeled
-   $ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
-   node/edge2 labeled
-   
-   $ kubectl get no
-   NAME     STATUS   ROLES    AGE   VERSION
-   edge1    Ready    edge     22h   v1.18.2
-   edge2    Ready    edge     22h   v1.18.2
-   master   Ready    master   22h   v1.18.2
-   node1    Ready    <none>   22h   v1.18.2
-   ```
-   
-3. On the master node, modify the CNI DaemonSet and prevent it from running on the edge nodes. 
+4.  Create community for edges wich need to communicate with each other
+```shell
+$ cat > node-community.yaml << EOF
+apiVersion: fabedge.io/v1alpha1
+kind: Community
+metadata:
+  name: beijing-edge-nodes  # community name
+spec:
+  members:
+    - beijing.edge1    # format：{cluster name}.{edge node name}
+    - beijing.edge2  
+EOF
 
-   ```bash
-   $ cat > cni-ds.patch.yaml << EOF
-   spec:
-     template:
-       spec:
-         affinity:
-           nodeAffinity:
-             requiredDuringSchedulingIgnoredDuringExecution:
-               nodeSelectorTerms:
-               - matchExpressions:
-                 - key: kubernetes.io/os
-                   operator: In
-                   values:
-                   - linux
-                 - key: node-role.kubernetes.io/edge
-                   operator: DoesNotExist
-   EOF
-   
-   # If using Flannel
-   $ kubectl patch ds -n kube-system kube-flannel-ds --patch "$(cat cni-ds.patch.yaml)"
-   
-   # If using Calico
-   $ kubectl patch ds -n kube-system calico-node --patch "$(cat cni-ds.patch.yaml)"
-   ```
+$ kubectl apply -f node-community.yaml
+```
 
-4. Verify there is **no** any CNI component running on the any edge nodes
+5.  Update the [edge computing framework](#%E5%92%8C%E8%BE%B9%E7%BC%98%E8%AE%A1%E7%AE%97%E6%A1%86%E6%9E%B6%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE)related configuration
+5.  Update the [CNI](#%E5%92%8CCNI%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE) related configuration
 
-   ```shell
-   $ kubectl get po -n kube-system -o wide | egrep -i "flannel|calico"
-   calico-kube-controllers-8b5ff5d58-d2pkj   1/1     Running   0          67m   10.20.8.20    master
-   calico-node-t5vww                         1/1     Running   0          38s   10.20.8.28    node1
-   calico-node-z2fmf                         1/1     Running   0          62s   10.20.8.20    master
-   ```
+## Deploy FabEdge in the member cluster
 
-5. Select one or two nodes to run connector and label it with `node-role.kubernetes.io/connector`
+If any member cluster,  register it in the host cluster first, then deploy FabEdge in it.
 
-   ```shell
-   $ kubectl label no node1 node-role.kubernetes.io/connector=
-   $ kubectl get node
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    edge        5h22m   v1.18.2
-   edge2    Ready    edge        5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   ```
+1.  in the **host cluster**，create a edge cluster named "shanghai". Get the token for registration.  
+```shell
+# Run in the host cluster
+$ cat > shanghai.yaml << EOF
+apiVersion: fabedge.io/v1alpha1
+kind: Cluster
+metadata:
+  name: shanghai # cluster name
+EOF
 
-6. Prepare the values.yaml file.
+$ kubectl apply -f shanghai.yaml
 
-   ```shell
-   $ cat > values.yaml << EOF
-   operator:
-     # edgePodCIDR: 10.10.0.0/16 
-     connectorPublicAddresses:
-     - 10.20.8.28
-     serviceClusterIPRanges:
-     - 10.233.0.0/18
-       
-     cluster:
-       name: fabedge
-       role: host
-     
-     operatorAPIServer:
-       nodePort: 30303
-   
-   EOF
-   ```
-   
-   > Note：
-   >
-   > **edgePodCIDR**：it must be set, if use calico; it can not be set if Flannel is used.
-   >
-   > **connectorPublicAddresses**:  The ip address of the selected node to run the `connector` service.  Make sure all edge nodes can reach it.
-   >
-   > **serviceClusterIPRanges**:  the network segment used by services in cloud cluster,  the output of `service_cluster_ip_range` in `get_cluster_info` script. 
-   >
-   > **cluster**: Configure the cluster name and the cluster role, the cluster name must be unique, the first cluster in FabEdge scope must be host cluster.  
-   >
-   > **operatorAPIServer**: Configures the `NodePort` of the `operator api server` service
-   
-7. Deploy Fabedge.
+$ kubectl get cluster shanghai -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
+eyJ------omited-----9u0
+```
 
-   ```
-   $ helm install fabedge --create-namespace -n fabedge -f values.yaml http://116.62.127.76/fabedge-0.4.0.tgz
-   ```
+2. Label **all** edge nodes
+```shell
+$ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
+node/edge1 labeled
+$ kubectl label node --overwrite=true edge2 node-role.kubernetes.io/edge=
+node/edge2 labeled
 
-8. Verify that services are running on the master node
+$ kubectl get no
+NAME     STATUS   ROLES    AGE   VERSION
+edge1    Ready    edge     22h   v1.18.2
+edge2    Ready    edge     22h   v1.18.2
+master   Ready    master   22h   v1.18.2
+node1    Ready    <none>   22h   v1.18.2
+```
 
-   ```shell
-   # Verify all nodes are ready.
-   $ kubectl get no
-   NAME     STATUS   ROLES       AGE     VERSION
-   edge1    Ready    edge        5h22m   v1.18.2
-   edge2    Ready    edge        5h21m   v1.18.2
-   master   Ready    master      5h29m   v1.18.2
-   node1    Ready    connector   5h23m   v1.18.2
-   
-   # Verify Kubernetes service is normal.
-   $ kubectl get po -n kube-system
-   NAME                                       READY   STATUS    RESTARTS   AGE
-   controlplane-master                        4/4     Running   0          159m
-   coredns-546565776c-44xnj                   1/1     Running   0          159m
-   coredns-546565776c-7vvnl                   1/1     Running   0          159m
-   kube-flannel-ds-hbb7j                      1/1     Running   0          28m
-   kube-flannel-ds-zmwbd                      1/1     Running   0          28m
-   kube-proxy-47c5j                           1/1     Running   0          153m
-   kube-proxy-4fckj                           1/1     Running   0          152m
-   
-   # Verify FabEdge service is normal.
-   $ kubectl get po -n fabedge
-   NAME                               READY   STATUS    RESTARTS   AGE
-   connector-5947d5f66-hnfbv          2/2     Running   0          35m
-   fabedge-agent-edge1                2/2     Running   0          22s
-   fabedge-operator-dbc94c45c-r7n8g   1/1     Running   0          55s
-   
-   ```
-   
-9. Add all edge nodes which need to communicate directly into one `community`.
+3. Deploy FabEdge in the member cluster
+```shell
+curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name shanghai --cluster-role member --cluster-zone shanghai  --cluster-region china --connectors node1 --chart http://116.62.127.76/fabedge-0.5.0.tgz --server-serviceHub-api-server https://10.22.46.47:30304 --host-operator-api-server https://10.22.46.47:30303 --connector-public-addresses 10.22.46.26 --init-token eyJ------omited-----9u0
+```
+> Note：
+> **--server-serviceHub-api-server**: endpoint of serviceHub in the host cluster.
+> **--host-operator-api-server**: endpoint of operator-api in the host cluster.
+> **--connector-public-addresses**: ip address of k8s nodes on which connectors are located in the member cluster
+> **--init-token**: token when the member cluster is added in the host cluster
 
-    ```shell
-    $ cat > node-community.yaml << EOF
-    apiVersion: fabedge.io/v1alpha1
-    kind: Community
-    metadata:
-      name: connectors
-    spec:
-      members:
-        - fabedge.edge1
-        - fabedge.edge2  
-    EOF
-    
-    $ kubectl apply -f node-community.yaml
-    ```
-1. Modify [framework-dependent configuration](#framework-dependent-configuration) 
-1. Modify [CNI-dependent configuration](#cni-dependent-configurations)
+ 4. Verify the deployment
+```shell
+$ kubectl get no
+NAME     STATUS   ROLES       AGE     VERSION
+edge1    Ready    edge        5h22m   v1.18.2
+edge2    Ready    edge        5h21m   v1.18.2
+master   Ready    master      5h29m   v1.18.2
+node1    Ready    connector   5h23m   v1.18.2
 
+$ kubectl get po -n kube-system
+NAME                                      READY   STATUS    RESTARTS   AGE
+calico-kube-controllers-8b5ff5d58-lqg66   1/1     Running   0          17h
+calico-node-7dkwj                         1/1     Running   0          16h
+calico-node-q95qp                         1/1     Running   0          16h
+coredns-86978d8c6f-qwv49                  1/1     Running   0          17h
+kube-apiserver-master                     1/1     Running   0          17h
+kube-controller-manager-master            1/1     Running   0          17h
+kube-proxy-ls9d7                          1/1     Running   0          17h
+kube-proxy-wj8j9                          1/1     Running   0          17h
+kube-scheduler-master                     1/1     Running   0          17h
+metrics-server-894c64767-f4bvr            2/2     Running   0          17h
+nginx-proxy-node1                         1/1     Running   0          17h
+nodelocaldns-fmx7f                        1/1     Running   0          17h
+nodelocaldns-kcz6b                        1/1     Running   0          17h
+nodelocaldns-pwpm4                        1/1     Running   0          17h
 
-## Deploy FabEdge in the member cluster (optional)
+$ kubectl get po -n fabedge
+NAME                                READY   STATUS    RESTARTS   AGE
+fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
+fabedge-agent-edge1                 2/2     Running   0          8m18s
+fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
+fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
+fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
+service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
+```
+## Enable multi-cluster communication
 
-1. In the host cluster, add a member cluster named "beijing" for example and get the token for regestration. 
+1.  in the **host cluster**，create a community for all clusters which need to communicate with each other  
+```shell
+$ cat > community.yaml << EOF
+apiVersion: fabedge.io/v1alpha1
+kind: Community
+metadata:
+  name: all-clusters
+spec:
+  members:
+    - shanghai.connector   # format: {cluster name}.connector
+    - beijing.connector    # format: {cluster name}.connector
+EOF
 
-   ```shell
-   # run on the master node in the host cluster.
-   $ cat > beijing.yaml << EOF
-   apiVersion: fabedge.io/v1alpha1
-   kind: Cluster
-   metadata:
-     name: beijing
-   EOF
-   
-   $ kubectl apply -f beijing.yaml
-   
-   $ kubectl get cluster beijing -o go-template --template='{{.spec.token}}' | awk 'END{print}' 
-   eyJ------omitted-----9u0
-   ```
-
-7. In the local member cluster, prepare the helm values.yaml file 
-
-   ```shell
-   # run on master
-   $ cat > values.yaml << EOF
-   operator:
-     # edgePodCIDR: 10.10.0.0/16 
-     connectorPublicAddresses:
-     - 10.20.8.12
-     serviceClusterIPRanges:
-     - 10.234.0.0/18
-   
-     cluster:
-       name: beijing 
-       role: member    # must be "member"
-     
-     hostOperatorAPIServer: https://10.20.8.28:30303  # the url of the Operator api server in host cluster 
-     
-     initToken: eyJ------omitted-----9u0
-   
-   EOF
-   ```
-   
-8.  The others are same as in the host cluster.  See the previous section for details.
+$ kubectl apply -f community.yaml
+```
 
 
 
+## Enable multi-cluster service discovery
 
-## Create a multi-cluster Community (optional）
+the DNS components need to be modified：
 
-1. Add the clusters that need to communicate into one community.
+a)  if `nodelocaldns`，modify `nodelocaldns` ONLY,
+b) if SuperEdge `edge-coredns` is used，modify `coredns` and `edge-coredns`,
+c) modify `coredns` for other scenarios
 
-   ```shell
-   # run on the host cluster
-   $ cat > community.yaml << EOF
-   apiVersion: fabedge.io/v1alpha1
-   kind: Community
-   metadata:
-     name: connectors
-   spec:
-     members:
-       - fabedge.connector  #{cluster_name}.connector
-       - beijing.connector    
-   EOF
-   
-   $ kubectl apply -f community.yaml
-   ```
-   
+1.  Update `nodelocaldns`  
+```shell
+$ kubectl -n kube-system edit cm nodelocaldns
+global:53 {
+        errors
+        cache 30
+        reload
+        bind 169.254.25.10                 # local bind address
+        forward . 10.233.12.205            # cluset-ip of fab-dns service
+    }
+```
 
+2.  Update `edge-coredns`  
+```shell
+$ kubectl -n edge-system edit cm edge-coredns
+global {
+   forward . 10.244.51.126                 # cluset-ip of fab-dns service
+}
+```
 
-
-## framework-dependent Configuration
-
-### If KubeEdge is used
-
-1. Make sure `nodelocaldns` is running on **all edge nodes**
-
-   ```
-   $ kubectl get po -n kube-system -o wide | grep nodelocaldns
-   nodelocaldns-ckpb4                              1/1     Running        1          6d5h    10.22.46.15     node1    <none>           <none>
-   nodelocaldns-drmlz                              0/1     Running        0          2m50s   10.22.46.40     edge1   <none>           <none>
-   nodelocaldns-vbxf9                              1/1     Running        1          4h6m    10.22.46.23     master   <none>           <none>
-   
-2. Modify edgecore configuration on **all edge nodes**.
-
-   ```shell
-   $ vi /etc/kubeedge/config/edgecore.yaml
-   
-   # edgeMesh must be disabled
-   edgeMesh:
-     enable: false
-   
-   edged:
-       enable: true
-       cniBinDir: /opt/cni/bin
-       cniCacheDirs: /var/lib/cni/cache
-       cniConfDir: /etc/cni/net.d
-       networkPluginName: cni
-       networkPluginMTU: 1500    
-       clusterDNS: 169.254.25.10      #  clusterDNS of get_cluster_info script output    
-       clusterDomain: root-cluster  # clusterDomain of get_cluster_info script output
-   ```
-
-   > clusterDNS: if `nodelocaldns` is not enabled,  please use the service ip of `cordons`
-
-3. Restart edgecore on **each edge node**.
-
-   ```shell
-   $ systemctl restart edgecore
-   ```
-
-### If SuperEdge is used
-
-1. Check the pod status. If  any pod is not ready,  to delete and rebuild it. 
-
-    ```shell
-    $ kubectl get po -n edge-system
-    application-grid-controller-84d64b86f9-29svc   1/1     Running   0          15h
-    application-grid-wrapper-master-pvkv8          1/1     Running   0          15h
-    application-grid-wrapper-node-dqxwv            1/1     Running   0          15h
-    application-grid-wrapper-node-njzth            1/1     Running   0          15h
-    edge-coredns-edge1-5758f9df57-r27nf            0/1     Running   8          15h
-    edge-coredns-edge2-84fd9cfd98-79hzp            0/1     Running   8          15h
-    edge-coredns-master-f8bf9975c-77nds            1/1     Running   0          15h
-    edge-health-7h29k                              1/1     Running   3          15h
-    edge-health-admission-86c5c6dd6-r65r5          1/1     Running   0          15h
-    edge-health-wcptf                              1/1     Running   3          15h
-    tunnel-cloud-6557fcdd67-v9h96                  1/1     Running   1          15h
-    tunnel-coredns-7d8b48c7ff-hhc29                1/1     Running   0          15h
-    tunnel-edge-dtb9j                              1/1     Running   0          15h
-    tunnel-edge-zxfn6                              1/1     Running   0          15h
-    
-    $ kubectl delete po -n edge-system edge-coredns-edge1-5758f9df57-r27nf
-    pod "edge-coredns-edge1-5758f9df57-r27nf" deleted
-    
-    $ kubectl delete po -n edge-system edge-coredns-edge2-84fd9cfd98-79hzp
-    pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
-    ```
-
-1. The pod on the master node cannot communicate with edge pod.
-
-    SupeEdge has a taint of `node-role.kubernetes.io/master:NoSchedule` on master node by default, so fabedge-cloud-agent is not running on it. If needed, to update the DaemonSet of the fabedge-cloud-agent to tolerate it.  
+3.  Update `coredns `
+```shell
+$ kubectl -n kube-system edit cm coredns
+global {
+   forward . 10.109.72.43                 # cluset-ip of fab-dns service
+}
+```
+4. Reboot coredns，edge-coredns or nodelocaldns to take effect
 
 
+## Edge computing framework depend configuration
+### for KubeEdge
+
+1.  Make sure `nodelocaldns` is running on all edge nodes
+```shell
+$ kubectl get po -n kube-system -o wide | grep nodelocaldns
+nodelocaldns-cz5h2                        1/1     Running   0          56m   10.22.46.47   master   <none>           <none>
+nodelocaldns-nk26g                        1/1     Running   0          47m   10.22.46.23   edge1    <none>           <none>
+nodelocaldns-wqpbw                        1/1     Running   0          17m   10.22.46.20   node1    <none>           <none>
+```
+
+2.  Update `edgecore` for all edge nodes   
+```shell
+$ vi /etc/kubeedge/config/edgecore.yaml
+
+# edgeMesh must be disabled
+edgeMesh:
+  enable: false
+
+edged:
+    enable: true
+    cniBinDir: /opt/cni/bin
+    cniCacheDirs: /var/lib/cni/cache
+    cniConfDir: /etc/cni/net.d
+    networkPluginName: cni
+    networkPluginMTU: 1500   
+    clusterDNS: 169.254.25.10        # clusterDNS of get_cluster_info script output
+    clusterDomain: "root-cluster"    # clusterDomain of get_cluster_info script output
+```
+> **clusterDNS**：if no nodelocaldns，coredns service can be used.
+
+3.  Reboot `edgecore` on all edge nodes  
+```shell
+$ systemctl restart edgecore
+```
+
+### for SuperEdge
+
+1.  Verify the service，if not ready，to rebuild the Pod 
+```shell
+$ kubectl get po -n edge-system
+application-grid-controller-84d64b86f9-29svc   1/1     Running   0          15h
+application-grid-wrapper-master-pvkv8          1/1     Running   0          15h
+application-grid-wrapper-node-dqxwv            1/1     Running   0          15h
+application-grid-wrapper-node-njzth            1/1     Running   0          15h
+edge-coredns-edge1-5758f9df57-r27nf            0/1     Running   8          15h
+edge-coredns-edge2-84fd9cfd98-79hzp            0/1     Running   8          15h
+edge-coredns-master-f8bf9975c-77nds            1/1     Running   0          15h
+edge-health-7h29k                              1/1     Running   3          15h
+edge-health-admission-86c5c6dd6-r65r5          1/1     Running   0          15h
+edge-health-wcptf                              1/1     Running   3          15h
+tunnel-cloud-6557fcdd67-v9h96                  1/1     Running   1          15h
+tunnel-coredns-7d8b48c7ff-hhc29                1/1     Running   0          15h
+tunnel-edge-dtb9j                              1/1     Running   0          15h
+tunnel-edge-zxfn6                              1/1     Running   0          15h
+
+$ kubectl delete po -n edge-system edge-coredns-edge1-5758f9df57-r27nf
+pod "edge-coredns-edge1-5758f9df57-r27nf" deleted
+
+$ kubectl delete po -n edge-system edge-coredns-edge2-84fd9cfd98-79hzp
+pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
+```
+
+2.  By default the master node has the taint of node-role.kubernetes.io/master:NoSchedule，which prevents fabedge-cloud-agent to start. It caused pods on the master node cannot communicate with the other Pods on the other nodes. If needed,  to modify the DamonSet of fabedge-cloud-agent to tolerant this taint。 
 
 ## CNI-dependent Configurations
 
-### If Calico is used
+### for Calico
 
 Regardless the cluster role, add all Pod and Service network segments of all other clusters to the cluster with Calico, which prevents Calico from doing source address translation.  
 
