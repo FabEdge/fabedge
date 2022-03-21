@@ -25,7 +25,7 @@
 2. 获取集群配置信息，供后面使用  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/latest/get_cluster_info.sh | bash -
+	$ curl -s http://116.62.127.76/installer/v0.5.0/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
@@ -55,7 +55,7 @@
 2.  安装FabEdge   
 
 	```shell
-	$ curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region china --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
+	$ curl 116.62.127.76/installer/v0.5.0/install.sh | bash -s -- --cluster-name beijing  --cluster-role host --cluster-zone beijing  --cluster-region china --connectors node1 --connector-public-addresses 10.22.46.47 --chart http://116.62.127.76/fabedge-0.5.0.tgz
 	```
     > 说明：   
     > **--cluster-name**: 集群名称  
@@ -160,7 +160,7 @@
 3. 在**成员集群**安装FabEdage  
 	 
 	```shell
-	curl 116.62.127.76/installer/latest/install.sh | bash -s -- --cluster-name shanghai --cluster-role member --cluster-zone shanghai  --cluster-region china --connectors node1 --chart http://116.62.127.76/fabedge-0.5.0.tgz --server-serviceHub-api-server https://10.22.46.47:30304 --host-operator-api-server https://10.22.46.47:30303 --connector-public-addresses 10.22.46.26 --init-token ey...Jh
+	curl 116.62.127.76/installer/v0.5.0/install.sh | bash -s -- --cluster-name shanghai --cluster-role member --cluster-zone shanghai  --cluster-region china --connectors node1 --chart http://116.62.127.76/fabedge-0.5.0.tgz --server-serviceHub-api-server https://10.22.46.47:30304 --host-operator-api-server https://10.22.46.47:30303 --connector-public-addresses 10.22.46.26 --init-token ey...Jh
 	```
 	> 说明：  
 	> **--cluster-name**: 集群名称  
