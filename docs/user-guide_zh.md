@@ -53,6 +53,7 @@ spec:
    kind: Cluster
    metadata:
      name: beijing
+  
    ```
 
 2. 查看token
@@ -93,7 +94,6 @@ spec:
    ```
 
 
-
 ## 为边缘节点指定公网地址
 
 对于公有云的场景，云主机一般只配置了私有地址，导致FabEdge无法建立边缘到边缘的隧道。这种情况下可以为云主机申请一个公网地址，加入节点的注解，FabEdge将自动使用这个公网地址建立隧道，而不是私有地址。
@@ -103,3 +103,9 @@ spec:
 kubectl annotate node edge1 "fabedge.io/node-public-addresses=60.247.88.194"
 ```
 
+## 创建全局服务
+全局服务把本集群的一个普通的Service （Headless 或 ClusetrIP），暴露给其它集群访问，并且提供基于拓扑的服务发现能力。  
+
+1. 创建一个k8s的服务， 比如，命名空间是default， service的名字是web   
+2. 为web服务添加标签：`fabedge.io/global-service: true`  
+3. 所有集群可以通过域名：`web.default.svc.global`,  就近访问到web的服务。  
