@@ -8,29 +8,39 @@
 
 English | [中文](README_zh.md)
 
-FabEdge is a secure edge networking solution based on Kubernetes. It enables cloud-edge, edge-edge collaboration and solves the problems including complex  configuration management, network isolation, lack of topology-aware routing, etc. 
 
-FabEdge is able to manage the network of not only the edge nodes, but also the edge clusters. 
+FabEdge is a secure container networking solution based on Kubernetes, focusing on edge computing. It enables cloud-edge, edge-edge collaboration and solves the problems including complex configuration management, network isolation, unaware of the underlying topology, etc. It supports weak network, such as 4/5G, WiFi, etc. The main use cases are IoT, IoV, smart city, etc.
 
-FabEdge supports weak transport network, such as 4/5G, WiFi, etc. It is suitable for scenarios such as IoT (Internet of Things),  IoV (Internet of Vehicles), etc.
+FabEdge supports the major edge computing frameworks ,like KubeEdge/SuperEdge/OpenYurt.
+
+FabEdge not only supports edge nodes (remote nodes joined to the cluster via an edge computing framework such as KubeEdge), but also edge clusters (standalone K8S clusters).
+
+FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
+
 
 ## Features
 * **Kubernetes Native**: Compatible with Kubernetes, transparent to applications.  
-* **Automatic Address Management**：Management of the subnets allocation and IP address assignment for edge containers.  
-* **Cloud-Edge/Edge-Edge Collaboration**: Secure tunnels between cloud-edge, edge-edge nodes for synergy.  
-* **Edge Node Community Control**:  Use CRD of “community” to control which edge nodes can communicate with each others.  
-* **Topology-aware service**: Improve service latency by giving higher priority to local endpoints, while still able to access endpoints in remote cloud.  
 
-## Advantages
-* **Standard**: fully compatible with Kubernetes, support any cluster, any application, plug and play.  
-* **Secure**: all communication over secure IPSec tunnels with certificate based authentication.  
-* **Easy to use**: designed using operator pattern, minimized ongoing operation effort.  
+* **Automatic Configuration Management**: the addresses, certificates, endpoints, tunnels, etc. are automatically managed.
+ 
+* **Cloud-Edge/Edge-Edge Collaboration**: Secure tunnels between cloud-edge, edge-edge nodes for synergy.
+ 
+
+* **Topology-aware Service Discovery**: reduces service access latency, by using the nearest available service endpoint.
+
+
+## Advantages:
+
+- **Standard**: suitable for any protocol, any application.
+- **Secure**: Uses mature and stable IPSec technology, and a secure certificate-based authentication system.
+- **Easy to use**: Adopts the `Operator` pattern to automatically manage addresses, nodes, certificates, etc., minimizing human intervention.
+
 
 ## How it works
 <img src="docs/images/FabEdge-Arch.png" alt="fabedge-arch" />
 
 * The cloud can be any Kubernetes cluster with supported CNI network plug-in, including Calico, Flannel, etc.
-* FabEdge builds a layer 3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
+* FabEdge builds a layer-3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
 * Fabedge consists of **Operators, Connector, Agent, Cloud-Agent**.
 * Operator monitors k8s resources such as node, service, and endpoint in the cloud, and creates a configmap for each edge node, which contains the  configuration information such as the subnet, tunnel, and load balancing rules. The operator is also responsible to manage the life cycle of agent pod for each edge node.  
 * Connector is responsible to terminate the tunnels from edge nodes, and forward traffic between the cloud and the edge. It relies on the cloud CNI plug-in to forward traffic to other non-connector nodes in the cloud.
@@ -40,17 +50,12 @@ FabEdge supports weak transport network, such as 4/5G, WiFi, etc. It is suitable
     - Manage the tunnels of this node
     - Manage the load balancing rules of this node  
 
-## Compatibility
+* Fab-DNS runs in all the clusters, to provide the topology-aware service discovery capability by intercepting the DNS queries.    
 
-|             | KubeEdge 1.8.0 | SuperEdge  0.5.0 | OpenYurt 0.5.0 |
-| ----------- | -------------- | ---------------- | -------------- |
-| FabEdge 0.3 | ✓              | ✓                | ✓              |
 
-> It means the versions we have verified and it does not mean the others do not work. Since FabEdge does not tightly coupled with any edge-computing frameworks  it is very likely that the other version works.
+## FabEdge vs. Calico/Flannel/etc
 
-## FabEdge vs Calico/Flannel 
-
-Fabedge is different from generic Kubernetes network plug-ins such as Calico/Flannel. As in the above architecture diagram, Calico/Flannel is used in the cloud for communication between cloud nodes. Fabedge is a complement to it for the edge-cloud, edge-edge communication. 
+Fabedge is not to replace the traditional Kubernetes network plugins such as Calico/Flannel. As in the above architecture diagram, Calico/Flannel is used within the cloud for communication between cloud nodes, while Fabedge is a complement to it for the edge-cloud, edge-edge communication. 
 
 ## Guides
 See  [the docs](docs/).

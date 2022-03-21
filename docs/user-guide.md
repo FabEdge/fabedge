@@ -100,3 +100,10 @@ In public cloud, the virtual machine has only private address, which prevents fr
 kubectl annotate node edge1 "fabedge.io/node-public-addresses=60.247.88.194"
 ```
 
+## Create GlobalService
+
+GlobalService is used to export a local/standard k8s service (ClusterIP or Headless) for other clusters to access it. And it provides the topology-aware service discovery capability.
+   
+1. create a service, e.g. namespace: default, name: web
+2. Label it with : `fabedge.io/global-service: true`  
+3. It can be accessed by the domain name: `web.defaut.svc.global`

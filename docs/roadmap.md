@@ -11,11 +11,18 @@
 
 ## Q4 2021
 
-- Support auto-discovery of Edge Tunnel Endpoints
 - Support Edge Cluster
-- Support Direct Routing in Community
+- Support topology-aware service discovery
 
 ## H1 2022
 
-- Suport Canal/Weave/Cillium/etc.
 - Support IPV6
+- cli tool to facilitate fabedge configuation
+ 
+## others
+
+- Support auto-discovery of edge tunnel endpoints
+- Add monitoring capability 
+- Connector HA solution
+- Support more tunnel methods 
+- Suport Canal/Weave/Cillium/etc.
