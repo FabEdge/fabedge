@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -335,4 +336,48 @@ func (c Cluster) execute(pod corev1.Pod, cmd []string) (string, string, error) {
 	}
 
 	return stdout.String(), stderr.String(), err
+}
+
+func (c Cluster) curlServiceResults(pod corev1.Pod, url string, curlTimes int) (map[string]string, error) {
+	var curlErr error
+
+	results := make(map[string]string)
+	mtx := &sync.Mutex{}
+
+	wg := &sync.WaitGroup{}
+	wg.Add(curlTimes)
+
+	for i := 0; i < curlTimes; i++ {
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+
+			stdout, stderr, err := c.execCurl(pod, url)
+
+			ipStr, status := "", ""
+			if err == nil {
+				status = "success"
+				ipStr = getIPString(stdout)
+			} else {
+				status = "failure"
+				curlErr = err
+				ipStr = getIPString(stderr)
+			}
+
+			if ipStr != "" {
+				mtx.Lock()
+				defer mtx.Unlock()
+				results[ipStr] = status
+			}
+
+		}(wg)
+	}
+
+	wg.Wait()
+
+	return results, curlErr
+}
+
+func getIPString(str string) string {
+	reg, _ := regexp.Compile(`\d+\.\d+\.\d+\.\d+`)
+	return string(reg.Find([]byte(str)))
 }
