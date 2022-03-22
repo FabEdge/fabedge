@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -40,12 +41,20 @@ func (c Cluster) isHost() bool {
 	return c.role == "host"
 }
 
-func generateCluster(cfgPath string) (cluster Cluster, err error) {
+func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
 	// path e.g. /tmp/e2ekubeconfig/10.20.8.20
-	cfg, err := clientcmd.BuildConfigFromFlags("", cfgPath)
+	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(cfgDir, ip))
 	if err != nil {
 		return
 	}
+
+	// rewrite config host, e.g. "https://vip.edge.io:6443" => "https://10.20.8.20:6443"
+	segments := strings.Split(cfg.Host, ":")
+	if len(segments) < 2 {
+		return cluster, fmt.Errorf("cluster ip <%s> kubeconfig server %s can not rewrite to ip:port style", ip, cfg.Host)
+	}
+	segments[1] = fmt.Sprintf("//%s", ip)
+	cfg.Host = strings.Join(segments, ":")
 
 	cli, err := client.New(cfg, client.Options{})
 	if err != nil {

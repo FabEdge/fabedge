@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -184,7 +183,7 @@ func multiClusterE2eTestPrepare() {
 	hasHostCluster := false
 	for i := 0; i < len(clusterIPs); {
 		clusterIP := clusterIPs[i]
-		cluster, err := generateCluster(path.Join(configDir, clusterIP))
+		cluster, err := generateCluster(configDir, clusterIP)
 		if err != nil {
 			framework.Logf("Error generating cluster <%s> err: %v", clusterIP, err)
 			clusterIPs = append(clusterIPs[:i], clusterIPs[i+1:]...)
