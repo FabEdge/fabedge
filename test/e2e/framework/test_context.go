@@ -71,7 +71,7 @@ func RegisterAndHandleFlags() {
 		"How long for ping command to wait for response. Unit: seconds")
 	flag.Int64Var(&TestContext.CurlTimeout, "curl-timeout", 30,
 		"Maxtime for curl to finish. Unit: seconds")
-	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "praqma/network-multitool:latest",
+	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "praqma/network-multitool:minimal",
 		"The net-tool image")
 	flag.BoolVar(&TestContext.ShowExecError, "show-exec-error", false,
 		"display error of executing curl or ping")
