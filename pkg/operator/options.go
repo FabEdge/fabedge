@@ -504,17 +504,6 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		}
 	}
 
-	if err = clusterctl.AddToManager(clusterctl.Config{
-		Cluster:       opts.Cluster,
-		Manager:       opts.Manager,
-		PrivateKey:    opts.PrivateKey,
-		TokenDuration: opts.TokenValidPeriod,
-		Store:         opts.Store,
-	}); err != nil {
-		log.Error(err, "failed to add cluster controller to manager")
-		return err
-	}
-
 	if opts.ClusterRole == RoleHost {
 		reporter := &routines.LocalClusterReporter{
 			Cluster:      opts.Cluster,
@@ -525,6 +514,17 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		}
 		if err = opts.Manager.Add(reporter); err != nil {
 			log.Error(err, "failed to add local cluster reporter to manager")
+			return err
+		}
+
+		if err = clusterctl.AddToManager(clusterctl.Config{
+			Cluster:       opts.Cluster,
+			Manager:       opts.Manager,
+			PrivateKey:    opts.PrivateKey,
+			TokenDuration: opts.TokenValidPeriod,
+			Store:         opts.Store,
+		}); err != nil {
+			log.Error(err, "failed to add cluster controller to manager")
 			return err
 		}
 	} else {
