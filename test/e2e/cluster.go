@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
+	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
-	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
-	"github.com/fabedge/fabedge/test/e2e/framework"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -21,6 +21,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
+	"github.com/fabedge/fabedge/test/e2e/framework"
 )
 
 type Cluster struct {
@@ -40,12 +44,24 @@ func (c Cluster) isHost() bool {
 	return c.role == "host"
 }
 
-func generateCluster(cfgPath string) (cluster Cluster, err error) {
+// generateCluster generates the cluster with its corresponding kubeconfig storage Dir and kubeconfig file named by actual IP address of master node.
+//
+// The API server maybe like "https://vip.edge.io:6443" in kubeconfig file, thus we need to change the domain of the API server to the actual IP address of master node
+// for accessing the API server outside of the cluster.
+func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
 	// path e.g. /tmp/e2ekubeconfig/10.20.8.20
-	cfg, err := clientcmd.BuildConfigFromFlags("", cfgPath)
+	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(cfgDir, ip))
 	if err != nil {
 		return
 	}
+
+	// rewrite config host, e.g. "https://vip.edge.io:6443" => "https://10.20.8.20:6443"
+	segments := strings.Split(cfg.Host, ":")
+	if len(segments) < 2 {
+		return cluster, fmt.Errorf("the kubeconfig server %s can not rewrite to ip:port style, cluster ip is <%s> ", cfg.Host, ip)
+	}
+	segments[1] = fmt.Sprintf("//%s", ip)
+	cfg.Host = strings.Join(segments, ":")
 
 	cli, err := client.New(cfg, client.Options{})
 	if err != nil {
@@ -63,16 +79,16 @@ func generateCluster(cfgPath string) (cluster Cluster, err error) {
 		client:    cli,
 		clientset: clientset,
 	}
-	err = cluster.generateNameAndRole()
+	err = cluster.getNameAndRole()
 	if err != nil {
 		return
 	}
-	cluster.generateServiceNames()
+	cluster.getServiceNames()
 
 	return cluster, nil
 }
 
-func (c *Cluster) generateNameAndRole() error {
+func (c *Cluster) getNameAndRole() error {
 	// ns fabedge, deploy fabedge-operator
 	fabedgeOperator, err := c.clientset.AppsV1().Deployments("fabedge").Get(context.TODO(), "fabedge-operator", metav1.GetOptions{})
 	if err != nil {
@@ -95,7 +111,7 @@ func (c *Cluster) generateNameAndRole() error {
 
 // 将所有边缘节点添加到同一个社区，确保所有节点上的pod可以通信
 func (c Cluster) addAllEdgesToCommunity(name string) {
-	framework.Logf("add all edge nodes to community %s", communityName)
+	framework.Logf("add all edge nodes to community %s", communityEdges)
 
 	var nodes corev1.NodeList
 	err := c.client.List(context.TODO(), &nodes)
@@ -116,7 +132,7 @@ func (c Cluster) addAllEdgesToCommunity(name string) {
 
 	community := apis.Community{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: communityName,
+			Name: communityEdges,
 		},
 		Spec: apis.CommunitySpec{},
 	}
@@ -132,12 +148,12 @@ func (c Cluster) addAllEdgesToCommunity(name string) {
 
 	framework.AddCleanupAction(func() {
 		if err := c.client.Delete(context.TODO(), &community); err != nil {
-			framework.Logf("failed to delete community %s. Err: %s", communityName, err)
+			framework.Logf("failed to delete community %s. Err: %s", communityEdges, err)
 		}
 	})
 }
 
-func (c *Cluster) generateServiceNames() {
+func (c *Cluster) getServiceNames() {
 	c.serviceCloudNginx = getName(serviceCloudNginx)
 	c.serviceEdgeNginx = getName(serviceEdgeNginx)
 	c.serviceHostCloudNginx = getName(serviceHostCloudNginx)
@@ -326,4 +342,91 @@ func (c Cluster) execute(pod corev1.Pod, cmd []string) (string, string, error) {
 	}
 
 	return stdout.String(), stderr.String(), err
+}
+
+func (c Cluster) checkServiceAvailability(pod corev1.Pod, url string, servicePods []corev1.Pod) {
+	type AccessRecord struct {
+		PodName    string
+		IP         string
+		Connection string
+		Message    string
+	}
+
+	records := make(map[string]*AccessRecord)
+	mtx := &sync.Mutex{}
+
+	for _, pod := range servicePods {
+		records[pod.Status.PodIP] = &AccessRecord{
+			PodName:    pod.Name,
+			IP:         pod.Status.PodIP,
+			Connection: "unknown",
+		}
+	}
+
+	wg := &sync.WaitGroup{}
+	endpointCount := len(servicePods)
+
+	wg.Add(endpointCount * 2)
+	var err error
+
+	for i := 0; i < endpointCount*2; i++ {
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+
+			stdout, stderr, e := c.execCurl(pod, url)
+
+			ipStr, status := "", ""
+			if e == nil {
+				status = "success"
+				ipStr = getIP(stdout)
+			} else {
+				status = "failure"
+				err = e
+				ipStr = getIP(stderr)
+			}
+
+			if ipStr != "" {
+				mtx.Lock()
+				defer mtx.Unlock()
+
+				if record, ok := records[ipStr]; ok {
+					record.Connection = status
+					record.Message = stderr
+				}
+			}
+
+		}(wg)
+	}
+
+	wg.Wait()
+
+	if err == nil {
+		return
+	}
+
+	for _, r := range records {
+		framework.Logf("PodName: %s IP: %s Connection: %s Message: %s", r.PodName, r.IP, r.Connection, r.Message)
+	}
+
+	framework.ExpectNoError(err)
+}
+
+func (c Cluster) expectCurlResultContains(pod corev1.Pod, url string, substr string) {
+	timeout := fmt.Sprint(framework.TestContext.CurlTimeout)
+	err := wait.Poll(time.Second, time.Duration(framework.TestContext.CurlTimeout)*time.Second, func() (bool, error) {
+		stdout, _, _ := c.execute(pod, []string{"curl", "-sS", "-m", timeout, url})
+		return strings.Contains(stdout, substr), nil
+	})
+
+	framework.ExpectNoError(err, fmt.Sprintf("response of curl %s should contains %s", url, substr))
+}
+
+func getIP(str string) string {
+	reg, _ := regexp.Compile(`\d+\.\d+\.\d+\.\d+`)
+	return string(reg.Find([]byte(str)))
+}
+
+func getName(prefix string) string {
+	time.Sleep(time.Millisecond)
+	return fmt.Sprintf("%s-%d", prefix, rand.Int31n(1000))
 }

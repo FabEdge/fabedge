@@ -26,22 +26,20 @@ var _ = Describe("FabEdge", func() {
 	if framework.TestContext.IsMultiClusterTest() {
 		// 测试集群间云端pod与pod通信
 		It("let cluster cloud pods communicate with another cluster cloud pods [multi-cluster]", func() {
-
-			for i := 0; i < len(clusterIPs)-1; i++ {
-				c1 := clusterByIP[clusterIPs[i]]
+			for _, c1 := range clusters {
 				cloudPodsI, _, err := framework.ListCloudAndEdgePods(c1.client,
-					client.InNamespace(multiClusterNamespace),
+					client.InNamespace(namespaceMulti),
 					client.MatchingLabels{labelKeyInstance: instanceNetTool},
 				)
 				framework.ExpectNoError(err)
 
-				for j := i + 1; j < len(clusterIPs); j++ {
-					c2 := clusterByIP[clusterIPs[j]]
+				for _, c2 := range clusters {
 					cloudPodsJ, _, err := framework.ListCloudAndEdgePods(c2.client,
-						client.InNamespace(multiClusterNamespace),
+						client.InNamespace(namespaceMulti),
 						client.MatchingLabels{labelKeyInstance: instanceNetTool},
 					)
 					framework.ExpectNoError(err)
+
 					for _, p1 := range cloudPodsI {
 						for _, p2 := range cloudPodsJ {
 							framework.Logf("ping between %s of cluster %s and %s of cluster %s", p1.Name, c1.name, p2.Name, c2.name)
@@ -55,15 +53,16 @@ var _ = Describe("FabEdge", func() {
 
 	} else {
 		// 单集群测试
-		var cluster *Cluster
+		var cluster Cluster
+
 		BeforeEach(func() {
-			cluster = clusterByIP[clusterKeySingle]
+			cluster = clusters[0]
 		})
 
 		// 测试非主机网络pod与pod边边通信
 		It("let edge pods communicate with each other [p2p][e2e]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)
@@ -85,7 +84,7 @@ var _ = Describe("FabEdge", func() {
 		// 测试非主机网络pod与pod云边通信
 		It("let edge pods communicate with cloud pods [p2p][e2c]", func() {
 			cloudPods, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)
@@ -108,13 +107,13 @@ var _ = Describe("FabEdge", func() {
 		// 测试非主机网络Pods与主机网络Pod的边边通信
 		It("let edge pods communicate with edge pods using host network [p2n][e2e]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)
 
 			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
 			)
 			framework.ExpectNoError(err)
@@ -133,13 +132,13 @@ var _ = Describe("FabEdge", func() {
 		// 测试非主机网络Pods与主机网络Pod的互通
 		It("let edge pods communicate with cloud pods using host network[p2n][e2c]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)
 
 			hostCloudPods, _, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
 			)
 			framework.ExpectNoError(err)
@@ -158,13 +157,13 @@ var _ = Describe("FabEdge", func() {
 		// 测试主机网络Pods与非主机网络Pod的互通
 		It("let edge pods using host network communicate with cloud pods[n2p][e2c]", func() {
 			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
 			)
 			framework.ExpectNoError(err)
 
 			cloudPods, _, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(testNamespace),
+				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)

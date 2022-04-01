@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -38,14 +37,13 @@ import (
 )
 
 const (
-	testNamespace = "fabedge-e2e-test"
-	appNetTool    = "fabedge-net-tool"
-	communityName = "all-edge-nodes"
+	namespaceSingle = "fabedge-e2e-test"
+	communityEdges  = "e2e-all-edges"
 
-	multiClusterCommunityName = "multi-cluster-all-nodes"
-	multiClusterNamespace     = "multi-cluster-fabedge-e2e-test"
-	clusterKeySingle          = "localhost"
+	communityConnectors = "e2e-all-connectors"
+	namespaceMulti      = "fabedge-e2e-test-multi"
 
+	appNetTool          = "fabedge-net-tool"
 	instanceNetTool     = "net-tool"
 	instanceHostNetTool = "host-net-tool"
 
@@ -65,10 +63,7 @@ var (
 	// 标记是否有失败的spec
 	hasFailedSpec = false
 
-	// cluster ip list for testing
-	clusterIPs = []string{}
-	// key: cluster IP val: cluster Detail
-	clusterByIP = make(map[string]*Cluster)
+	clusters = make([]Cluster, 0)
 )
 
 func init() {
@@ -145,22 +140,23 @@ func singleClusterE2eTestPrepare() {
 		client:    client,
 		clientset: clientset,
 	}
-	err = cluster.generateNameAndRole()
+
+	err = cluster.getNameAndRole()
 	if err != nil {
-		framework.Failf("Error generating cluster name or role: %v", err)
+		framework.Failf("failed to get cluster name or role: %v", err)
 	}
-	cluster.generateServiceNames()
 
-	clusterIPs = append(clusterIPs, clusterKeySingle)
-	clusterByIP[clusterKeySingle] = &cluster // global
+	cluster.getServiceNames()
 
-	cluster.addAllEdgesToCommunity(communityName)
-	prepareClustersNamespace(testNamespace)
-	preparePodsOnEachClusterNode(testNamespace)
-	cluster.prepareHostNetworkPodsOnEachNode(testNamespace)
-	prepareServicesOnEachCluster(testNamespace)
+	clusters = append(clusters, cluster)
 
-	WaitForAllClusterPodsReady(testNamespace)
+	cluster.addAllEdgesToCommunity(communityEdges)
+	prepareClustersNamespace(namespaceSingle)
+	preparePodsOnEachClusterNode(namespaceSingle)
+	cluster.prepareHostNetworkPodsOnEachNode(namespaceSingle)
+	prepareServicesOnEachCluster(namespaceSingle)
+
+	WaitForAllClusterPodsReady(namespaceSingle)
 }
 
 func multiClusterE2eTestPrepare() {
@@ -171,63 +167,67 @@ func multiClusterE2eTestPrepare() {
 	if err != nil {
 		framework.Failf("Error reading kubeconfig dir: %v", err)
 	}
+
+	clusterIPs := make([]string, 0)
 	for _, f := range filelist {
 		ipStr := f.Name()
 		clusterIPs = append(clusterIPs, ipStr)
 	}
 	if len(clusterIPs) <= 1 {
-		framework.Failf("Error no multi cluster condition, cluster IP list: %v", clusterIPs)
+		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterIPs))
 	}
-	framework.Logf("kubeconfigDir=%v get cluster IP list: %v", configDir, clusterIPs)
+
+	framework.Logf("get cluster IP list: %v from kubeconfigDir=%v", clusterIPs, configDir)
 
 	clusterNameList := []string{}
 	hasHostCluster := false
-	for i := 0; i < len(clusterIPs); {
-		clusterIP := clusterIPs[i]
-		cluster, err := generateCluster(path.Join(configDir, clusterIP))
+
+	for _, clusterIP := range clusterIPs {
+		cluster, err := generateCluster(configDir, clusterIP)
 		if err != nil {
-			framework.Logf("Error generating cluster <%s> err: %v", clusterIP, err)
-			clusterIPs = append(clusterIPs[:i], clusterIPs[i+1:]...)
+			framework.Logf("generating cluster <%s> err: %v", clusterIP, err)
 			continue
 		}
 
 		if cluster.isHost() {
 			hasHostCluster = true
 		}
+
 		clusterNameList = append(clusterNameList, cluster.name+":"+clusterIP)
-		clusterByIP[clusterIP] = &cluster
-		i++
+		clusters = append(clusters, cluster)
 	}
 
-	if len(clusterIPs) <= 1 {
-		framework.Failf("Error no multi cluster condition, cluster list: %v", clusterNameList)
+	if len(clusterNameList) <= 1 {
+		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterNameList))
 	}
 	if !hasHostCluster {
-		framework.Failf("Error can not find host cluster role")
+		framework.Failf("no host cluster found, can not do e2e test")
 	}
+
 	framework.Logf("cluster list: %v", clusterNameList)
 
-	addAllMultiClusterNodesToCommunity()
-	prepareClustersNamespace(multiClusterNamespace)
-	preparePodsOnEachClusterNode(multiClusterNamespace)
-	prepareServicesOnEachCluster(multiClusterNamespace)
+	addAllConnectorsToCommunity()
+	prepareClustersNamespace(namespaceMulti)
+	preparePodsOnEachClusterNode(namespaceMulti)
+	prepareServicesOnEachCluster(namespaceMulti)
 
-	WaitForAllClusterPodsReady(multiClusterNamespace)
+	WaitForAllClusterPodsReady(namespaceMulti)
 }
 
 // 将各集群connector添加到同一个社区，确保所有集群非边缘节点上的pod可以互相通信
-func addAllMultiClusterNodesToCommunity() {
-	framework.Logf("add all multi cluster nodes to community %s", multiClusterCommunityName)
+func addAllConnectorsToCommunity() {
+	framework.Logf("add all connectors to community %s", communityConnectors)
 
 	community := apis.Community{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: multiClusterCommunityName,
+			Name: communityConnectors,
 		},
 		Spec: apis.CommunitySpec{},
 	}
-	var hostCluster *Cluster
-	for _, clusterIP := range clusterIPs {
-		cluster := clusterByIP[clusterIP]
+
+	var hostCluster Cluster
+
+	for _, cluster := range clusters {
 		community.Spec.Members = append(community.Spec.Members, framework.GetEndpointName(cluster.name, "connector"))
 		if cluster.isHost() {
 			hostCluster = cluster
@@ -249,10 +249,8 @@ func addAllMultiClusterNodesToCommunity() {
 }
 
 func prepareClustersNamespace(namespace string) {
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareNamespace(namespace)
-		}
+	for _, cluster := range clusters {
+		cluster.prepareNamespace(namespace)
 	}
 }
 
@@ -261,35 +259,31 @@ func prepareClustersNamespace(namespace string) {
 // net-tool pod用来相互ping和访问service
 func preparePodsOnEachClusterNode(namespace string) {
 	framework.Logf("Prepare pods on each node")
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.preparePodsOnEachNode(namespace)
-		}
+	for _, cluster := range clusters {
+		cluster.preparePodsOnEachNode(namespace)
 	}
 }
 
 func prepareServicesOnEachCluster(namespace string) {
-	for _, clusterIP := range clusterIPs {
-		if cluster, ok := clusterByIP[clusterIP]; ok {
-			cluster.prepareService(cluster.serviceCloudNginx, namespace)
-			if !framework.TestContext.IsMultiClusterTest() {
-				cluster.prepareService(cluster.serviceEdgeNginx, namespace)
-				cluster.prepareService(cluster.serviceHostCloudNginx, namespace)
-				cluster.prepareService(cluster.serviceHostEdgeNginx, namespace)
-			}
+	for _, cluster := range clusters {
+		cluster.prepareService(cluster.serviceCloudNginx, namespace)
+		if !framework.TestContext.IsMultiClusterTest() {
+			cluster.prepareService(cluster.serviceEdgeNginx, namespace)
+			cluster.prepareService(cluster.serviceHostCloudNginx, namespace)
+			cluster.prepareService(cluster.serviceHostEdgeNginx, namespace)
 		}
 	}
 }
 
 func WaitForAllClusterPodsReady(namespace string) {
 	var wg sync.WaitGroup
-	for _, cluster := range clusterByIP {
+	for i := range clusters {
 		wg.Add(1)
-		go cluster.waitForClusterPodsReady(&wg, namespace)
+		go clusters[i].waitForClusterPodsReady(&wg, namespace)
 	}
 	wg.Wait()
 
-	for _, cluster := range clusterByIP {
+	for _, cluster := range clusters {
 		if !cluster.ready {
 			framework.Failf("clusters exist not ready pods")
 		}
