@@ -60,8 +60,8 @@
     > 说明：   
     > **--cluster-name**: 集群名称  
     > **--cluster-role**: 集群角色  
-    > **--cluster-zone：** 集群所在的区  
-    > **--cluster-region：**集群所在的区域  
+    > **--cluster-zone**: 集群所在的区  
+    > **--cluster-region**: 集群所在的区域  
     > **--connectors**: connectors所在节点主机名  
     > **--connector-public-addresses**: connectors所在节点的ip地址，从边缘节点必须网络可达  
 
