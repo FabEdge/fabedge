@@ -71,6 +71,7 @@ Resources:
 Any question, feel free to reach us in the following ways:
 
 · Email: fabedge@beyondcent.com  
+. Slack: [#fabedge](https://cloud-native.slack.com/archives/C03AD0TFPFF)  
 · Scan the QR code to join WeChat Group
 
 <img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
