@@ -2,7 +2,7 @@
 
 ## Current
 
-| Maintainer           | GitHub ID                                               | Affiliation |
-| -------------------- | ------------------------------------------------------- | ----------- |
-| Haotao Geng          | [haotaogeng](https://github.com/haotaogeng)             | BoCloud     |
-| Jianbo Yan           | [yanjianbo1983](https://github.com/yanjianbo1983)       | BoCloud     |
+| Maintainer           | GitHub ID                                               | Affiliation |  Email         |
+| -------------------- | ------------------------------------------------------- | ----------- |-----------------|
+| Haotao Geng          | [haotaogeng](https://github.com/haotaogeng)             | BoCloud     | genghaotao@beyondcent.com |
+| Jianbo Yan           | [yanjianbo1983](https://github.com/yanjianbo1983)       | BoCloud     | yanjianbo@beyondcent.com   | 
