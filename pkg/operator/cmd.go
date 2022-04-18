@@ -47,6 +47,8 @@ func Execute() error {
 
 	about.DisplayAndExitIfRequested()
 
+	opts.ExtractAgentArgumentMap()
+
 	if err := opts.Validate(); err != nil {
 		log.Error(err, "invalid arguments found")
 		return err

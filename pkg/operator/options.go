@@ -121,12 +121,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.Agent.AgentImage, "agent-image", "fabedge/agent:latest", "The image of agent container of agent pod")
 	flag.StringVar(&opts.Agent.StrongswanImage, "agent-strongswan-image", "fabedge/strongswan:latest", "The image of strongswan container of agent pod")
 	flag.StringVar(&opts.Agent.ImagePullPolicy, "agent-image-pull-policy", "IfNotPresent", "The imagePullPolicy for all containers of agent pod")
-	flag.IntVar(&opts.Agent.AgentLogLevel, "agent-log-level", 3, "The log level of agent")
-	flag.BoolVar(&opts.Agent.UseXfrm, "agent-use-xfrm", false, "let agent use xfrm if edge OS supports")
-	flag.BoolVar(&opts.Agent.EnableProxy, "agent-enable-proxy", false, "Enable the proxy feature")
-	flag.BoolVar(&opts.Agent.MasqOutgoing, "agent-masq-outgoing", false, "Determine if perform outbound NAT from edge pods to outside of the cluster")
-	flag.BoolVar(&opts.Agent.EnableEdgeHairpinMode, "agent-enable-edge-hairpinmode", true, "Enable edge node pods HairpinMode")
-	flag.IntVar(&opts.Agent.NetworkPluginMTU, "agent-network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
 
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
@@ -159,7 +153,6 @@ func (opts *Options) Complete() (err error) {
 	)
 	switch opts.CNIType {
 	case constants.CNICalico:
-		opts.Agent.EnableEdgeIPAM = true
 		opts.PodCIDRStore = types.NewPodCIDRStore()
 		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
 		getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
@@ -287,6 +280,11 @@ func (opts *Options) Complete() (err error) {
 	return nil
 }
 
+// ExtractAgentArgumentMap extract arguments of agent pod
+func (opts *Options) ExtractAgentArgumentMap() {
+	opts.Agent.AgentPodArguments = types.NewAgentArgumentMapFromEnv()
+}
+
 func (opts Options) Validate() (err error) {
 	if len(opts.Cluster) == 0 {
 		return fmt.Errorf("a cluster name is required")
@@ -332,7 +330,7 @@ func (opts Options) Validate() (err error) {
 		}
 	}
 
-	if opts.Agent.EnableEdgeIPAM {
+	if opts.Agent.AgentPodArguments.IsIPAMEnabled() {
 		ip, subnet, err := net.ParseCIDR(opts.EdgePodCIDR)
 		if err != nil {
 			return fmt.Errorf("invalid edge pod cidr: %s. %w", opts.EdgePodCIDR, err)
@@ -497,7 +495,7 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		return err
 	}
 
-	if opts.Agent.EnableProxy {
+	if opts.Agent.AgentPodArguments.IsProxyEnabled() {
 		if err = proxyctl.AddToManager(opts.Proxy); err != nil {
 			log.Error(err, "failed to add proxy controller to manager")
 			return err
@@ -573,7 +571,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 		})
 	}
 
-	if !opts.Agent.EnableEdgeIPAM {
+	if !opts.Agent.AgentPodArguments.IsIPAMEnabled() {
 		return nil
 	}
 
