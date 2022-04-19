@@ -37,15 +37,9 @@ spec:
             - --edge-labels=node-role.kubernetes.io/edge=
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
-            # 如果hairpinmode为true, 可以支持pod由service访问自身
-            - --agent-enable-edge-hairpinmode=true
-            # 边缘节点设置网络插件MTU
-            - --agent-network-plugin-mtu=1400
             # 边缘节点的Pod使用的网段, 当使用Calico时必须配置，该网段不可与connector-subnets里的网段重叠
             - --edge-pod-cidr=10.10.0.0/16
             # 建议在边缘节点不能运行kube-proxy时启用
-            - --agent-enable-proxy=false
-            - --agent-masq-outgoing=true
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan
             # connectorPod的标签，用来查找connector Pod
@@ -57,6 +51,23 @@ spec:
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
             - -v=5
+          # 用环境变量配置agent的参数，每个参数都是'AGENT_ARG_'开头
+          # 需要注意的是，日志级别必须用'AGENT_ARG_LOG_LEVEL'来配置
+          env:
+            - name: AGENT_ARG_LOG_LEVEL
+              value: "3"
+            - name: AGENT_ARG_LOCAL_CERT
+              value: "tls.crt"
+            - name: AGENT_ARG_MASQ_OUTGOING
+              value: "true"
+            - name: AGENT_ARG_ENABLE_IPAM
+              value: "false"
+            - name: AGENT_ARG_ENABLE_HAIRPINMODE
+              value: "true"
+            - name: AGENT_ARG_ENABLE_PROXY
+              value: "false"
+            - name: AGENT_ARG_USE_XFRM
+              value: "false"
           # ports, volumeMounts, readinessProbe配置仅限于cluster-role是host时使用
           ports:
             - containerPort: 3030

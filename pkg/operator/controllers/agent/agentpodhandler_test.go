@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
@@ -38,20 +39,29 @@ var _ = Describe("AgentPodHandler", func() {
 
 		handler *agentPodHandler
 		newNode = newNodePodCIDRsInAnnotations
+		argMap  types.AgentArgumentMap
 	)
 
 	BeforeEach(func() {
+		argMap = map[string]string{
+			"enable-proxy":       "false",
+			"enable-ipam":        "true",
+			"enable-hairpinmode": "true",
+			"masq-outgoing":      "false",
+			"network-plugin-mtu": "1400",
+			"use-xfrm":           "false",
+			"log-level":          "3",
+		}
+
 		handler = &agentPodHandler{
-			namespace:         namespace,
-			agentImage:        agentImage,
-			strongswanImage:   strongswanImage,
-			imagePullPolicy:   corev1.PullIfNotPresent,
-			logLevel:          3,
-			client:            k8sClient,
-			log:               klogr.New().WithName("agentPodHandler"),
-			enableIPAM:        true,
-			enableHairpinMode: true,
-			networkPluginMTU:  1400,
+			namespace:       namespace,
+			agentImage:      agentImage,
+			strongswanImage: strongswanImage,
+			imagePullPolicy: corev1.PullIfNotPresent,
+			args:            argMap.ArgumentArray(),
+			enableIPAM:      argMap.IsIPAMEnabled(),
+			client:          k8sClient,
+			log:             klogr.New().WithName("agentPodHandler"),
 		}
 
 		nodeName := getNodeName()
@@ -212,22 +222,15 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
 		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
 		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
-		args := []string{
-			"--tunnels-conf",
-			agentConfigTunnelsFilepath,
-			"--services-conf",
-			agentConfigServicesFilepath,
-			"--local-cert",
-			"tls.crt",
-			"--masq-outgoing=false",
-			"--enable-ipam=true",
+		Expect(pod.Spec.Containers[0].Args).To(Equal([]string{
 			"--enable-hairpinmode=true",
+			"--enable-ipam=true",
+			"--enable-proxy=false",
+			"--masq-outgoing=false",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
-			"--enable-proxy=false",
-			"-v=3",
-		}
-		Expect(pod.Spec.Containers[0].Args).To(Equal(args))
+			"--v=3",
+		}))
 		Expect(*pod.Spec.Containers[0].SecurityContext.Privileged).To(BeTrue())
 
 		agentVolumeMounts := []corev1.VolumeMount{
@@ -284,7 +287,10 @@ var _ = Describe("AgentPodHandler", func() {
 	})
 
 	It("agent pod should not contain CNI related volumes and initContainer when enableIPAM is false", func() {
-		handler.enableIPAM = false
+		argMap.Set("enable-ipam", "false")
+		handler.args = argMap.ArgumentArray()
+		handler.enableIPAM = argMap.IsIPAMEnabled()
+
 		agentPodName := getAgentPodName(node.Name)
 		pod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
 
@@ -366,22 +372,15 @@ var _ = Describe("AgentPodHandler", func() {
 
 		// agent container
 		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
-		args := []string{
-			"--tunnels-conf",
-			agentConfigTunnelsFilepath,
-			"--services-conf",
-			agentConfigServicesFilepath,
-			"--local-cert",
-			"tls.crt",
-			"--masq-outgoing=false",
-			"--enable-ipam=false",
+		Expect(pod.Spec.Containers[0].Args).To(Equal([]string{
 			"--enable-hairpinmode=true",
+			"--enable-ipam=false",
+			"--enable-proxy=false",
+			"--masq-outgoing=false",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
-			"--enable-proxy=false",
-			"-v=3",
-		}
-		Expect(pod.Spec.Containers[0].Args).To(Equal(args))
+			"--v=3",
+		}))
 
 		agentVolumeMounts := []corev1.VolumeMount{
 			{

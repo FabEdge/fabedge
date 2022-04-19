@@ -92,5 +92,4 @@ var _ = Describe("EndpointFuncs", func() {
 
 		Expect(endpoint.PublicAddresses).Should(ConsistOf("www.example.com", "10.0.0.1"))
 	})
-
 })

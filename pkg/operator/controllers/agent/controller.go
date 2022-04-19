@@ -47,6 +47,7 @@ const (
 )
 
 type ObjectKey = client.ObjectKey
+
 type Handler interface {
 	Do(ctx context.Context, node corev1.Node) error
 	Undo(ctx context.Context, nodeName string) error
@@ -66,13 +67,11 @@ type Config struct {
 	Store     storepkg.Interface
 	Manager   manager.Manager
 
-	Namespace       string
-	ImagePullPolicy string
-	AgentLogLevel   int
-	AgentImage      string
-	StrongswanImage string
-	UseXfrm         bool
-	MasqOutgoing    bool
+	Namespace         string
+	AgentImage        string
+	StrongswanImage   string
+	ImagePullPolicy   string
+	AgentPodArguments types.AgentArgumentMap
 
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
@@ -80,12 +79,6 @@ type Config struct {
 
 	CertManager      certutil.Manager
 	CertOrganization string
-
-	EnableProxy bool
-
-	EnableEdgeIPAM        bool
-	EnableEdgeHairpinMode bool
-	NetworkPluginMTU      int
 }
 
 func AddToManager(cnf Config) error {
@@ -154,16 +147,11 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		client:    cli,
 		log:       log.WithName("agentPodHandler"),
 
-		imagePullPolicy:   corev1.PullPolicy(cnf.ImagePullPolicy),
-		logLevel:          cnf.AgentLogLevel,
-		agentImage:        cnf.AgentImage,
-		strongswanImage:   cnf.StrongswanImage,
-		useXfrm:           cnf.UseXfrm,
-		masqOutgoing:      cnf.MasqOutgoing,
-		enableProxy:       cnf.EnableProxy,
-		enableIPAM:        true,
-		enableHairpinMode: cnf.EnableEdgeHairpinMode,
-		networkPluginMTU:  cnf.NetworkPluginMTU,
+		imagePullPolicy: corev1.PullPolicy(cnf.ImagePullPolicy),
+		agentImage:      cnf.AgentImage,
+		strongswanImage: cnf.StrongswanImage,
+		enableIPAM:      cnf.AgentPodArguments.IsIPAMEnabled(),
+		args:            cnf.AgentPodArguments.ArgumentArray(),
 	})
 
 	return handlers
