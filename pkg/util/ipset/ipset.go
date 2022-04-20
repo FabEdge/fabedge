@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/exec"
 
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	"github.com/fabedge/fabedge/third_party/ipset"
 )
 
@@ -140,5 +141,14 @@ func (e *execer) SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIP
 }
 
 func (e *execer) ConvertIPToCIDR(ip string) string {
-	return strings.Join([]string{ip, "32"}, "/")
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return ip
+	}
+
+	if netutil.IPVersion(parsedIP) == netutil.IPV4 {
+		return strings.Join([]string{ip, "32"}, "/")
+	}
+
+	return strings.Join([]string{ip, "128"}, "/")
 }

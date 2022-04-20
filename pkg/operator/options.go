@@ -52,6 +52,7 @@ import (
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
@@ -72,12 +73,14 @@ type Options struct {
 	// ClusterRole will determine how operator will be running:
 	// Host: operator will start an API server
 	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
-	ClusterRole      string
-	Namespace        string
-	EdgePodCIDR      string
-	EndpointIDFormat string
-	EdgeLabels       map[string]string
-	CNIType          string
+	ClusterRole               string
+	Namespace                 string
+	EdgePodCIDRs              []string
+	EdgePodSubnetMaskSizeIPv4 int
+	EdgePodSubnetMaskSizeIPv6 int
+	EndpointIDFormat          string
+	EdgeLabels                map[string]string
+	CNIType                   string
 
 	CASecretName     string
 	CertValidPeriod  int64
@@ -109,7 +112,9 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
-	flag.StringVar(&opts.EdgePodCIDR, "edge-pod-cidr", "", "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
+	flag.StringSliceVar(&opts.EdgePodCIDRs, "edge-pod-cidrs", nil, "Specify range of IP addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico")
+	flag.IntVar(&opts.EdgePodSubnetMaskSizeIPv4, "edge-pod-subnet-mask-size-ipv4", 26, "Specify the subnet mask size of IPv4 addresses for the edge pod, default is 26")
+	flag.IntVar(&opts.EdgePodSubnetMaskSizeIPv6, "edge-pod-subnet-mask-size-ipv6", 122, "Specify the subnet mask size of IPv6 addresses for the edge pod, default is 122")
 	flag.StringVar(&opts.EndpointIDFormat, "endpoint-id-format", "C=CN, O=fabedge.io, CN={node}", "the id format of tunnel endpoint")
 	flag.StringToStringVar(&opts.EdgeLabels, "edge-labels", map[string]string{"node-role.kubernetes.io/edge": ""}, "Labels to filter edge nodes, e.g. key2=,key3=value3")
 
@@ -156,10 +161,24 @@ func (opts *Options) Complete() (err error) {
 		opts.PodCIDRStore = types.NewPodCIDRStore()
 		getCloudPodCIDRs = func(node corev1.Node) []string { return opts.PodCIDRStore.Get(node.Name) }
 		getEdgePodCIDRs = nodeutil.GetPodCIDRsFromAnnotation
-		opts.Agent.Allocator, err = allocator.New(opts.EdgePodCIDR)
-		if err != nil {
-			log.Error(err, "failed to create allocator")
-			return err
+		for _, edgePodCIDR := range opts.EdgePodCIDRs {
+			ip, _, _ := net.ParseCIDR(edgePodCIDR)
+			version := netutil.IPVersion(ip)
+
+			subnetMaskSize := 0
+			if version == netutil.IPV4 {
+				subnetMaskSize = opts.EdgePodSubnetMaskSizeIPv4
+			} else {
+				subnetMaskSize = opts.EdgePodSubnetMaskSizeIPv6
+			}
+
+			allocator, err := allocator.New(edgePodCIDR, subnetMaskSize)
+			if err != nil {
+				log.Error(err, "failed to create allocator")
+				return err
+			}
+			opts.Agent.Allocators = append(opts.Agent.Allocators, allocator)
+
 		}
 	case constants.CNIFlannel:
 		getEdgePodCIDRs = nodeutil.GetPodCIDRs
@@ -331,15 +350,45 @@ func (opts Options) Validate() (err error) {
 	}
 
 	if opts.Agent.AgentPodArguments.IsIPAMEnabled() {
-		ip, subnet, err := net.ParseCIDR(opts.EdgePodCIDR)
-		if err != nil {
-			return fmt.Errorf("invalid edge pod cidr: %s. %w", opts.EdgePodCIDR, err)
+		if len(opts.EdgePodCIDRs) == 0 || len(opts.EdgePodCIDRs) > 2 {
+			return fmt.Errorf("one or two edge pod cidr is needed")
 		}
 
-		for _, s := range opts.Connector.ProvidedSubnets {
-			ip2, subnet2, _ := net.ParseCIDR(s)
-			if subnet.Contains(ip2) || subnet2.Contains(ip) {
-				return fmt.Errorf("EdgePodCIDR is overlaped with connector's subnets")
+		var ipProtocalVersion netutil.ProtocolVersion
+		for _, edgePodCIDR := range opts.EdgePodCIDRs {
+			ip, subnet, err := net.ParseCIDR(edgePodCIDR)
+			if err != nil {
+				return fmt.Errorf("invalid edge pod cidr: %s. %w", edgePodCIDR, err)
+			}
+
+			version := netutil.IPVersion(ip)
+			if ipProtocalVersion == version {
+				return fmt.Errorf("two edge pod cidrs cannot use the same protocol version")
+			} else {
+				ipProtocalVersion = version
+			}
+
+			// verify the number of subnet mask bits
+			if version == netutil.IPV4 {
+				if opts.EdgePodSubnetMaskSizeIPv4 <= 0 || opts.EdgePodSubnetMaskSizeIPv4 >= 32 {
+					return fmt.Errorf("invalid edge pod ipv4 subnet mask bits: %d", opts.EdgePodSubnetMaskSizeIPv4)
+				}
+			} else {
+				if opts.EdgePodSubnetMaskSizeIPv6 <= 0 || opts.EdgePodSubnetMaskSizeIPv6 >= 128 {
+					return fmt.Errorf("invalid edge pod ipv6 subnet mask bits: %d", opts.EdgePodSubnetMaskSizeIPv4)
+				}
+			}
+
+			for _, s := range opts.Connector.ProvidedSubnets {
+				ip2, subnet2, _ := net.ParseCIDR(s)
+
+				if netutil.IPVersion(ip2) != version {
+					continue
+				}
+
+				if subnet.Contains(ip2) || subnet2.Contains(ip) {
+					return fmt.Errorf("EdgePodCIDR is overlaped with connector's subnets")
+				}
 			}
 		}
 	}
@@ -588,7 +637,13 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 				log.Error(err, "failed to parse subnet of node", "nodeName", node.Name, "node", node)
 				continue
 			}
-			opts.Agent.Allocator.Record(*subnet)
+
+			version := netutil.IPVersion(subnet.IP)
+			for _, allocator := range opts.Agent.Allocators {
+				if allocator.Version() == version {
+					allocator.Record(*subnet)
+				}
+			}
 		}
 
 		store.SaveEndpoint(ep)
