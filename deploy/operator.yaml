@@ -66,6 +66,10 @@ spec:
               value: "false"
             - name: AGENT_ARG_USE_XFRM
               value: "false"
+            - name: AGENT_ARG_AUTO_NETWORKING
+                value: "false"
+            - name: AGENT_ARG_MULTICAST_TOKEN
+              value: "e6a7ca28-ae6a-45bf-8162-e2374a4a48c1"
           # ports, volumeMounts, readinessProbe配置仅限于cluster-role是host时使用
           ports:
             - containerPort: 3030

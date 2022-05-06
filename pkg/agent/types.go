@@ -14,6 +14,12 @@
 
 package agent
 
+import (
+	"time"
+
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+)
+
 // CNINetConf describes a network.
 type CNINetConf struct {
 	CNIVersion string        `json:"cniVersion,omitempty"`
@@ -45,4 +51,20 @@ type BridgeConfig struct {
 type CapbilitiesConfig struct {
 	Type         string          `json:"type"`
 	Capabilities map[string]bool `json:"capabilities,omitempty"`
+}
+
+type Endpoint struct {
+	apis.Endpoint
+
+	// IsLocal mark an endpoint from LAN
+	IsLocal bool
+
+	// ExpireTime works only on local endpoint
+	ExpireTime time.Time `json:"-"`
+}
+
+type Message struct {
+	apis.Endpoint
+
+	Token string
 }

@@ -57,6 +57,11 @@ func Execute() error {
 		return err
 	}
 
+	if err := os.MkdirAll(cfg.Workdir, 0777); err != nil {
+		log.Error(err, "failed to create cni conf dir")
+		return err
+	}
+
 	go manager.start()
 
 	err = watchFiles(cfg.TunnelsConfPath, cfg.ServicesConfPath, func(event fsnotify.Event) {
@@ -68,4 +73,35 @@ func Execute() error {
 		log.Error(err, "failed to watch tunnelsconf", "file", cfg.TunnelsConfPath)
 	}
 	return err
+}
+
+func watchFiles(tunnelsConfpath, servicesConfPath string, handleFn func(event fsnotify.Event)) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer watcher.Close()
+
+	if err = watcher.Add(tunnelsConfpath); err != nil {
+		return err
+	}
+
+	if err = watcher.Add(servicesConfPath); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			handleFn(event)
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			return err
+		}
+	}
 }

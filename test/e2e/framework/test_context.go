@@ -46,6 +46,7 @@ type Context struct {
 	NetToolImage          string
 	PreserveResources     string
 	ShowExecError         bool
+	CreateEdgeCommunity   bool
 }
 
 func (c Context) IsMultiClusterTest() bool {
@@ -77,6 +78,8 @@ func RegisterAndHandleFlags() {
 		"display error of executing curl or ping")
 	flag.StringVar(&TestContext.EdgeLabels, "edge-labels", "node-role.kubernetes.io/edge",
 		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
+	flag.BoolVar(&TestContext.CreateEdgeCommunity, "create-edge-community", true,
+		"Create community for all edge nodes if set to true")
 
 	flag.Parse()
 
