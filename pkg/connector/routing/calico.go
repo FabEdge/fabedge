@@ -17,6 +17,7 @@ package routing
 import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/vishvananda/netlink"
 )
@@ -39,12 +40,18 @@ func (r *CalicoRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
 	return delAllEdgeRoutes(conns)
 }
 
-func (r *CalicoRouter) GetLocalPrefixes() ([]string, error) {
+func (r *CalicoRouter) GetLocalPrefixes(protocolVersion netutil.ProtocolVersion) ([]string, error) {
 	tunl, err := netlink.LinkByName("tunl0")
 	if err != nil {
 		return nil, err
 	}
-	addrs, err := netlink.AddrList(tunl, netlink.FAMILY_V4)
+
+	family := netlink.FAMILY_V4
+	if protocolVersion == netutil.IPV6 {
+		family = netlink.FAMILY_V6
+	}
+
+	addrs, err := netlink.AddrList(tunl, family)
 	if err != nil {
 		return nil, err
 	}
@@ -59,17 +66,29 @@ func (r *CalicoRouter) GetLocalPrefixes() ([]string, error) {
 
 func (r *CalicoRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
 	cp := new(ConnectorPrefixes)
-	local, err := r.GetLocalPrefixes()
+	local, err := r.GetLocalPrefixes(netutil.IPV4)
 	if err != nil {
 		return nil, err
 	}
 	cp.LocalPrefixes = local
 
-	remote, err := GetRemotePrefixes()
+	localIPv6, err := r.GetLocalPrefixes(netutil.IPV6)
+	if err != nil {
+		return nil, err
+	}
+	cp.LocalPrefixesIPv6 = localIPv6
+
+	remote, err := GetRemotePrefixes(netutil.IPV4)
 	if err != nil {
 		return nil, err
 	}
 	cp.RemotePrefixes = remote
+
+	remoteIPv6, err := GetRemotePrefixes(netutil.IPV6)
+	if err != nil {
+		return nil, err
+	}
+	cp.RemotePrefixesIPv6 = remoteIPv6
 
 	cp.NodeName = routeUtil.GetNodeName()
 

@@ -22,16 +22,20 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/exec"
 
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	"github.com/fabedge/fabedge/third_party/ipset"
 )
 
 const (
 	HashIP  = ipset.HashIP
 	HashNet = ipset.HashNet
+
+	ProtocolFamilyIPV4 = ipset.ProtocolFamilyIPV4
+	ProtocolFamilyIPV6 = ipset.ProtocolFamilyIPV6
 )
 
 type Interface interface {
-	EnsureIPSet(setName string, setType ipset.Type) (*ipset.IPSet, error)
+	EnsureIPSet(setName, hashFamily string, setType ipset.Type) (*ipset.IPSet, error)
 	AddIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
 	DelIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
 	ListEntries(setName string, setType ipset.Type) (sets.String, error)
@@ -49,10 +53,11 @@ func New() Interface {
 	}
 }
 
-func (e *execer) EnsureIPSet(setName string, setType ipset.Type) (*ipset.IPSet, error) {
+func (e *execer) EnsureIPSet(setName, hashFamily string, setType ipset.Type) (*ipset.IPSet, error) {
 	set := &ipset.IPSet{
-		Name:    setName,
-		SetType: setType,
+		Name:       setName,
+		SetType:    setType,
+		HashFamily: hashFamily,
 	}
 	if err := e.ipset.CreateSet(set, true); err != nil {
 		return nil, err
@@ -140,5 +145,14 @@ func (e *execer) SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIP
 }
 
 func (e *execer) ConvertIPToCIDR(ip string) string {
-	return strings.Join([]string{ip, "32"}, "/")
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return ip
+	}
+
+	if netutil.IPVersion(parsedIP) == netutil.IPV4 {
+		return strings.Join([]string{ip, "32"}, "/")
+	}
+
+	return strings.Join([]string{ip, "128"}, "/")
 }

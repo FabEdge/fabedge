@@ -22,9 +22,14 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 )
 
-var errNoAvailableSubnet = fmt.Errorf("no subnet available")
+var (
+	errNoAvailableSubnet     = fmt.Errorf("no subnet available")
+	errInvalidSubnetMaskSize = fmt.Errorf("invalid subnet mask size")
+)
 
 type NextBlockFunc func() *net.IPNet
 type Interface interface {
@@ -33,29 +38,43 @@ type Interface interface {
 	IsAllocated(net.IPNet) bool
 	Contains(ipNet net.IPNet) bool
 	GetFreeSubnetBlock(hostname string) (*net.IPNet, error)
+	Version() netutil.ProtocolVersion
 }
 
 var _ Interface = &allocator{}
 
 type allocator struct {
-	netCIDR string
-	pool    *net.IPNet
+	netCIDR        string
+	subnetMaskSize int
+	pool           *net.IPNet
 
 	subnetCache map[string]bool
 
 	mux sync.RWMutex
 }
 
-func New(netCIDR string) (Interface, error) {
+func New(netCIDR string, subnetMaskSize int) (Interface, error) {
 	_, pool, err := net.ParseCIDR(netCIDR)
 	if err != nil {
 		return nil, err
 	}
 
+	// verify the number of subnet mask bits
+	if netutil.IPVersion(pool.IP) == netutil.IPV4 {
+		if subnetMaskSize <= 0 || subnetMaskSize >= 32 {
+			return nil, errInvalidSubnetMaskSize
+		}
+	} else {
+		if subnetMaskSize <= 0 || subnetMaskSize >= 128 {
+			return nil, errInvalidSubnetMaskSize
+		}
+	}
+
 	return &allocator{
-		netCIDR:     netCIDR,
-		pool:        pool,
-		subnetCache: make(map[string]bool),
+		netCIDR:        netCIDR,
+		subnetMaskSize: subnetMaskSize,
+		pool:           pool,
+		subnetCache:    make(map[string]bool),
 	}, nil
 }
 
@@ -116,7 +135,14 @@ func (a *allocator) generateNextBlock(hostname string) NextBlockFunc {
 	pool := a.pool
 
 	baseIP := pool.IP
-	blockMask := net.CIDRMask(26, 32)
+
+	var blockMask net.IPMask
+	// is ipv4 or ipv6
+	if a.Version() == 4 {
+		blockMask = net.CIDRMask(a.subnetMaskSize, 32)
+	} else {
+		blockMask = net.CIDRMask(a.subnetMaskSize, 128)
+	}
 
 	// Determine the number of blocks within this pool.
 	ones, size := pool.Mask.Size()
@@ -179,6 +205,13 @@ func (a *allocator) generateNextBlock(hostname string) NextBlockFunc {
 		// Return the block from this pool that corresponds with the index.
 		return &ipNet
 	}
+}
+
+func (a *allocator) Version() netutil.ProtocolVersion {
+	pool := a.pool
+	baseIP := pool.IP
+
+	return netutil.IPVersion(baseIP)
 }
 
 func incrementIP(ip net.IP, increment *big.Int) net.IP {

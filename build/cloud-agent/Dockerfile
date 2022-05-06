@@ -5,6 +5,7 @@ RUN cd /fabedge && make cloud-agent QUICK=1 CGO_ENABLED=0 GOPROXY=https://goprox
 FROM alpine:3.15
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories && \
     apk add iptables && \
+    apk add ip6tables && \
     apk add ipset && \
     rm -rf /var/cache/apk/*
 

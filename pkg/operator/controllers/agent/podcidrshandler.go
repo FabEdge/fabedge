@@ -16,6 +16,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/go-logr/logr"
@@ -26,13 +27,14 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 )
 
 var _ Handler = &allocatablePodCIDRsHandler{}
 
 type allocatablePodCIDRsHandler struct {
 	client          client.Client
-	allocator       allocator.Interface
+	allocators      []allocator.Interface
 	store           storepkg.Interface
 	newEndpoint     types.NewEndpointFunc
 	getEndpointName types.GetNameFunc
@@ -42,8 +44,10 @@ type allocatablePodCIDRsHandler struct {
 func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.Node) error {
 	currentEndpoint := handler.newEndpoint(node)
 
+	// TODO: need to consider the different ip protocol stack of subnets transformation
+	// all kinds of protocol stack of subnets will be reallocated when ipv4 single stack transform to dual stack (ipv4,ipv6), so far.
 	if !handler.isValidSubnets(currentEndpoint.Subnets) {
-		if err := handler.allocateSubnet(ctx, node); err != nil {
+		if err := handler.allocateSubnets(ctx, node); err != nil {
 			return err
 		}
 	} else {
@@ -64,39 +68,68 @@ func (handler *allocatablePodCIDRsHandler) isValidSubnets(cidrs []string) bool {
 			return false
 		}
 
-		if !handler.allocator.Contains(*subnet) {
-			return false
+		version := netutil.IPVersion(subnet.IP)
+
+		for _, allocator := range handler.allocators {
+			if allocator.Version() != version {
+				continue
+			}
+
+			if !allocator.Contains(*subnet) {
+				return false
+			}
 		}
 	}
 
 	return true
 }
 
-func (handler *allocatablePodCIDRsHandler) allocateSubnet(ctx context.Context, node corev1.Node) error {
+func (handler *allocatablePodCIDRsHandler) allocateSubnets(ctx context.Context, node corev1.Node) error {
 	log := handler.log.WithValues("nodeName", node.Name)
 
-	log.V(5).Info("this node need subnet allocation")
-	subnet, err := handler.allocator.GetFreeSubnetBlock(node.Name)
-	if err != nil {
-		log.Error(err, "failed to allocate subnet for node")
-		return err
-	}
+	log.V(5).Info("this node need subnets allocation")
 
-	log = log.WithValues("subnet", subnet.String())
-	log.V(5).Info("an subnet is allocated to node")
+	subnets := make([]net.IPNet, 0)
+	annotationSubnets := ""
+	for index, allocator := range handler.allocators {
+		subnet, err := allocator.GetFreeSubnetBlock(node.Name)
+		if err != nil {
+			log.Error(err, "failed to allocate subnet for node")
+			return err
+		}
+
+		subnets = append(subnets, *subnet)
+
+		if index > 0 {
+			annotationSubnets += ","
+		}
+		annotationSubnets += subnet.String()
+
+		log = log.WithValues(fmt.Sprintf("subnet_%d", index), subnet.String())
+		log.V(5).Info("an subnet is allocated to node")
+	}
 
 	if node.Annotations == nil {
 		node.Annotations = map[string]string{}
 	}
-	// for now, we just supply one subnet allocation
-	node.Annotations[constants.KeyPodSubnets] = subnet.String()
 
-	err = handler.client.Update(ctx, &node)
+	node.Annotations[constants.KeyPodSubnets] = annotationSubnets
+
+	err := handler.client.Update(ctx, &node)
 	if err != nil {
 		log.Error(err, "failed to record node subnet allocation")
 
-		handler.allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed")
+		for _, subnet := range subnets {
+
+			version := netutil.IPVersion(subnet.IP)
+
+			for _, allocator := range handler.allocators {
+				if allocator.Version() == version {
+					allocator.Reclaim(subnet)
+					log.V(5).Info("subnet is reclaimed", "subnet", subnet.String())
+				}
+			}
+		}
 		return err
 	}
 
@@ -122,8 +155,15 @@ func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName st
 			log.Error(err, "invalid subnet, skip reclaiming subnets")
 			continue
 		}
-		handler.allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed", "subnet", subnet)
+
+		version := netutil.IPVersion(subnet.IP)
+
+		for _, allocator := range handler.allocators {
+			if allocator.Version() == version {
+				allocator.Reclaim(*subnet)
+				log.V(5).Info("subnet is reclaimed", "subnet", subnet.String())
+			}
+		}
 	}
 
 	return nil

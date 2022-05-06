@@ -16,18 +16,23 @@ package routing
 
 import (
 	"fmt"
-	"github.com/fabedge/fabedge/pkg/common/constants"
-	"github.com/fabedge/fabedge/pkg/tunnel"
-	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
-	"github.com/vishvananda/netlink"
 	"net"
 	"strings"
+
+	"github.com/vishvananda/netlink"
+
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/tunnel"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
+	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
 )
 
 type ConnectorPrefixes struct {
-	NodeName       string   `json:"name"`
-	LocalPrefixes  []string `json:"local-prefixes"`
-	RemotePrefixes []string `json:"remote-prefixes"`
+	NodeName           string   `json:"name"`
+	LocalPrefixes      []string `json:"local-prefixes"`
+	LocalPrefixesIPv6  []string `json:"local-prefixes-ipv6"`
+	RemotePrefixes     []string `json:"remote-prefixes"`
+	RemotePrefixesIPv6 []string `json:"remote-prefixes-ipv6"`
 }
 
 type Routing interface {
@@ -79,6 +84,12 @@ func addAllEdgeRoutes(conns []tunnel.ConnConfig, table int) error {
 			if err != nil {
 				return err
 			}
+
+			// for debug
+			// if netutil.IPVersion(s.IP) == netutil.IPV6 {
+			// 	continue
+			// }
+
 			// add into table 220
 			route := netlink.Route{Dst: s, Gw: gw, Table: table}
 			err = netlink.RouteAdd(&route)
@@ -107,6 +118,12 @@ func delAllEdgeRoutes(conns []tunnel.ConnConfig) error {
 			if err != nil {
 				return err
 			}
+
+			// for debug
+			// if netutil.IPVersion(s.IP) == netutil.IPV6 {
+			// 	continue
+			// }
+
 			err = delEdgeRoute(s)
 			if err != nil && !routeUtil.NoSuchProcessError(err) {
 				return err
@@ -135,11 +152,17 @@ func delRoutesNotInConnections(connections []tunnel.ConnConfig, table int) error
 	return err
 }
 
-func GetRemotePrefixes() ([]string, error) {
+func GetRemotePrefixes(protocolVersion netutil.ProtocolVersion) ([]string, error) {
 	var routeFilter = &netlink.Route{
 		Table: constants.TableStrongswan,
 	}
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
+
+	family := netlink.FAMILY_V4
+	if protocolVersion == netutil.IPV6 {
+		family = netlink.FAMILY_V6
+	}
+
+	routes, err := netlink.RouteListFiltered(family, routeFilter, netlink.RT_FILTER_TABLE)
 	if err != nil {
 		return nil, err
 	}

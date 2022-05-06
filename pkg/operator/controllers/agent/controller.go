@@ -63,9 +63,9 @@ type agentController struct {
 }
 
 type Config struct {
-	Allocator allocator.Interface
-	Store     storepkg.Interface
-	Manager   manager.Manager
+	Allocators []allocator.Interface
+	Store      storepkg.Interface
+	Manager    manager.Manager
 
 	Namespace         string
 	AgentImage        string
@@ -105,10 +105,10 @@ func AddToManager(cnf Config) error {
 
 func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	var handlers []Handler
-	if cnf.Allocator != nil {
+	if cnf.Allocators != nil {
 		handlers = append(handlers, &allocatablePodCIDRsHandler{
 			store:           cnf.Store,
-			allocator:       cnf.Allocator,
+			allocators:      cnf.Allocators,
 			newEndpoint:     cnf.NewEndpoint,
 			getEndpointName: cnf.GetEndpointName,
 			client:          cli,
@@ -194,8 +194,8 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 }
 
 func (ctl *agentController) shouldSkip(node corev1.Node) bool {
-	ip := nodeutil.GetIP(node)
-	return len(ip) == 0
+	ips := nodeutil.GetInternalIPs(node)
+	return len(ips) == 0
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {

@@ -1,10 +1,11 @@
 package route
 
 import (
-	"github.com/vishvananda/netlink"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/vishvananda/netlink"
 )
 
 func FileExistsError(err error) bool {
@@ -19,6 +20,14 @@ func NoSuchProcessError(err error) bool {
 
 func GetDefaultGateway() (net.IP, error) {
 	defaultRoute, err := netlink.RouteGet(net.ParseIP("8.8.8.8"))
+	if len(defaultRoute) != 1 || err != nil {
+		return nil, err
+	}
+	return defaultRoute[0].Gw, nil
+}
+
+func GetIPv6DefaultGateway() (net.IP, error) {
+	defaultRoute, err := netlink.RouteGet(net.ParseIP("2001:4860:4860::8888"))
 	if len(defaultRoute) != 1 || err != nil {
 		return nil, err
 	}

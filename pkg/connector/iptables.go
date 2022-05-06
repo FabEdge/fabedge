@@ -15,14 +15,17 @@
 package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/tunnel"
+	"fmt"
 	"net"
 	"strings"
 
-	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	"github.com/coreos/go-iptables/iptables"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 )
 
 const (
@@ -35,124 +38,207 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
 	IPSetEdgeNodeCIDR       = "FABEDGE-EDGE-NODE-CIDR"
+	IPSetEdgeNodeCIDRIPV6   = "FABEDGE-EDGE-NODE-CIDR-IPV6"
 	IPSetCloudPodCIDR       = "FABEDGE-CLOUD-POD-CIDR"
+	IPSetCloudPodCIDRIPV6   = "FABEDGE-CLOUD-POD-CIDR-IPV6"
 	IPSetCloudNodeCIDR      = "FABEDGE-CLOUD-NODE-CIDR"
+	IPSetCloudNodeCIDRIPV6  = "FABEDGE-CLOUD-NODE-CIDR-IPV6"
 	IPSetEdgePodCIDR        = "FABEDGE-EDGE-POD-CIDR"
+	IPSetEdgePodCIDRIPV6    = "FABEDGE-EDGE-POD-CIDR-IPV6"
 )
 
-func (m *Manager) clearFabedgeIptablesChains() error {
-	err := m.ipt.ClearChain(TableFilter, ChainFabEdgeInput)
-	if err != nil {
-		return err
+func (m *Manager) clearFabedgeIPTablesChains() error {
+	// iptables
+	e1 := clearFabedgeIPTablesChains(m.ipt)
+
+	// ip6tables
+	e2 := clearFabedgeIPTablesChains(m.ip6t)
+
+	if e1 != nil || e2 != nil {
+		return fmt.Errorf("iptables error: %v, ip6tables error: %v", e1, e2)
 	}
-	err = m.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
-	if err != nil {
-		return err
-	}
-	return m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+
+	return nil
 }
 
-func (m *Manager) ensureForwardIPTablesRules() (err error) {
+func clearFabedgeIPTablesChains(ipts *iptables.IPTables) error {
+	err := ipts.ClearChain(TableFilter, ChainFabEdgeInput)
+	if err != nil {
+		return err
+	}
+	err = ipts.ClearChain(TableFilter, ChainFabEdgeForward)
+	if err != nil {
+		return err
+	}
+	return ipts.ClearChain(TableNat, ChainFabEdgePostRouting)
+}
+
+func (m *Manager) ensureForwardIPTablesRules() error {
+	// iptables
+	err := ensureForwardIPTablesRules(m.ipt)
+	if err != nil {
+		return err
+	}
+
+	// ip6tables
+	return ensureForwardIPTablesRules(m.ip6t)
+}
+
+func ensureForwardIPTablesRules(ipts *iptables.IPTables) (err error) {
+	ipsetCloudPodCIDR, ipsetCloudNodeCIDR := IPSetCloudPodCIDR, IPSetCloudNodeCIDR
+
+	if ipts.Proto() == iptables.ProtocolIPv6 {
+		ipsetCloudPodCIDR, ipsetCloudNodeCIDR = IPSetCloudPodCIDRIPV6, IPSetCloudNodeCIDRIPV6
+	}
+
 	// ensure rules exist
-	if err = m.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
 		return err
 	}
 
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetCloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudNodeCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetCloudNodeCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetCloudNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (m *Manager) ensureNatIPTablesRules() (err error) {
-	if err = m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+func (m *Manager) ensureNatIPTablesRules() error {
+	// iptables
+	err := ensureNatIPTablesRules(m.ipt)
+	if err != nil {
 		return err
 	}
-	exists, err := m.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+
+	// ip6tables
+	return ensureNatIPTablesRules(m.ip6t)
+}
+
+func ensureNatIPTablesRules(ipts *iptables.IPTables) (err error) {
+	if err = ipts.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+		return err
+	}
+	exists, err := ipts.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = m.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+		if err = ipts.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
 			return err
 		}
 	}
 
+	ipsetCloudPodCIDR, ipsetCloudNodeCIDR := IPSetCloudPodCIDR, IPSetCloudNodeCIDR
+	ipsetEdgePodCIDR, ipsetEdgeNodeCIDR := IPSetEdgePodCIDR, IPSetEdgeNodeCIDR
+
+	if ipts.Proto() == iptables.ProtocolIPv6 {
+		ipsetCloudPodCIDR, ipsetCloudNodeCIDR = IPSetCloudPodCIDRIPV6, IPSetCloudNodeCIDRIPV6
+		ipsetEdgePodCIDR, ipsetEdgeNodeCIDR = IPSetEdgePodCIDRIPV6, IPSetEdgeNodeCIDRIPV6
+	}
+
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-m", "set", "--match-set", IPSetEdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetCloudPodCIDR, "src", "-m", "set", "--match-set", ipsetEdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetEdgePodCIDR, "src", "-m", "set", "--match-set", ipsetCloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetCloudPodCIDR, "src", "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetCloudPodCIDR, "src", "-m", "set", "--match-set", ipsetEdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	if err = m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgePodCIDR, "src", "-m", "set", "--match-set", IPSetCloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	if err = ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetEdgePodCIDR, "src", "-m", "set", "--match-set", ipsetCloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
 		return err
 	}
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	return m.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetEdgeNodeCIDR, "src", "-m", "set", "--match-set", IPSetCloudPodCIDR, "dst", "-j", "MASQUERADE")
-
+	return ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetEdgeNodeCIDR, "src", "-m", "set", "--match-set", ipsetCloudPodCIDR, "dst", "-j", "MASQUERADE")
 }
 
-func (m *Manager) ensureInputIPTablesRules() (err error) {
-	// ensure rules exist
-	if err = m.ipt.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
+func (m *Manager) ensureInputIPTablesRules() error {
+	// iptables
+	err := ensureInputIPTablesRules(m.ipt)
+	if err != nil {
 		return err
 	}
 
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
+	// ip6tables
+	return ensureInputIPTablesRules(m.ip6t)
+}
+
+func ensureInputIPTablesRules(ipts *iptables.IPTables) (err error) {
+	// ensure rules exist
+	if err = ipts.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
+
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = m.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (m *Manager) syncEdgeNodeCIDRSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgeNodeCIDR, ipset.HashNet)
+	ipsetV4, err := m.ipset.EnsureIPSet(IPSetEdgeNodeCIDR, ipset.ProtocolFamilyIPV4, ipset.HashNet)
+	if err != nil {
+		return err
+	}
+
+	ipsetV6, err := m.ipset.EnsureIPSet(IPSetEdgeNodeCIDRIPV6, ipset.ProtocolFamilyIPV6, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
 	allEdgeNodeCIDRs := m.getAllEdgeNodeCIDRs()
 
-	oldEdgeNodeCIDRs, err := m.getOldEdgeNodeCIDRs()
-	if err != nil {
-		return err
+	for protocolVersion, edgePodCIDRs := range allEdgeNodeCIDRs {
+		setName := IPSetEdgeNodeCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
+			setName = IPSetEdgeNodeCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		oldEdgeNodeCIDRs, err := m.ipset.ListEntries(setName, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = m.ipset.SyncIPSetEntries(ipsetObj, edgePodCIDRs, oldEdgeNodeCIDRs, ipset.HashNet)
+		if err != nil {
+			return err
+		}
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgeNodeCIDRs, oldEdgeNodeCIDRs, ipset.HashNet)
+	return nil
 }
 
 func inSameCluster(c tunnel.ConnConfig) bool {
@@ -166,8 +252,12 @@ func inSameCluster(c tunnel.ConnConfig) bool {
 	return l[0] == r[0]
 }
 
-func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
-	cidrs := sets.NewString()
+func (m *Manager) getAllEdgeNodeCIDRs() map[netutil.ProtocolVersion]sets.String {
+	dualStackCIDRs := make(map[netutil.ProtocolVersion]sets.String, 2)
+
+	ipv4CIDRs := sets.NewString()
+	ipv6CIDRs := sets.NewString()
+
 	for _, c := range m.connections {
 		if !inSameCluster(c) {
 			continue
@@ -175,69 +265,143 @@ func (m *Manager) getAllEdgeNodeCIDRs() sets.String {
 		for _, subnet := range c.RemoteNodeSubnets {
 			// translate the IP address to CIDR is needed
 			// because FABEDGE-EDGE-NODE-CIDR ipset type is hash:net
-			if _, _, err := net.ParseCIDR(subnet); err != nil {
+			_, _, err := net.ParseCIDR(subnet)
+			if err != nil {
 				subnet = m.ipset.ConvertIPToCIDR(subnet)
 			}
-			cidrs.Insert(subnet)
+
+			ip, _, _ := net.ParseCIDR(subnet)
+
+			if netutil.IPVersion(ip) == netutil.IPV6 {
+				ipv6CIDRs.Insert(subnet)
+			} else {
+				ipv4CIDRs.Insert(subnet)
+			}
 		}
 	}
-	return cidrs
-}
 
-func (m *Manager) getOldEdgeNodeCIDRs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetEdgeNodeCIDR, ipset.HashNet)
+	dualStackCIDRs[netutil.IPV4] = ipv4CIDRs
+	dualStackCIDRs[netutil.IPV6] = ipv6CIDRs
+
+	return dualStackCIDRs
 }
 
 func (m *Manager) syncCloudPodCIDRSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetCloudPodCIDR, ipset.HashNet)
+	ipsetV4, err := m.ipset.EnsureIPSet(IPSetCloudPodCIDR, ipset.ProtocolFamilyIPV4, ipset.HashNet)
+	if err != nil {
+		return err
+	}
+
+	ipsetV6, err := m.ipset.EnsureIPSet(IPSetCloudPodCIDRIPV6, ipset.ProtocolFamilyIPV6, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
 	allCloudPodCIDRs := m.getAllCloudPodCIDRs()
 
-	oldCloudPodCIDRs, err := m.getOldCloudPodCIDRs()
+	for protocolVersion, cloudPodCIDRs := range allCloudPodCIDRs {
+		setName := IPSetCloudPodCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
+			setName = IPSetCloudPodCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		oldCloudPodCIDRs, err := m.ipset.ListEntries(setName, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = m.ipset.SyncIPSetEntries(ipsetObj, cloudPodCIDRs, oldCloudPodCIDRs, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *Manager) getAllCloudPodCIDRs() map[netutil.ProtocolVersion]sets.String {
+	dualStackCIDRs := make(map[netutil.ProtocolVersion]sets.String, 2)
+
+	ipv4CIDRs := sets.NewString()
+	ipv6CIDRs := sets.NewString()
+
+	for _, c := range m.connections {
+		for _, subnet := range c.LocalSubnets {
+			ip, _, _ := net.ParseCIDR(subnet)
+
+			version := netutil.IPVersion(ip)
+
+			if version == netutil.IPV6 {
+				ipv6CIDRs.Insert(subnet)
+			} else {
+				ipv4CIDRs.Insert(subnet)
+			}
+		}
+	}
+
+	dualStackCIDRs[netutil.IPV4] = ipv4CIDRs
+	dualStackCIDRs[netutil.IPV6] = ipv6CIDRs
+
+	return dualStackCIDRs
+}
+
+func (m *Manager) CleanSNatIPTablesRules() error {
+	// iptables
+	e1 := m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+
+	// ip6tables
+	e2 := m.ip6t.ClearChain(TableNat, ChainFabEdgePostRouting)
+
+	if e1 != nil || e2 != nil {
+		return fmt.Errorf("iptables error: %v, ip6tables error: %v", e1, e2)
+	}
+
+	return nil
+}
+
+func (m *Manager) syncCloudNodeCIDRSet() error {
+	ipsetV4, err := m.ipset.EnsureIPSet(IPSetCloudNodeCIDR, ipset.ProtocolFamilyIPV4, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allCloudPodCIDRs, oldCloudPodCIDRs, ipset.HashNet)
-}
-
-func (m *Manager) getAllCloudPodCIDRs() sets.String {
-	cidrs := sets.NewString()
-	for _, c := range m.connections {
-		cidrs.Insert(c.LocalSubnets...)
-	}
-	return cidrs
-}
-
-func (m *Manager) getOldCloudPodCIDRs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetCloudPodCIDR, ipset.HashNet)
-}
-
-func (m *Manager) CleanSNatIPTablesRules() error {
-	return m.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
-}
-
-func (m *Manager) syncCloudNodeCIDRSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetCloudNodeCIDR, ipset.HashNet)
+	ipsetV6, err := m.ipset.EnsureIPSet(IPSetCloudNodeCIDRIPV6, ipset.ProtocolFamilyIPV6, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
 	allCloudNodeCIDRs := m.getAllCloudNodeCIDRs()
 
-	oldCloudNodeCIDRs, err := m.getOldCloudNodeCIDRs()
-	if err != nil {
-		return err
+	for protocolVersion, cloudPodCIDRs := range allCloudNodeCIDRs {
+		setName := IPSetCloudNodeCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
+			setName = IPSetCloudNodeCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		oldCloudNodeCIDRs, err := m.ipset.ListEntries(setName, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = m.ipset.SyncIPSetEntries(ipsetObj, cloudPodCIDRs, oldCloudNodeCIDRs, ipset.HashNet)
+		if err != nil {
+			return err
+		}
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allCloudNodeCIDRs, oldCloudNodeCIDRs, ipset.HashNet)
+	return nil
 }
 
-func (m *Manager) getAllCloudNodeCIDRs() sets.String {
-	cidrs := sets.NewString()
+func (m *Manager) getAllCloudNodeCIDRs() map[netutil.ProtocolVersion]sets.String {
+	dualStackCIDRs := make(map[netutil.ProtocolVersion]sets.String, 2)
+
+	ipv4CIDRs := sets.NewString()
+	ipv6CIDRs := sets.NewString()
+
 	for _, c := range m.connections {
 		if !inSameCluster(c) {
 			continue
@@ -245,43 +409,83 @@ func (m *Manager) getAllCloudNodeCIDRs() sets.String {
 		for _, subnet := range c.LocalNodeSubnets {
 			// translate the IP address to CIDR is needed
 			// because FABEDGE-CLOUD-NODE-CIDR ipset type is hash:net
-			if _, _, err := net.ParseCIDR(subnet); err != nil {
+			_, _, err := net.ParseCIDR(subnet)
+			if err != nil {
 				subnet = m.ipset.ConvertIPToCIDR(subnet)
 			}
-			cidrs.Insert(subnet)
+
+			ip, _, _ := net.ParseCIDR(subnet)
+
+			if netutil.IPVersion(ip) == netutil.IPV6 {
+				ipv6CIDRs.Insert(subnet)
+			} else {
+				ipv4CIDRs.Insert(subnet)
+			}
 		}
 	}
-	return cidrs
-}
 
-func (m *Manager) getOldCloudNodeCIDRs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetCloudNodeCIDR, ipset.HashNet)
+	dualStackCIDRs[netutil.IPV4] = ipv4CIDRs
+	dualStackCIDRs[netutil.IPV6] = ipv6CIDRs
+
+	return dualStackCIDRs
 }
 
 func (m *Manager) syncEdgePodCIDRSet() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetEdgePodCIDR, ipset.HashNet)
+	ipsetV4, err := m.ipset.EnsureIPSet(IPSetEdgePodCIDR, ipset.ProtocolFamilyIPV4, ipset.HashNet)
+	if err != nil {
+		return err
+	}
+
+	ipsetV6, err := m.ipset.EnsureIPSet(IPSetEdgePodCIDRIPV6, ipset.ProtocolFamilyIPV6, ipset.HashNet)
 	if err != nil {
 		return err
 	}
 
 	allEdgePodCIDRs := m.getAllEdgePodCIDRs()
 
-	oldEdgePodCIDRs, err := m.getOldEdgePodCIDRs()
-	if err != nil {
-		return err
+	for protocolVersion, edgePodCIDRs := range allEdgePodCIDRs {
+		setName := IPSetEdgePodCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
+			setName = IPSetEdgePodCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		oldEdgePodCIDRs, err := m.ipset.ListEntries(setName, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = m.ipset.SyncIPSetEntries(ipsetObj, edgePodCIDRs, oldEdgePodCIDRs, ipset.HashNet)
+		if err != nil {
+			return err
+		}
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allEdgePodCIDRs, oldEdgePodCIDRs, ipset.HashNet)
+	return nil
 }
 
-func (m *Manager) getAllEdgePodCIDRs() sets.String {
-	cidrs := sets.NewString()
+func (m *Manager) getAllEdgePodCIDRs() map[netutil.ProtocolVersion]sets.String {
+	dualStackCIDRs := make(map[netutil.ProtocolVersion]sets.String, 2)
+
+	ipv4CIDRs := sets.NewString()
+	ipv6CIDRs := sets.NewString()
 	for _, c := range m.connections {
-		cidrs.Insert(c.RemoteSubnets...)
-	}
-	return cidrs
-}
+		for _, subnet := range c.RemoteSubnets {
+			ip, _, _ := net.ParseCIDR(subnet)
 
-func (m *Manager) getOldEdgePodCIDRs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetEdgePodCIDR, ipset.HashNet)
+			version := netutil.IPVersion(ip)
+
+			if version == netutil.IPV6 {
+				ipv6CIDRs.Insert(subnet)
+			} else {
+				ipv4CIDRs.Insert(subnet)
+			}
+		}
+	}
+
+	dualStackCIDRs[netutil.IPV4] = ipv4CIDRs
+	dualStackCIDRs[netutil.IPV6] = ipv6CIDRs
+
+	return dualStackCIDRs
 }

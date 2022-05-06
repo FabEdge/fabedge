@@ -31,18 +31,20 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
 const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainMasquerade         = "MASQUERADE"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
-	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
+	TableFilter              = "filter"
+	TableNat                 = "nat"
+	ChainForward             = "FORWARD"
+	ChainPostRouting         = "POSTROUTING"
+	ChainMasquerade          = "MASQUERADE"
+	ChainFabEdgeForward      = "FABEDGE-FORWARD"
+	ChainFabEdgeNatOutgoing  = "FABEDGE-NAT-OUTGOING"
+	IPSetFabEdgePeerCIDR     = "FABEDGE-PEER-CIDR"
+	IPSetFabEdgePeerCIDRIPV6 = "FABEDGE-PEER-CIDR-IPV6"
 )
 
 type Manager struct {
@@ -51,9 +53,10 @@ type Manager struct {
 	ipvs    ipvs.Interface
 	ipset   ipset.Interface
 
-	tm  tunnel.Manager
-	ipt *iptables.IPTables
-	log logr.Logger
+	tm   tunnel.Manager
+	ipt  *iptables.IPTables
+	ip6t *iptables.IPTables
+	log  logr.Logger
 
 	events   chan struct{}
 	debounce func(func())
@@ -191,27 +194,38 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 		return err
 	}
 
-	ensureRule := m.ipt.AppendUnique
-	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
-		return err
-	}
+	for _, protocolVersion := range []netutil.ProtocolVersion{netutil.IPV4, netutil.IPV6} {
+		ensureRule := m.ipt.AppendUnique
+		if protocolVersion == netutil.IPV6 {
+			ensureRule = m.ip6t.AppendUnique
+		}
 
-	// subnets won't change most of time, and is append-only, so for now we don't need
-	// to handle removing old subnet
-	for _, subnet := range conf.Subnets {
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
+		if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
 			return err
 		}
 
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
-			return err
-		}
+		// subnets won't change most of time, and is append-only, so for now we don't need
+		// to handle removing old subnet
+		for _, subnet := range conf.Subnets {
+			ip, _, _ := net.ParseCIDR(subnet)
+			if netutil.IPVersion(ip) != protocolVersion {
+				continue
+			}
 
-		if err := m.configureOutboundRules(subnet); err != nil {
-			return err
+			if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
+				m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
+				return err
+			}
+
+			if err := ensureRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
+				m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
+				return err
+			}
+
+			if err := m.configureOutboundRules(protocolVersion, subnet); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -219,8 +233,15 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 }
 
 // outbound NAT from pods to outside the cluster
-func (m *Manager) configureOutboundRules(subnet string) error {
-	if err := m.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
+func (m *Manager) configureOutboundRules(protocolVersion netutil.ProtocolVersion, subnet string) error {
+	ipts := m.ipt
+	ipsetFabedgePeerCIDR := IPSetFabEdgePeerCIDR
+	if protocolVersion == netutil.IPV6 {
+		ipts = m.ip6t
+		ipsetFabedgePeerCIDR = IPSetFabEdgePeerCIDRIPV6
+	}
+
+	if err := ipts.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
 		m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
 		return err
 	}
@@ -228,13 +249,12 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 	if m.MASQOutgoing {
 		m.log.V(3).Info("configure outgoing NAT iptables rules")
 
-		ensureRule := m.ipt.AppendUnique
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", IPSetFabEdgePeerCIDR, "dst", "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, IPSetFabEdgePeerCIDR))
+		ensureRule := ipts.AppendUnique
+		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetFabedgePeerCIDR, "dst", "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, ipsetFabedgePeerCIDR))
 			return err
 		}
 
-		ensureRule = m.ipt.AppendUnique
 		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
 			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet))
 			return err
@@ -255,7 +275,18 @@ func (m *Manager) configureOutboundRules(subnet string) error {
 }
 
 func (m *Manager) ensureChain(table, chain string) error {
-	exists, err := m.ipt.ChainExists(table, chain)
+	// iptables
+	err := ensureChain(m.ipt, table, chain)
+	if err != nil {
+		return err
+	}
+
+	// ip6tables
+	return ensureChain(m.ip6t, table, chain)
+}
+
+func ensureChain(ipts *iptables.IPTables, table, chain string) error {
+	exists, err := ipts.ChainExists(table, chain)
 	if err != nil {
 		return err
 	}
@@ -264,7 +295,7 @@ func (m *Manager) ensureChain(table, chain string) error {
 		return nil
 	}
 
-	return m.ipt.NewChain(table, chain)
+	return ipts.NewChain(table, chain)
 }
 
 func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
@@ -556,7 +587,12 @@ func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServe
 }
 
 func (m *Manager) syncIPSetPeerCIDR() error {
-	ipsetObj, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDR, ipset.HashNet)
+	ipsetV4, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDR, ipset.ProtocolFamilyIPV4, ipset.HashNet)
+	if err != nil {
+		return err
+	}
+
+	ipsetV6, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDRIPV6, ipset.ProtocolFamilyIPV6, ipset.HashNet)
 	if err != nil {
 		return err
 	}
@@ -566,37 +602,68 @@ func (m *Manager) syncIPSetPeerCIDR() error {
 		return err
 	}
 
-	oldPeerCIDRs, err := m.getOldPeerCIDRs()
-	if err != nil {
-		return err
+	for protocolVersion, peerCIDRs := range allPeerCIDRs {
+		setName := IPSetFabEdgePeerCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
+			setName = IPSetFabEdgePeerCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		oldPeerCIDRs, err := m.ipset.ListEntries(setName, ipset.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = m.ipset.SyncIPSetEntries(ipsetObj, peerCIDRs, oldPeerCIDRs, ipset.HashNet)
+		if err != nil {
+			return err
+		}
 	}
 
-	return m.ipset.SyncIPSetEntries(ipsetObj, allPeerCIDRs, oldPeerCIDRs, ipset.HashNet)
+	return nil
 }
 
-func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
+func (m *Manager) getAllPeerCIDRs() (map[netutil.ProtocolVersion]sets.String, error) {
 	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
 	if err != nil {
 		return nil, err
 	}
 
-	cidrSet := sets.String{}
+	dualStackCIDRs := make(map[netutil.ProtocolVersion]sets.String, 2)
+
+	ipv4CIDRs := sets.NewString()
+	ipv6CIDRs := sets.NewString()
+
 	for _, p := range conf.Peers {
 		for _, nodeSubnet := range p.NodeSubnets {
-			if _, _, err := net.ParseCIDR(nodeSubnet); err != nil {
-				s := m.ipset.ConvertIPToCIDR(nodeSubnet)
-				cidrSet.Insert(s)
+			_, _, err := net.ParseCIDR(nodeSubnet)
+			if err != nil {
+				nodeSubnet = m.ipset.ConvertIPToCIDR(nodeSubnet)
+			}
+
+			ip, _, _ := net.ParseCIDR(nodeSubnet)
+
+			if netutil.IPVersion(ip) == netutil.IPV6 {
+				ipv6CIDRs.Insert(nodeSubnet)
 			} else {
-				cidrSet.Insert(nodeSubnet)
+				ipv4CIDRs.Insert(nodeSubnet)
 			}
 		}
 
-		cidrSet.Insert(p.Subnets...)
+		for _, podSubnet := range p.Subnets {
+			ip, _, _ := net.ParseCIDR(podSubnet)
+
+			if netutil.IPVersion(ip) == netutil.IPV6 {
+				ipv6CIDRs.Insert(podSubnet)
+			} else {
+				ipv4CIDRs.Insert(podSubnet)
+			}
+		}
 	}
 
-	return cidrSet, nil
-}
+	dualStackCIDRs[netutil.IPV4] = ipv4CIDRs
+	dualStackCIDRs[netutil.IPV6] = ipv6CIDRs
 
-func (m *Manager) getOldPeerCIDRs() (sets.String, error) {
-	return m.ipset.ListEntries(IPSetFabEdgePeerCIDR, ipset.HashNet)
+	return dualStackCIDRs, nil
 }

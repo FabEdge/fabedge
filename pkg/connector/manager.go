@@ -16,7 +16,6 @@ package connector
 
 import (
 	"encoding/json"
-	"github.com/fabedge/fabedge/pkg/util/memberlist"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,12 +29,14 @@ import (
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/memberlist"
 )
 
 type Manager struct {
 	Config
 	tm          tunnel.Manager
 	ipt         *iptables.IPTables
+	ip6t        *iptables.IPTables
 	connections []tunnel.ConnConfig
 	ipset       ipset.Interface
 	router      routing.Routing
@@ -72,6 +73,11 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
+	ip6t, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+	if err != nil {
+		return nil, err
+	}
+
 	router, err := routing.GetRouter(c.CNIType)
 	if err != nil {
 		return nil, err
@@ -86,6 +92,7 @@ func (c Config) Manager() (*Manager, error) {
 		Config: c,
 		tm:     tm,
 		ipt:    ipt,
+		ip6t:   ip6t,
 		ipset:  ipset.New(),
 		router: router,
 		mc:     mc,
@@ -176,32 +183,32 @@ func (m *Manager) Start() {
 
 	ipsetTaskFn := func() {
 		if err := m.syncEdgeNodeCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeCIDR, err)
+			klog.Errorf("error when to sync ipset %s or %s: %s", IPSetEdgeNodeCIDR, IPSetEdgeNodeCIDRIPV6, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgeNodeCIDR)
+			klog.Infof("ipset %s and %s are synced", IPSetEdgeNodeCIDR, IPSetEdgeNodeCIDRIPV6)
 		}
 
 		if err := m.syncCloudPodCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudPodCIDR, err)
+			klog.Errorf("error when to sync ipset %s or %s: %s", IPSetCloudPodCIDR, IPSetCloudPodCIDRIPV6, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetCloudPodCIDR)
+			klog.Infof("ipset %s and %s are synced", IPSetCloudPodCIDR, IPSetCloudPodCIDRIPV6)
 		}
 
 		if err := m.syncCloudNodeCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudNodeCIDR, err)
+			klog.Errorf("error when to sync ipset %s or %s: %s", IPSetCloudNodeCIDR, IPSetCloudNodeCIDRIPV6, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetCloudNodeCIDR)
+			klog.Infof("ipset %s and %s are synced", IPSetCloudNodeCIDR, IPSetCloudNodeCIDRIPV6)
 		}
 
 		if err := m.syncEdgePodCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgePodCIDR, err)
+			klog.Errorf("error when to sync ipset %s or %s: %s", IPSetEdgePodCIDR, IPSetEdgePodCIDRIPV6, err)
 		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgePodCIDR)
+			klog.Infof("ipset %s and %s are synced", IPSetEdgePodCIDR, IPSetEdgePodCIDRIPV6)
 		}
 	}
 	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
 
-	if err := m.clearFabedgeIptablesChains(); err != nil {
+	if err := m.clearFabedgeIPTablesChains(); err != nil {
 		klog.Errorf("failed to clean iptables: %s", err)
 	}
 

@@ -49,7 +49,7 @@ const (
 
 type Node struct {
 	Name     string
-	IP       string
+	IPs      []string
 	PodCIDRs []string
 }
 
@@ -350,8 +350,8 @@ func (ctl *controller) onNodeRequest(ctx context.Context, request reconcile.Requ
 }
 
 func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
-	ip, podCIDRs := nodeutil.GetIP(node), ctl.GetPodCIDRs(node)
-	if len(ip) == 0 || len(podCIDRs) == 0 {
+	ips, podCIDRs := nodeutil.GetInternalIPs(node), ctl.GetPodCIDRs(node)
+	if len(ips) == 0 || len(podCIDRs) == 0 {
 		ctl.log.V(5).Info("this node has no IP or PodCIDRs, skip adding it", "nodeName", node.Name)
 		return
 	}
@@ -365,7 +365,7 @@ func (ctl *controller) addNode(node corev1.Node, rebuild bool) {
 	ctl.nodeNameSet.Insert(node.Name)
 	ctl.nodeCache[node.Name] = Node{
 		Name:     node.Name,
-		IP:       ip,
+		IPs:      ips,
 		PodCIDRs: podCIDRs,
 	}
 
@@ -419,7 +419,7 @@ func (ctl *controller) rebuildConnectorEndpoint() {
 		node := ctl.nodeCache[nodeName]
 
 		subnets = append(subnets, node.PodCIDRs...)
-		nodeSubnets = append(nodeSubnets, node.IP)
+		nodeSubnets = append(nodeSubnets, node.IPs...)
 	}
 
 	ctl.Endpoint.Subnets = subnets

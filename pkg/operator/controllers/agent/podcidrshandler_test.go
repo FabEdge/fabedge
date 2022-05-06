@@ -22,11 +22,11 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/klog/v2/klogr"
 
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
@@ -39,12 +39,13 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 
 	BeforeEach(func() {
 		store := storepkg.NewStore()
-		alloc, _ := allocator.New("2.2.0.0/16")
+		alloc, _ := allocator.New("2.2.0.0/16", 26)
+		allocV6, _ := allocator.New("fd85:ee78:d8a6:8607::1:0000/112", 122)
 
 		getEndpointName, _, newEndpoint := types.NewEndpointFuncs("cluster", "C=CN, O=fabedge.io, CN={node}", nodeutil.GetPodCIDRsFromAnnotation)
 		handler = &allocatablePodCIDRsHandler{
 			store:           store,
-			allocator:       alloc,
+			allocators:      []allocator.Interface{alloc, allocV6},
 			getEndpointName: getEndpointName,
 			newEndpoint:     newEndpoint,
 			client:          k8sClient,
@@ -70,19 +71,31 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
+
+			podCIDRs := nodeutil.GetPodCIDRsFromAnnotation(node)
+			Expect(ep.Subnets).To(ContainElements(podCIDRs))
 
 			nameSet := handler.store.GetLocalEndpointNames()
 			Expect(nameSet.Has(epName)).Should(BeTrue())
 
-			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).Should(BeNil())
-			Expect(handler.allocator.IsAllocated(*ipNet))
+			for _, podCIDR := range podCIDRs {
+				_, ipNet, err := net.ParseCIDR(podCIDR)
+				Expect(err).Should(BeNil())
+
+				version := netutil.IPVersion(ipNet.IP)
+				isAllocated := false
+				for _, allocator := range handler.allocators {
+					if allocator.Version() == version {
+						isAllocated = allocator.IsAllocated(*ipNet)
+					}
+				}
+				Expect(isAllocated).To(BeTrue())
+			}
 		})
 
-		It("should allocate a subnet to a edge node if this node's subnet is invalid", func() {
+		It("should allocate a subnet to an edge node if this node's subnet is invalid", func() {
 			nodeName := getNodeName()
-			node := newNode(nodeName, "10.40.20.181", "2.2.2.257/26")
+			node := newNode(nodeName, "10.40.20.181", "2.2.2.257/26,fd85:ee78:d8a6:8607::1:0100/122")
 			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
 
 			Expect(handler.Do(context.TODO(), node)).Should(Succeed())
@@ -92,17 +105,29 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
-			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).Should(BeNil())
-			Expect(handler.allocator.IsAllocated(*ipNet))
+			podCIDRs := nodeutil.GetPodCIDRsFromAnnotation(node)
+			Expect(ep.Subnets).To(ContainElements(podCIDRs))
+
+			for _, podCIDR := range podCIDRs {
+				_, ipNet, err := net.ParseCIDR(podCIDR)
+				Expect(err).Should(BeNil())
+
+				version := netutil.IPVersion(ipNet.IP)
+				isAllocated := false
+				for _, allocator := range handler.allocators {
+					if allocator.Version() == version {
+						isAllocated = allocator.IsAllocated(*ipNet)
+					}
+				}
+				Expect(isAllocated).To(BeTrue())
+			}
 		})
 
-		It("should reallocate a subnet to a edge node if this node's subnet is out of expected range", func() {
+		It("should reallocate a subnet to an edge node if this node's subnet is out of expected range", func() {
 			nodeName := getNodeName()
 
-			node := newNode(nodeName, "10.40.20.181", "2.3.2.1/26")
+			node := newNode(nodeName, "10.40.20.181", "2.3.2.1/26,fd89:ee78:d8a6:8607::1:0000/122")
 			Expect(k8sClient.Create(context.Background(), &node)).Should(Succeed())
 
 			Expect(handler.Do(context.TODO(), node)).Should(Succeed())
@@ -112,41 +137,29 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			epName := handler.getEndpointName(nodeName)
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
 
-			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).Should(BeNil())
-			Expect(handler.allocator.IsAllocated(*ipNet))
+			podCIDRs := nodeutil.GetPodCIDRsFromAnnotation(node)
+			Expect(ep.Subnets).To(ContainElements(podCIDRs))
+
+			for _, podCIDR := range podCIDRs {
+				_, ipNet, err := net.ParseCIDR(podCIDR)
+				Expect(err).Should(BeNil())
+
+				version := netutil.IPVersion(ipNet.IP)
+				isAllocated := false
+				for _, allocator := range handler.allocators {
+					if allocator.Version() == version {
+						isAllocated = allocator.IsAllocated(*ipNet)
+					}
+				}
+				Expect(isAllocated).To(BeTrue())
+			}
 		})
 
-		It("should reallocate a subnet to a edge node if this node's subnet is not match to record in store", func() {
-			nodeName := getNodeName()
-			handler.store.SaveEndpoint(apis.Endpoint{
-				Name:            nodeName,
-				PublicAddresses: nil,
-				Subnets:         []string{"2.2.2.2/26"},
-				NodeSubnets:     nil,
-			})
-			node := newNode(nodeName, "10.40.20.181", "2.2.2.1/26")
-			Expect(k8sClient.Create(context.Background(), &node)).ShouldNot(HaveOccurred())
-
-			Expect(handler.Do(context.TODO(), node)).Should(Succeed())
-
-			Expect(k8sClient.Get(context.Background(), ObjectKey{Name: nodeName}, &node)).Should(Succeed())
-
-			epName := handler.getEndpointName(nodeName)
-			ep, ok := handler.store.GetEndpoint(epName)
-			Expect(ok).To(BeTrue())
-			Expect(ep.Subnets[0]).To(Equal(node.Annotations[constants.KeyPodSubnets]))
-
-			_, ipNet, err := net.ParseCIDR(node.Annotations[constants.KeyPodSubnets])
-			Expect(err).Should(BeNil())
-			Expect(handler.allocator.IsAllocated(*ipNet))
-		})
 	})
 
 	Context("Undo method", func() {
-		It("can reclaim subnets allocated to a edge node", func() {
+		It("can reclaim subnets allocated to an edge node", func() {
 			nodeName := getNodeName()
 
 			node := newNode(nodeName, "10.40.20.181", "")
@@ -157,15 +170,27 @@ var _ = Describe("allocatablePodCIDRsHandler", func() {
 			ep, ok := handler.store.GetEndpoint(epName)
 			Expect(ok).Should(BeTrue())
 
-			_, ipNet, err := net.ParseCIDR(ep.Subnets[0])
-			Expect(err).Should(BeNil())
+			podCIDRs := nodeutil.GetPodCIDRsFromAnnotation(node)
+			Expect(ep.Subnets).To(ContainElements(podCIDRs))
 
 			Expect(handler.Undo(context.TODO(), nodeName)).Should(Succeed())
 
 			_, ok = handler.store.GetEndpoint(epName)
 			Expect(ok).Should(BeFalse())
 
-			Expect(handler.allocator.IsAllocated(*ipNet)).Should(BeFalse())
+			for _, podCIDR := range podCIDRs {
+				_, ipNet, err := net.ParseCIDR(podCIDR)
+				Expect(err).Should(BeNil())
+
+				version := netutil.IPVersion(ipNet.IP)
+				isAllocated := false
+				for _, allocator := range handler.allocators {
+					if allocator.Version() == version {
+						isAllocated = allocator.IsAllocated(*ipNet)
+					}
+				}
+				Expect(isAllocated).To(BeFalse())
+			}
 		})
 	})
 })

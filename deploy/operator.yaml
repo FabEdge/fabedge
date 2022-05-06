@@ -38,7 +38,7 @@ spec:
             # 根据所采用的CNI配置, 目前仅支持calico, flannel
             - --cni-type=calico
             # 边缘节点的Pod使用的网段, 当使用Calico时必须配置，该网段不可与connector-subnets里的网段重叠
-            - --edge-pod-cidr=10.10.0.0/16
+            - --edge-pod-cidrs=10.10.0.0/16
             # 建议在边缘节点不能运行kube-proxy时启用
             - --agent-image=fabedge/agent
             - --agent-strongswan-image=fabedge/strongswan

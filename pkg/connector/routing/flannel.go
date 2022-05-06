@@ -15,10 +15,12 @@
 package routing
 
 import (
+	"github.com/vishvananda/netlink"
+
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
-	"github.com/vishvananda/netlink"
 )
 
 type FlannelRouter struct {
@@ -39,13 +41,18 @@ func (r *FlannelRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
 	return delAllEdgeRoutes(conns)
 }
 
-func (r *FlannelRouter) GetLocalPrefixes() ([]string, error) {
+func (r *FlannelRouter) GetLocalPrefixes(protocolVersion netutil.ProtocolVersion) ([]string, error) {
+	family := netlink.FAMILY_V4
+
+	if protocolVersion == netutil.IPV6 {
+		family = netlink.FAMILY_V6
+	}
 	cni0, err := netlink.LinkByName("cni0")
 	if err != nil {
 		return nil, err
 	}
 
-	routes, err := netlink.RouteList(cni0, netlink.FAMILY_V4)
+	routes, err := netlink.RouteList(cni0, family)
 	if err != nil {
 		return nil, err
 	}
@@ -60,17 +67,29 @@ func (r *FlannelRouter) GetLocalPrefixes() ([]string, error) {
 
 func (r *FlannelRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
 	cp := new(ConnectorPrefixes)
-	local, err := r.GetLocalPrefixes()
+	local, err := r.GetLocalPrefixes(netutil.IPV4)
 	if err != nil {
 		return nil, err
 	}
 	cp.LocalPrefixes = local
 
-	remote, err := GetRemotePrefixes()
+	localIPv6, err := r.GetLocalPrefixes(netutil.IPV6)
+	if err != nil {
+		return nil, err
+	}
+	cp.LocalPrefixesIPv6 = localIPv6
+
+	remote, err := GetRemotePrefixes(netutil.IPV4)
 	if err != nil {
 		return nil, err
 	}
 	cp.RemotePrefixes = remote
+
+	remoteIPv6, err := GetRemotePrefixes(netutil.IPV6)
+	if err != nil {
+		return nil, err
+	}
+	cp.RemotePrefixesIPv6 = remoteIPv6
 
 	cp.NodeName = routeUtil.GetNodeName()
 
