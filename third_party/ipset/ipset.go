@@ -94,7 +94,7 @@ type IPSet struct {
 // Validate checks if a given ipset is valid or not.
 func (set *IPSet) Validate() bool {
 	// Check if protocol is valid for `HashIPPort`, `HashIPPortIP` and `HashIPPortNet` type set.
-	if set.SetType == HashIPPort || set.SetType == HashIPPortIP || set.SetType == HashIPPortNet {
+	if set.SetType == HashIPPort || set.SetType == HashIPPortIP || set.SetType == HashIPPortNet || set.SetType == HashNet {
 		if valid := validateHashFamily(set.HashFamily); !valid {
 			return false
 		}
@@ -304,7 +304,7 @@ func (runner *runner) CreateSet(set *IPSet, ignoreExistErr bool) error {
 // otherwise raised when the same set (setname and create parameters are identical) already exists.
 func (runner *runner) createSet(set *IPSet, ignoreExistErr bool) error {
 	args := []string{"create", set.Name, string(set.SetType)}
-	if set.SetType == HashIPPortIP || set.SetType == HashIPPort || set.SetType == HashIPPortNet {
+	if set.SetType == HashIPPortIP || set.SetType == HashIPPort || set.SetType == HashIPPortNet || set.SetType == HashNet {
 		args = append(args,
 			"family", set.HashFamily,
 			"hashsize", strconv.Itoa(set.HashSize),

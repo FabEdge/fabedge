@@ -128,10 +128,16 @@ func (cfg Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
+	ip6t, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+	if err != nil {
+		return nil, err
+	}
+
 	m := &Manager{
 		Config: cfg,
 		tm:     tm,
 		ipt:    ipt,
+		ip6t:   ip6t,
 		log:    klogr.New().WithName("manager"),
 
 		events:   make(chan struct{}),

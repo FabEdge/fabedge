@@ -16,10 +16,12 @@ package cloud_agent
 
 import (
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/fabedge/fabedge/pkg/connector/routing"
-	ipsetUtil "github.com/fabedge/fabedge/pkg/util/ipset"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
+
+	"github.com/fabedge/fabedge/pkg/connector/routing"
+	ipsetUtil "github.com/fabedge/fabedge/pkg/util/ipset"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 )
 
 const (
@@ -30,10 +32,12 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
 	IPSetRemotePodCIDR      = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetRemotePodCIDRIPV6  = "FABEDGE-REMOTE-POD-CIDR-IPV6"
 )
 
 var (
 	ipt   *iptables.IPTables
+	ip6t  *iptables.IPTables
 	ipset = ipsetUtil.New()
 )
 
@@ -43,81 +47,135 @@ func init() {
 	if err != nil {
 		klog.Exit("failed to get iptables client:%s", err)
 	}
+
+	ip6t, err = iptables.NewWithProtocol(iptables.ProtocolIPv6)
+	if err != nil {
+		klog.Exit("failed to get ip6tables client:%s", err)
+	}
 }
 
-func syncForwardRules() (err error) {
-	if err = ipt.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
+func syncForwardRules() error {
+	// iptables
+	err := forwardIPTablesRules(ipt)
+	if err != nil {
 		return err
 	}
-	exists, err := ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+
+	// ip6tables
+	return forwardIPTablesRules(ip6t)
+}
+
+func forwardIPTablesRules(ipts *iptables.IPTables) (err error) {
+	if err = ipts.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
+		return err
+	}
+	exists, err := ipts.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
+		if err = ipts.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
 			return err
 		}
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	ipsetRemotePodCIDR := IPSetRemotePodCIDR
+
+	if ipts.Proto() == iptables.ProtocolIPv6 {
+		ipsetRemotePodCIDR = IPSetRemotePodCIDRIPV6
+	}
+
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetRemotePodCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetRemotePodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = ipts.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func syncPostRoutingRules() (err error) {
-	if err = ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+func syncPostRoutingRules() error {
+	// iptables
+	err := postRoutingIPTablesRules(ipt)
+	if err != nil {
 		return err
 	}
-	exists, err := ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+
+	// ip6tables
+	return postRoutingIPTablesRules(ip6t)
+}
+
+func postRoutingIPTablesRules(ipts *iptables.IPTables) (err error) {
+	if err = ipts.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+		return err
+	}
+	exists, err := ipts.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+		if err = ipts.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
 			return err
 		}
 	}
 
-	if err = ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	ipsetRemotePodCIDR := IPSetRemotePodCIDR
+
+	if ipts.Proto() == iptables.ProtocolIPv6 {
+		ipsetRemotePodCIDR = IPSetRemotePodCIDRIPV6
+	}
+
+	if err = ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	return ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetRemotePodCIDR, "src", "-j", "ACCEPT")
-
+	return ipts.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetRemotePodCIDR, "src", "-j", "ACCEPT")
 }
 
 func syncRemotePodCIDRSet(cp routing.ConnectorPrefixes) error {
-	ipsetObj, err := ipset.EnsureIPSet(IPSetRemotePodCIDR, ipsetUtil.HashNet)
+	ipsetV4, err := ipset.EnsureIPSet(IPSetRemotePodCIDR, ipsetUtil.ProtocolFamilyIPV4, ipsetUtil.HashNet)
 	if err != nil {
 		return err
 	}
 
-	allRemotePodCIDRs := getAllRemotePodCIDRs(cp)
-
-	oldRemotePodCIDRs, err := getOldRemotePodCIDRs()
+	ipsetV6, err := ipset.EnsureIPSet(IPSetRemotePodCIDRIPV6, ipsetUtil.ProtocolFamilyIPV6, ipsetUtil.HashNet)
 	if err != nil {
 		return err
 	}
 
-	return ipset.SyncIPSetEntries(ipsetObj, allRemotePodCIDRs, oldRemotePodCIDRs, ipsetUtil.HashNet)
-}
+	for _, protocolVersion := range []netutil.ProtocolVersion{netutil.IPV4, netutil.IPV6} {
+		setName := IPSetRemotePodCIDR
+		ipsetObj := ipsetV4
+		if protocolVersion == netutil.IPV6 {
 
-func getAllRemotePodCIDRs(cp routing.ConnectorPrefixes) sets.String {
-	return sets.NewString(cp.RemotePrefixes...)
-}
+			// for debug
+			continue
 
-func getOldRemotePodCIDRs() (sets.String, error) {
-	return ipset.ListEntries(IPSetRemotePodCIDR, ipsetUtil.HashNet)
+			setName = IPSetRemotePodCIDRIPV6
+			ipsetObj = ipsetV6
+		}
+
+		// netlink.FAMILY_V4, need to check FAMILY_V6
+		remoteCIDRs := sets.NewString(cp.RemotePrefixes...)
+
+		oldRemoteCIDRs, err := ipset.ListEntries(setName, ipsetUtil.HashNet)
+		if err != nil {
+			return err
+		}
+
+		err = ipset.SyncIPSetEntries(ipsetObj, remoteCIDRs, oldRemoteCIDRs, ipsetUtil.HashNet)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -1,26 +1,17 @@
 package agent
 
 import (
-	"github.com/fabedge/fabedge/pkg/common/netconf"
-	"github.com/vishvananda/netlink"
 	"net"
-	"strings"
-)
 
-const (
-	TableStrongswan = 220
-)
+	"github.com/vishvananda/netlink"
 
-func getDefaultGateway() (net.IP, error) {
-	defaultRoute, err := netlink.RouteGet(net.ParseIP("8.8.8.8"))
-	if len(defaultRoute) != 1 || err != nil {
-		return nil, err
-	}
-	return defaultRoute[0].Gw, nil
-}
+	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/common/netconf"
+	routeutil "github.com/fabedge/fabedge/pkg/util/route"
+)
 
 func addRoutesToAllPeers(conf netconf.NetworkConf) error {
-	gw, err := getDefaultGateway()
+	gw, err := routeutil.GetDefaultGateway()
 	if err != nil {
 		return err
 	}
@@ -31,9 +22,15 @@ func addRoutesToAllPeers(conf netconf.NetworkConf) error {
 			if err != nil {
 				return err
 			}
-			route := netlink.Route{Dst: s, Gw: gw, Table: TableStrongswan}
+
+			// for debug
+			// if netutil.IPVersion(s.IP) == netutil.IPV6 {
+			// 	continue
+			// }
+
+			route := netlink.Route{Dst: s, Gw: gw, Table: constants.TableStrongswan}
 			err = netlink.RouteAdd(&route)
-			if err != nil && !fileExistsError(err) {
+			if err != nil && !routeutil.FileExistsError(err) {
 				return err
 			}
 		}
@@ -44,7 +41,7 @@ func addRoutesToAllPeers(conf netconf.NetworkConf) error {
 
 func delStaleRoutes(conf netconf.NetworkConf) error {
 	var routeFilter = &netlink.Route{
-		Table: TableStrongswan,
+		Table: constants.TableStrongswan,
 	}
 	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
 	if err != nil {
@@ -76,15 +73,10 @@ func IsActive(dst *net.IPNet, conf netconf.NetworkConf) (bool, error) {
 }
 
 func delRoute(subnet *net.IPNet) error {
-	gw, err := getDefaultGateway()
+	gw, err := routeutil.GetDefaultGateway()
 	if err != nil {
 		return err
 	}
-	route := netlink.Route{Dst: subnet, Gw: gw, Table: TableStrongswan}
+	route := netlink.Route{Dst: subnet, Gw: gw, Table: constants.TableStrongswan}
 	return netlink.RouteDel(&route)
-}
-
-func fileExistsError(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "file exists")
 }
