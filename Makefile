@@ -1,5 +1,5 @@
 OUTPUT_DIR := _output
-BINARIES := agent connector operator cert cloud-agent
+BINARIES := agent connector operator cloud-agent
 IMAGES := $(addsuffix -image, ${BINARIES})
 
 VERSION := $(shell git describe --tags)
