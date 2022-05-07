@@ -66,10 +66,6 @@ func (argMap AgentArgumentMap) HasKey(name string) bool {
 	return ok
 }
 
-func (argMap AgentArgumentMap) IsIPAMEnabled() bool {
-	return argMap.isTrue("enable-ipam")
-}
-
 func (argMap AgentArgumentMap) IsProxyEnabled() bool {
 	return argMap.isTrue("enable-proxy")
 }

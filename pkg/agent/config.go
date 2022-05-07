@@ -50,7 +50,6 @@ type Config struct {
 	XFRMInterfaceName string
 	XFRMInterfaceID   uint
 
-	EnableIPAM        bool
 	EnableHairpinMode bool
 	NetworkPluginMTU  int
 	CNI               CNI
@@ -66,7 +65,6 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.DebounceDuration, "debounce", time.Second, "The debounce delay to avoid too much network reconfiguring")
 	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
-	fs.BoolVar(&cfg.EnableIPAM, "enable-ipam", true, "enable the IPAM feature")
 	fs.BoolVar(&cfg.EnableHairpinMode, "enable-hairpinmode", true, "enable the Hairpin feature")
 	fs.IntVar(&cfg.NetworkPluginMTU, "network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
 	fs.StringVar(&cfg.CNI.Version, "cni-version", "0.3.1", "cni version")
@@ -103,8 +101,6 @@ func (cfg Config) Manager() (*Manager, error) {
 			return nil, err
 		}
 	}
-
-	cfg.MASQOutgoing = cfg.EnableIPAM && cfg.MASQOutgoing
 
 	var opts strongswan.Options
 	if cfg.UseXFRM {

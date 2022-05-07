@@ -42,7 +42,6 @@ type agentPodHandler struct {
 	strongswanImage string
 	imagePullPolicy corev1.PullPolicy
 	args            []string
-	enableIPAM      bool
 
 	client client.Client
 	log    logr.Logger
@@ -122,6 +121,33 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Operator: corev1.TolerationOpExists,
 				},
 			},
+			InitContainers: []corev1.Container{
+				{
+					Name:            "environment-prepare",
+					Image:           handler.agentImage,
+					ImagePullPolicy: handler.imagePullPolicy,
+					Command: []string{
+						"env_prepare.sh",
+					},
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: &privileged,
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "cni-bin",
+							MountPath: "/opt/cni/bin",
+						},
+						{
+							Name:      "cni-cache",
+							MountPath: "/var/lib/cni/cache",
+						},
+						{
+							Name:      "cni-config",
+							MountPath: "/etc/cni/net.d",
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:            "agent",
@@ -136,6 +162,10 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						{
 							Name:      "netconf",
 							MountPath: "/etc/fabedge",
+						},
+						{
+							Name:      "cni-config",
+							MountPath: "/etc/cni/net.d",
 						},
 						{
 							Name:      "var-run",
@@ -245,83 +275,39 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 						},
 					},
 				},
+				{
+					Name: "cni-config",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/etc/cni/net.d",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
+				{
+					Name: "cni-bin",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/opt/cni/bin",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
+				{
+					Name: "cni-cache",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/var/lib/cni/cache",
+							Type: &hostPathDirectoryOrCreate,
+						},
+					},
+				},
 			},
 		},
-	}
-
-	if handler.enableIPAM {
-		container := handler.buildEnvPrepareContainer()
-		pod.Spec.InitContainers = append(pod.Spec.InitContainers, container)
-
-		cniVolumes := []corev1.Volume{
-			{
-				Name: "cni-config",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/etc/cni/net.d",
-						Type: &hostPathDirectoryOrCreate,
-					},
-				},
-			},
-			{
-				Name: "cni-bin",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/opt/cni/bin",
-						Type: &hostPathDirectoryOrCreate,
-					},
-				},
-			},
-			{
-				Name: "cni-cache",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/var/lib/cni/cache",
-						Type: &hostPathDirectoryOrCreate,
-					},
-				},
-			},
-		}
-		pod.Spec.Volumes = append(pod.Spec.Volumes, cniVolumes...)
-
-		volMount := corev1.VolumeMount{
-			Name:      "cni-config",
-			MountPath: "/etc/cni/net.d",
-		}
-		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, volMount)
 	}
 
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)
 	return pod
-}
-
-func (handler *agentPodHandler) buildEnvPrepareContainer() corev1.Container {
-	privileged := true
-	return corev1.Container{
-		Name:            "environment-prepare",
-		Image:           handler.agentImage,
-		ImagePullPolicy: handler.imagePullPolicy,
-		Command: []string{
-			"env_prepare.sh",
-		},
-		SecurityContext: &corev1.SecurityContext{
-			Privileged: &privileged,
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      "cni-bin",
-				MountPath: "/opt/cni/bin",
-			},
-			{
-				Name:      "cni-cache",
-				MountPath: "/var/lib/cni/cache",
-			},
-			{
-				Name:      "cni-config",
-				MountPath: "/etc/cni/net.d",
-			},
-		},
-	}
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {
