@@ -45,7 +45,6 @@ var _ = Describe("AgentPodHandler", func() {
 	BeforeEach(func() {
 		argMap = map[string]string{
 			"enable-proxy":       "false",
-			"enable-ipam":        "true",
 			"enable-hairpinmode": "true",
 			"masq-outgoing":      "false",
 			"network-plugin-mtu": "1400",
@@ -59,7 +58,6 @@ var _ = Describe("AgentPodHandler", func() {
 			strongswanImage: strongswanImage,
 			imagePullPolicy: corev1.PullIfNotPresent,
 			args:            argMap.ArgumentArray(),
-			enableIPAM:      argMap.IsIPAMEnabled(),
 			client:          k8sClient,
 			log:             klogr.New().WithName("agentPodHandler"),
 		}
@@ -86,15 +84,13 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyAlways))
 		Expect(pod.Labels[constants.KeyPodHash]).ShouldNot(BeEmpty())
 
-		Expect(len(pod.Spec.Containers)).To(Equal(2))
-		Expect(len(pod.Spec.Volumes)).To(Equal(8))
 		Expect(*pod.Spec.AutomountServiceAccountToken).To(BeFalse())
 
 		hostPathDirectory := corev1.HostPathDirectory
 		hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
 		defaultMode := int32(420)
 		edgeTunnelConfigMap := getAgentConfigMapName(node.Name)
-		volumes := []corev1.Volume{
+		expectedVolumes := []corev1.Volume{
 			{
 				Name: "var-run",
 				VolumeSource: corev1.VolumeSource{
@@ -187,7 +183,7 @@ var _ = Describe("AgentPodHandler", func() {
 				},
 			},
 		}
-		Expect(pod.Spec.Volumes).To(Equal(volumes))
+		Expect(pod.Spec.Volumes).To(Equal(expectedVolumes))
 		Expect(pod.Spec.Tolerations).To(ConsistOf(corev1.Toleration{
 			Key:      "",
 			Operator: corev1.TolerationOpExists,
@@ -195,8 +191,13 @@ var _ = Describe("AgentPodHandler", func() {
 
 		// install-cni initContainer
 		Expect(len(pod.Spec.InitContainers)).To(Equal(1))
-
-		cniVolumeMounts := []corev1.VolumeMount{
+		epContainer := pod.Spec.InitContainers[0]
+		Expect(epContainer.Name).To(Equal("environment-prepare"))
+		Expect(epContainer.Image).To(Equal(agentImage))
+		Expect(epContainer.ImagePullPolicy).To(Equal(handler.imagePullPolicy))
+		Expect(epContainer.Command).To(ConsistOf("env_prepare.sh"))
+		Expect(*epContainer.SecurityContext.Privileged).To(BeTrue())
+		Expect(epContainer.VolumeMounts).To(Equal([]corev1.VolumeMount{
 			{
 				Name:      "cni-bin",
 				MountPath: "/opt/cni/bin",
@@ -209,34 +210,29 @@ var _ = Describe("AgentPodHandler", func() {
 				Name:      "cni-config",
 				MountPath: "/etc/cni/net.d",
 			},
-		}
-		Expect(pod.Spec.InitContainers[0].VolumeMounts).To(Equal(cniVolumeMounts))
-		Expect(pod.Spec.InitContainers[0].Name).To(Equal("environment-prepare"))
-		Expect(pod.Spec.InitContainers[0].Command).To(ConsistOf("env_prepare.sh"))
-		Expect(*pod.Spec.InitContainers[0].SecurityContext.Privileged).To(BeTrue())
+		}))
 
-		Expect(pod.Spec.InitContainers[0].Image).To(Equal(agentImage))
-		Expect(pod.Spec.InitContainers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
-
-		// agent container
-		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
-		Expect(pod.Spec.Containers[0].Image).To(Equal(agentImage))
-		Expect(pod.Spec.Containers[0].ImagePullPolicy).To(Equal(handler.imagePullPolicy))
-		Expect(pod.Spec.Containers[0].Args).To(Equal([]string{
+		agentContainer := pod.Spec.Containers[0]
+		Expect(agentContainer.Name).To(Equal("agent"))
+		Expect(agentContainer.Image).To(Equal(agentImage))
+		Expect(agentContainer.ImagePullPolicy).To(Equal(handler.imagePullPolicy))
+		Expect(*agentContainer.SecurityContext.Privileged).To(BeTrue())
+		Expect(agentContainer.Args).To(ConsistOf(
 			"--enable-hairpinmode=true",
-			"--enable-ipam=true",
 			"--enable-proxy=false",
 			"--masq-outgoing=false",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
 			"--v=3",
-		}))
-		Expect(*pod.Spec.Containers[0].SecurityContext.Privileged).To(BeTrue())
-
-		agentVolumeMounts := []corev1.VolumeMount{
+		))
+		Expect(agentContainer.VolumeMounts).To(Equal([]corev1.VolumeMount{
 			{
 				Name:      "netconf",
 				MountPath: "/etc/fabedge",
+			},
+			{
+				Name:      "cni-config",
+				MountPath: "/etc/cni/net.d",
 			},
 			{
 				Name:      "var-run",
@@ -252,21 +248,14 @@ var _ = Describe("AgentPodHandler", func() {
 				MountPath: "/etc/ipsec.d",
 				ReadOnly:  true,
 			},
-			{
-				Name:      "cni-config",
-				MountPath: "/etc/cni/net.d",
-			},
-		}
-		Expect(pod.Spec.Containers[0].VolumeMounts).To(Equal(agentVolumeMounts))
+		}))
 
-		// strongswan container
-		Expect(pod.Spec.Containers[1].Name).To(Equal("strongswan"))
-		Expect(pod.Spec.Containers[1].Image).To(Equal(strongswanImage))
-		Expect(*pod.Spec.Containers[1].SecurityContext.Privileged).To(BeTrue())
-		Expect(pod.Spec.Containers[1].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
-		Expect(len(pod.Spec.Containers[1].VolumeMounts)).To(Equal(3))
-
-		strongswanVolumeMounts := []corev1.VolumeMount{
+		ssContainer := pod.Spec.Containers[1]
+		Expect(ssContainer.Name).To(Equal("strongswan"))
+		Expect(ssContainer.Image).To(Equal(strongswanImage))
+		Expect(*ssContainer.SecurityContext.Privileged).To(BeTrue())
+		Expect(ssContainer.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+		Expect(ssContainer.VolumeMounts).To(Equal([]corev1.VolumeMount{
 			{
 				Name:      "var-run",
 				MountPath: "/var/run/",
@@ -282,127 +271,7 @@ var _ = Describe("AgentPodHandler", func() {
 				SubPath:   "ipsec.secrets",
 				ReadOnly:  true,
 			},
-		}
-		Expect(pod.Spec.Containers[1].VolumeMounts).To(Equal(strongswanVolumeMounts))
-	})
-
-	It("agent pod should not contain CNI related volumes and initContainer when enableIPAM is false", func() {
-		argMap.Set("enable-ipam", "false")
-		handler.args = argMap.ArgumentArray()
-		handler.enableIPAM = argMap.IsIPAMEnabled()
-
-		agentPodName := getAgentPodName(node.Name)
-		pod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
-
-		Expect(len(pod.Spec.Volumes)).To(Equal(5))
-
-		hostPathDirectory := corev1.HostPathDirectory
-		defaultMode := int32(420)
-		edgeTunnelConfigMap := getAgentConfigMapName(node.Name)
-		volumes := []corev1.Volume{
-			{
-				Name: "var-run",
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			},
-			{
-				Name: "lib-modules",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: "/lib/modules",
-						Type: &hostPathDirectory,
-					},
-				},
-			},
-			{
-				Name: "netconf",
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: edgeTunnelConfigMap,
-						},
-						DefaultMode: &defaultMode,
-					},
-				},
-			},
-			{
-				Name: "ipsec-d",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName:  getCertSecretName(node.Name),
-						DefaultMode: &defaultMode,
-						Items: []corev1.KeyToPath{
-							{
-								Key:  secretutil.KeyCACert,
-								Path: "cacerts/ca.crt",
-							},
-							{
-								Key:  corev1.TLSCertKey,
-								Path: "certs/tls.crt",
-							},
-							{
-								Key:  corev1.TLSPrivateKeyKey,
-								Path: "private/tls.key",
-							},
-						},
-					},
-				},
-			},
-			{
-				Name: "ipsec-secrets",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName:  getCertSecretName(node.Name),
-						DefaultMode: &defaultMode,
-						Items: []corev1.KeyToPath{
-							{
-								Key:  secretutil.KeyIPSecSecretsFile,
-								Path: "ipsec.secrets",
-							},
-						},
-					},
-				},
-			},
-		}
-		Expect(pod.Spec.Volumes).To(Equal(volumes))
-
-		// install-cni initContainer
-		Expect(len(pod.Spec.InitContainers)).To(Equal(0))
-
-		// agent container
-		Expect(pod.Spec.Containers[0].Name).To(Equal("agent"))
-		Expect(pod.Spec.Containers[0].Args).To(Equal([]string{
-			"--enable-hairpinmode=true",
-			"--enable-ipam=false",
-			"--enable-proxy=false",
-			"--masq-outgoing=false",
-			"--network-plugin-mtu=1400",
-			"--use-xfrm=false",
-			"--v=3",
 		}))
-
-		agentVolumeMounts := []corev1.VolumeMount{
-			{
-				Name:      "netconf",
-				MountPath: "/etc/fabedge",
-			},
-			{
-				Name:      "var-run",
-				MountPath: "/var/run/",
-			},
-			{
-				Name:      "lib-modules",
-				MountPath: "/lib/modules",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "ipsec-d",
-				MountPath: "/etc/ipsec.d",
-				ReadOnly:  true,
-			},
-		}
-		Expect(pod.Spec.Containers[0].VolumeMounts).To(Equal(agentVolumeMounts))
 	})
 
 	It("should delete agent pod if errRestartAgent is passed in context", func() {

@@ -60,8 +60,6 @@ spec:
               value: "tls.crt"
             - name: AGENT_ARG_MASQ_OUTGOING
               value: "true"
-            - name: AGENT_ARG_ENABLE_IPAM
-              value: "false"
             - name: AGENT_ARG_ENABLE_HAIRPINMODE
               value: "true"
             - name: AGENT_ARG_ENABLE_PROXY

@@ -113,11 +113,9 @@ func (m *Manager) mainNetwork() error {
 		return err
 	}
 
-	if m.EnableIPAM {
-		m.log.V(3).Info("generate cni config file")
-		if err := m.generateCNIConfig(conf); err != nil {
-			return err
-		}
+	m.log.V(3).Info("generate cni config file")
+	if err := m.generateCNIConfig(conf); err != nil {
+		return err
 	}
 
 	m.log.V(3).Info("keep iptables rules")

@@ -330,7 +330,7 @@ func (opts Options) Validate() (err error) {
 		}
 	}
 
-	if opts.Agent.AgentPodArguments.IsIPAMEnabled() {
+	if opts.CNIType == constants.CNIFlannel {
 		ip, subnet, err := net.ParseCIDR(opts.EdgePodCIDR)
 		if err != nil {
 			return fmt.Errorf("invalid edge pod cidr: %s. %w", opts.EdgePodCIDR, err)
@@ -571,7 +571,7 @@ func (opts Options) recordEndpoints(ctx context.Context) error {
 		})
 	}
 
-	if !opts.Agent.AgentPodArguments.IsIPAMEnabled() {
+	if opts.CNIType == constants.CNIFlannel {
 		return nil
 	}
 
