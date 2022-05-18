@@ -150,7 +150,9 @@ func singleClusterE2eTestPrepare() {
 
 	clusters = append(clusters, cluster)
 
-	cluster.addAllEdgesToCommunity(communityEdges)
+	if framework.TestContext.CreateEdgeCommunity {
+		cluster.addAllEdgesToCommunity(communityEdges)
+	}
 	prepareClustersNamespace(namespaceSingle)
 	preparePodsOnEachClusterNode(namespaceSingle)
 	cluster.prepareHostNetworkPodsOnEachNode(namespaceSingle)

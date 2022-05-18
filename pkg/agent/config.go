@@ -16,6 +16,7 @@ package agent
 
 import (
 	"fmt"
+	"net"
 	"time"
 
 	debpkg "github.com/bep/debounce"
@@ -29,13 +30,6 @@ import (
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
-type CNI struct {
-	Version     string
-	ConfDir     string
-	NetworkName string
-	BridgeName  string
-}
-
 type Config struct {
 	LocalCerts       []string
 	SyncPeriod       time.Duration
@@ -46,15 +40,24 @@ type Config struct {
 
 	DummyInterfaceName string
 
-	UseXFRM           bool
-	XFRMInterfaceName string
-	XFRMInterfaceID   uint
-
 	EnableHairpinMode bool
 	NetworkPluginMTU  int
-	CNI               CNI
+	CNI               struct {
+		Version     string
+		ConfDir     string
+		NetworkName string
+		BridgeName  string
+	}
 
 	EnableProxy bool
+
+	EnableAutoNetworking bool
+	MulticastAddress     string
+	MulticastToken       string
+	MulticastInterval    time.Duration
+	EndpointTTL          time.Duration
+	BackupInterval       time.Duration
+	Workdir              string
 }
 
 func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
@@ -73,13 +76,17 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.CNI.BridgeName, "cni-bridge-name", "br-fabedge", "the name of bridge")
 
 	fs.BoolVar(&cfg.MASQOutgoing, "masq-outgoing", true, "Configure faberge networking to perform outbound NAT for connections from pods to outside of the cluster")
+	fs.BoolVar(&cfg.EnableProxy, "enable-proxy", true, "Enable the proxy feature")
 
 	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "the name of dummy interface")
-	fs.BoolVar(&cfg.UseXFRM, "use-xfrm", false, "use xfrm when OS has this feature")
-	fs.StringVar(&cfg.XFRMInterfaceName, "xfrm-interface-name", "ipsec42", "the name of xfrm interface")
-	fs.UintVar(&cfg.XFRMInterfaceID, "xfrm-interface-id", 42, "the id of xfrm interface")
 
-	fs.BoolVar(&cfg.EnableProxy, "enable-proxy", true, "Enable the proxy feature")
+	fs.BoolVar(&cfg.EnableAutoNetworking, "auto-networking", false, "Enable auto-networking which will find endpoints in the same LAN")
+	fs.StringVar(&cfg.Workdir, "workdir", "/var/lib/fabedge", "The working directory for fabedge")
+	fs.StringVar(&cfg.MulticastAddress, "multicast-address", "239.40.20.81:18080", "The multicast address to exchange endpoints")
+	fs.StringVar(&cfg.MulticastToken, "multicast-token", "", "Token used for multicasting endpoint")
+	fs.DurationVar(&cfg.MulticastInterval, "multicast-interval", 5*time.Second, "The interval between endpoint multicasting")
+	fs.DurationVar(&cfg.BackupInterval, "backup-interval", 10*time.Second, "The interval between local endpoints backing up")
+	fs.DurationVar(&cfg.EndpointTTL, "endpoint-ttl", 20*time.Second, "The time to live for endpoint received from multicasting")
 }
 
 func (cfg *Config) Validate() error {
@@ -89,6 +96,21 @@ func (cfg *Config) Validate() error {
 
 	if cfg.SyncPeriod < time.Second {
 		return fmt.Errorf("the least sync period value is 1 second")
+	}
+
+	if cfg.EnableAutoNetworking {
+		_, err := net.ResolveUDPAddr("udp", cfg.MulticastAddress)
+		if err != nil {
+			return err
+		}
+
+		if cfg.MulticastToken == "" {
+			return fmt.Errorf("broadcast token is required")
+		}
+
+		if cfg.EndpointTTL < cfg.MulticastInterval {
+			cfg.EndpointTTL = 2 * cfg.MulticastInterval
+		}
 	}
 
 	return nil
@@ -102,19 +124,7 @@ func (cfg Config) Manager() (*Manager, error) {
 		}
 	}
 
-	var opts strongswan.Options
-	if cfg.UseXFRM {
-		supportXFRM, err := ipvs.SupportXfrmInterface(kernelHandler)
-		if err != nil {
-			return nil, err
-		}
-		if !supportXFRM {
-			return nil, fmt.Errorf("xfrm interfaces have been supported since kernel 4.19, the current kernel version is too low")
-		}
-
-		opts = append(opts, strongswan.InterfaceID(&cfg.XFRMInterfaceID))
-	}
-	tm, err := strongswan.New(opts...)
+	tm, err := strongswan.New()
 	if err != nil {
 		return nil, err
 	}
@@ -130,8 +140,9 @@ func (cfg Config) Manager() (*Manager, error) {
 		ipt:    ipt,
 		log:    klogr.New().WithName("manager"),
 
-		events:   make(chan struct{}),
-		debounce: debpkg.New(cfg.DebounceDuration),
+		events:        make(chan struct{}),
+		debounce:      debpkg.New(cfg.DebounceDuration),
+		peerEndpoints: make(map[string]Endpoint),
 
 		netLink: ipvs.NewNetLinkHandle(false),
 		ipvs:    ipvs.New(exec.New()),

@@ -182,6 +182,12 @@ var _ = Describe("AgentPodHandler", func() {
 					},
 				},
 			},
+			{
+				Name: "agent-workdir",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
 		}
 		Expect(pod.Spec.Volumes).To(Equal(expectedVolumes))
 		Expect(pod.Spec.Tolerations).To(ConsistOf(corev1.Toleration{
@@ -247,6 +253,10 @@ var _ = Describe("AgentPodHandler", func() {
 				Name:      "ipsec-d",
 				MountPath: "/etc/ipsec.d",
 				ReadOnly:  true,
+			},
+			{
+				Name:      "agent-workdir",
+				MountPath: "/var/lib/fabedge",
 			},
 		}))
 

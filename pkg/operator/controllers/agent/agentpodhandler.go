@@ -181,6 +181,10 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 							MountPath: "/etc/ipsec.d",
 							ReadOnly:  true,
 						},
+						{
+							Name:      "agent-workdir",
+							MountPath: "/var/lib/fabedge",
+						},
 					},
 				},
 				{
@@ -300,6 +304,12 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 							Path: "/var/lib/cni/cache",
 							Type: &hostPathDirectoryOrCreate,
 						},
+					},
+				},
+				{
+					Name: "agent-workdir",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 			},

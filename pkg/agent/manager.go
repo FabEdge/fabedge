@@ -21,14 +21,13 @@ import (
 	"io/ioutil"
 	"net"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
-	"github.com/fabedge/fabedge/pkg/common/netconf"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
 	"github.com/fabedge/fabedge/third_party/ipvs"
@@ -55,11 +54,24 @@ type Manager struct {
 	ipt *iptables.IPTables
 	log logr.Logger
 
+	// lastSubnets is used to determine whether to clear chain FABEDGE-NAT-OUTGOING
+	lastSubnets     []string
+	currentEndpoint Endpoint
+	peerEndpoints   map[string]Endpoint
+	lock            sync.RWMutex
+
 	events   chan struct{}
 	debounce func(func())
 }
 
 func (m *Manager) start() {
+	if m.EnableAutoNetworking {
+		m.loadLocalEndpoints()
+		go m.broadcastEndpoint()
+		go m.receiveEndpoint()
+		go m.backupLoop()
+	}
+
 	var lastCancel context.CancelFunc = func() {}
 	defer func() {
 		lastCancel()
@@ -76,12 +88,6 @@ func (m *Manager) start() {
 		ctx, cancel := context.WithCancel(context.Background())
 		// this make `go vet` shut up
 		lastCancel = cancel
-
-		if m.MASQOutgoing {
-			go retryForever(ctx, m.syncIPSetPeerCIDR, func(n uint, err error) {
-				m.log.Error(err, "failed to sync ipset FABEDGE-PEER-CIDR", "retryNum", n)
-			})
-		}
 
 		go retryForever(ctx, m.mainNetwork, func(n uint, err error) {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
@@ -101,65 +107,57 @@ func (m *Manager) notify() {
 	})
 }
 
+func (m *Manager) sync() {
+	tick := time.NewTicker(m.SyncPeriod)
+	for {
+		m.notify()
+		<-tick.C
+	}
+}
+
 func (m *Manager) mainNetwork() error {
 	m.log.V(3).Info("load network config")
-	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
+	err := m.loadNetworkConf()
 	if err != nil {
+		m.log.Error(err, "failed to load network configuration")
 		return err
 	}
 
+	m.log.V(3).Info("clean expired endpoints")
+	m.cleanExpiredEndpoints()
+
 	m.log.V(3).Info("synchronize tunnels")
-	if err := m.ensureConnections(conf); err != nil {
+	if err := m.ensureConnections(); err != nil {
 		return err
 	}
 
 	m.log.V(3).Info("generate cni config file")
-	if err := m.generateCNIConfig(conf); err != nil {
+	if err := m.generateCNIConfig(); err != nil {
 		return err
 	}
 
 	m.log.V(3).Info("keep iptables rules")
-	if err := m.ensureIPTablesRules(conf); err != nil {
+	return m.ensureIPTablesRules()
+}
+
+func (m *Manager) ensureConnections() error {
+	gw, err := getDefaultGateway()
+	if err != nil {
+		m.log.Error(err, "failed to get default gateway IP")
 		return err
 	}
 
-	m.log.V(3).Info("maintain dummy/xfrm interface and routes")
-	return m.ensureInterfacesAndRoutes(conf)
-}
+	current, peers := m.getCurrentEndpoint(), m.getPeerEndpoints()
 
-func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 	newNames := sets.NewString()
-
-	for _, peer := range conf.Peers {
-		newNames.Insert(peer.Name)
-
-		conn := tunnel.ConnConfig{
-			Name: peer.Name,
-
-			LocalID:          conf.ID,
-			LocalSubnets:     conf.Subnets,
-			LocalNodeSubnets: conf.NodeSubnets,
-			LocalCerts:       m.LocalCerts,
-			LocalType:        conf.Type,
-
-			RemoteID:          peer.ID,
-			RemoteAddress:     peer.PublicAddresses,
-			RemoteSubnets:     peer.Subnets,
-			RemoteNodeSubnets: peer.NodeSubnets,
-			RemoteType:        peer.Type,
-		}
-
-		m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
-		if err := m.tm.LoadConn(conn); err != nil {
-			m.log.Error(err, "failed to add tunnel", "tunnel", conn)
-			continue
-		}
-
-		m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
-		// this may lead to duplicate child sa in strongswan since sometimes two agents try to initiate
-		// the same connection on each side at the same time
-		if err := m.tm.InitiateConn(peer.Name); err != nil {
-			m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
+	for _, peer := range peers {
+		if peer.IsLocal {
+			if err := addRoutesToPeer(peer); err != nil {
+				m.log.Error(err, "failed to add routes to peer", "peer", peer)
+			}
+		} else {
+			newNames.Insert(peer.Name)
+			m.ensureConnection(current, peer, gw)
 		}
 	}
 
@@ -180,10 +178,49 @@ func (m *Manager) ensureConnections(conf netconf.NetworkConf) error {
 		}
 	}
 
-	return nil
+	return delStaleRoutes(peers)
 }
 
-func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
+func (m *Manager) ensureConnection(current, peer Endpoint, gw net.IP) {
+	conn := tunnel.ConnConfig{
+		Name: peer.Name,
+
+		LocalID:          current.ID,
+		LocalSubnets:     current.Subnets,
+		LocalNodeSubnets: current.NodeSubnets,
+		LocalCerts:       m.LocalCerts,
+		LocalType:        current.Type,
+
+		RemoteID:          peer.ID,
+		RemoteAddress:     peer.PublicAddresses,
+		RemoteSubnets:     peer.Subnets,
+		RemoteNodeSubnets: peer.NodeSubnets,
+		RemoteType:        peer.Type,
+	}
+
+	m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
+	if err := m.tm.LoadConn(conn); err != nil {
+		m.log.Error(err, "failed to add tunnel", "tunnel", conn)
+		return
+	}
+
+	m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
+	// this may lead to duplicate child sa in strongswan since sometimes two agents try to initiate
+	// the same connection on each side at the same time
+	if err := m.tm.InitiateConn(peer.Name); err != nil {
+		m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
+		return
+	}
+
+	m.log.V(5).Info("try to add routes to peer", "name", peer.Name)
+	if err := addRoutesToPeerViaGateway(gw, peer); err != nil {
+		m.log.Error(err, "failed to add routes to peer", "peer", peer)
+	}
+}
+
+func (m *Manager) ensureIPTablesRules() error {
+	current := m.getCurrentEndpoint()
+
 	if err := m.ensureChain(TableFilter, ChainFabEdgeForward); err != nil {
 		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdgeForward)
 		return err
@@ -197,7 +234,7 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 
 	// subnets won't change most of time, and is append-only, so for now we don't need
 	// to handle removing old subnet
-	for _, subnet := range conf.Subnets {
+	for _, subnet := range current.Subnets {
 		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
 			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
 			return err
@@ -207,49 +244,71 @@ func (m *Manager) ensureIPTablesRules(conf netconf.NetworkConf) error {
 			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
 			return err
 		}
+	}
 
-		if err := m.configureOutboundRules(subnet); err != nil {
-			return err
-		}
+	if m.MASQOutgoing {
+		return m.configureOutboundRules(current.Subnets)
 	}
 
 	return nil
 }
 
 // outbound NAT from pods to outside the cluster
-func (m *Manager) configureOutboundRules(subnet string) error {
-	if err := m.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
-		return err
+func (m *Manager) configureOutboundRules(subnets []string) error {
+	if !m.areSubnetsEqual(subnets, m.lastSubnets) {
+		m.log.V(3).Info("Subnets are changed, clear iptables chain FABEDGE-NAT-OUTGOING")
+		if err := m.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
+			return err
+		}
+		m.lastSubnets = subnets
 	}
 
-	if m.MASQOutgoing {
+	for _, subnet := range subnets {
 		m.log.V(3).Info("configure outgoing NAT iptables rules")
 
 		ensureRule := m.ipt.AppendUnique
 		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", IPSetFabEdgePeerCIDR, "dst", "-j", "RETURN"); err != nil {
 			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, IPSetFabEdgePeerCIDR))
-			return err
+			continue
 		}
 
-		ensureRule = m.ipt.AppendUnique
 		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
 			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet))
-			return err
+			continue
 		}
 
 		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade); err != nil {
 			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -j %s", subnet, ChainMasquerade))
-			return err
+			continue
 		}
 
 		if err := ensureRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
 			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
-			return err
+			continue
 		}
 	}
 
+	if err := m.syncIPSetPeerCIDR(); err != nil {
+		m.log.Error(err, "failed to sync ipset FABEDGE-PEER-CIDR")
+		return err
+	}
+
 	return nil
+}
+
+func (m *Manager) areSubnetsEqual(sa1, sa2 []string) bool {
+	if len(sa1) != len(sa2) {
+		return false
+	}
+
+	for i := range sa1 {
+		if sa1[i] != sa2[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (m *Manager) ensureChain(table, chain string) error {
@@ -265,9 +324,11 @@ func (m *Manager) ensureChain(table, chain string) error {
 	return m.ipt.NewChain(table, chain)
 }
 
-func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
+func (m *Manager) generateCNIConfig() error {
+	current := m.getCurrentEndpoint()
+
 	var ranges []RangeSet
-	for _, subnet := range conf.Subnets {
+	for _, subnet := range current.Subnets {
 		ranges = append(ranges, RangeSet{
 			{
 				Subnet: subnet,
@@ -326,233 +387,6 @@ func (m *Manager) generateCNIConfig(conf netconf.NetworkConf) error {
 	return err
 }
 
-func (m *Manager) sync() {
-	tick := time.NewTicker(m.SyncPeriod)
-	for {
-		m.notify()
-		<-tick.C
-	}
-}
-
-func (m *Manager) ensureInterfacesAndRoutes(conf netconf.NetworkConf) error {
-	if m.EnableProxy {
-		m.log.V(3).Info("ensure that the dummy interface exists")
-		if _, err := m.netLink.EnsureDummyDevice(m.DummyInterfaceName); err != nil {
-			m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", m.DummyInterfaceName)
-			return err
-		}
-	}
-
-	// the kernel has supported xfrm interface since version 4.19+
-	if m.UseXFRM {
-		log := m.log.V(3).WithValues("xfrmInterface", m.XFRMInterfaceName, "if_id", m.XFRMInterfaceID)
-
-		log.Info("ensure that the xfrm interface exists")
-		if err := m.netLink.EnsureXfrmInterface(m.XFRMInterfaceName, uint32(m.XFRMInterfaceID)); err != nil {
-			log.Error(err, "failed to create xfrm interface")
-			return err
-		}
-
-		// TODO: add routes to cloud-node, cloud-pod, agent-node and agent-pod
-		// The xfrm feature is temporarily unavailable because the routing information is missing
-
-		//log.Info("add a route to edge node", "edgePodCIDR", m.edgePodCIDR)
-		//if err := m.netLink.EnsureRouteAdd(m.edgePodCIDR, m.xfrmInterfaceName); err != nil {
-		//	m.log.Error(err, "failed to add route", "xfrmInterface", m.xfrmInterfaceName, "podCIDR", m.edgePodCIDR)
-		//	return err
-		//}
-
-		connectorSubnets, err := m.getConnectorSubnets()
-		if err != nil {
-			log.Error(err, "failed to get connector subnets")
-			return err
-		}
-
-		// add routes to the cloud connector
-		for _, subnet := range connectorSubnets {
-			if err = m.netLink.EnsureRouteAdd(subnet, m.XFRMInterfaceName); err != nil {
-				m.log.Error(err, "failed to create route", "subnet", subnet)
-				return err
-			}
-		}
-	} else {
-		log := m.log.V(5).WithValues("conf", conf)
-		log.V(3).Info("to sync routes")
-
-		if err := addRoutesToAllPeers(conf); err != nil {
-			return err
-		}
-
-		if err := delStaleRoutes(conf); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) syncLoadBalanceRules() error {
-	// sync service clusterIP bound to kube-ipvs0
-	// sync ipvs
-	m.log.V(3).Info("load services config file")
-	conf, err := loadServiceConf(m.ServicesConfPath)
-	if err != nil {
-		m.log.Error(err, "failed to load services config")
-		return err
-	}
-
-	m.log.V(3).Info("binding cluster ips to dummy interface")
-	servers := toServers(conf)
-	if err = m.syncServiceClusterIPBind(servers); err != nil {
-		return err
-	}
-
-	m.log.V(3).Info("synchronize ipvs rules")
-	return m.syncVirtualServer(servers)
-}
-
-func (m *Manager) getConnectorSubnets() (subnets []string, err error) {
-	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, peer := range conf.Peers {
-		if peer.Type == apis.Connector {
-			subnets = append(subnets, peer.Subnets...)
-		}
-	}
-
-	return subnets, nil
-}
-
-func (m *Manager) syncServiceClusterIPBind(servers []server) error {
-	log := m.log.WithValues("dummyInterface", m.DummyInterfaceName)
-
-	addresses, err := m.netLink.ListBindAddress(m.DummyInterfaceName)
-	if err != nil {
-		log.Error(err, "failed to get addresses from dummyInterface")
-		return err
-	}
-
-	boundedAddresses := sets.NewString(addresses...)
-	allServiceAddresses := sets.NewString()
-	for _, s := range servers {
-		allServiceAddresses.Insert(s.virtualServer.Address.String())
-	}
-
-	for addr := range allServiceAddresses.Difference(boundedAddresses) {
-		if _, err = m.netLink.EnsureAddressBind(addr, m.DummyInterfaceName); err != nil {
-			log.Error(err, "failed to bind address", "addr", addr)
-			return err
-		}
-	}
-
-	for addr := range boundedAddresses.Difference(allServiceAddresses) {
-		if err = m.netLink.UnbindAddress(addr, m.DummyInterfaceName); err != nil {
-			log.Error(err, "failed to unbind address", "addr", addr)
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) syncVirtualServer(servers []server) error {
-	oldVirtualServers, err := m.ipvs.GetVirtualServers()
-	if err != nil {
-		m.log.Error(err, "failed to get ipvs virtual servers")
-		return err
-	}
-	oldVirtualServerSet := sets.NewString()
-	oldVirtualServerMap := make(map[string]*ipvs.VirtualServer, len(oldVirtualServers))
-	for _, vs := range oldVirtualServers {
-		oldVirtualServerSet.Insert(vs.String())
-		oldVirtualServerMap[vs.String()] = vs
-	}
-
-	allVirtualServerSet := sets.NewString()
-	allVirtualServerMap := make(map[string]*ipvs.VirtualServer, len(servers))
-	allVirtualServers := make(map[string]server, len(servers))
-	for _, s := range servers {
-		allVirtualServerSet.Insert(s.virtualServer.String())
-		allVirtualServerMap[s.virtualServer.String()] = s.virtualServer
-		allVirtualServers[s.virtualServer.String()] = s
-	}
-
-	virtualServersToAdd := allVirtualServerSet.Difference(oldVirtualServerSet)
-	for vs := range virtualServersToAdd {
-		if err := m.ipvs.AddVirtualServer(allVirtualServerMap[vs]); err != nil {
-			m.log.Error(err, "failed to add virtual server", "virtualServer", vs)
-			return err
-		}
-
-		virtualServer := allVirtualServerMap[vs]
-		realServers := allVirtualServers[vs].realServers
-		if err := m.updateRealServers(virtualServer, realServers); err != nil {
-			return err
-		}
-	}
-
-	virtualServersToDel := oldVirtualServerSet.Difference(allVirtualServerSet)
-	for vs := range virtualServersToDel {
-		if err := m.ipvs.DeleteVirtualServer(oldVirtualServerMap[vs]); err != nil {
-			m.log.Error(err, "failed to delete virtual server", "virtualServer", vs)
-			return err
-		}
-	}
-
-	virtualServersToUpdate := allVirtualServerSet.Intersection(oldVirtualServerSet)
-	for vs := range virtualServersToUpdate {
-		virtualServer := allVirtualServerMap[vs]
-		realServers := allVirtualServers[vs].realServers
-		if err := m.updateRealServers(virtualServer, realServers); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) updateRealServers(virtualServer *ipvs.VirtualServer, realServers []*ipvs.RealServer) error {
-	oldRealServers, err := m.ipvs.GetRealServers(virtualServer)
-	if err != nil {
-		m.log.Error(err, "failed to get real servers")
-		return err
-	}
-	oldRealServerSet := sets.NewString()
-	oldRealServerMap := make(map[string]*ipvs.RealServer)
-	for _, rs := range oldRealServers {
-		oldRealServerSet.Insert(rs.String())
-		oldRealServerMap[rs.String()] = rs
-	}
-
-	allRealServerSet := sets.NewString()
-	allRealServerMap := make(map[string]*ipvs.RealServer)
-	for _, rs := range realServers {
-		allRealServerSet.Insert(rs.String())
-		allRealServerMap[rs.String()] = rs
-	}
-
-	realServersToAdd := allRealServerSet.Difference(oldRealServerSet)
-	for rs := range realServersToAdd {
-		if err := m.ipvs.AddRealServer(virtualServer, allRealServerMap[rs]); err != nil {
-			m.log.Error(err, "failed to add real server", "realServer", rs)
-			return err
-		}
-	}
-
-	realServersToDel := oldRealServerSet.Difference(allRealServerSet)
-	for rs := range realServersToDel {
-		if err := m.ipvs.DeleteRealServer(virtualServer, oldRealServerMap[rs]); err != nil {
-			m.log.Error(err, "failed to delete real server", "realServer", rs)
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (m *Manager) syncIPSetPeerCIDR() error {
 	ipsetObj, err := m.ipset.EnsureIPSet(IPSetFabEdgePeerCIDR, ipset.HashNet)
 	if err != nil {
@@ -573,14 +407,10 @@ func (m *Manager) syncIPSetPeerCIDR() error {
 }
 
 func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
-	conf, err := netconf.LoadNetworkConf(m.TunnelsConfPath)
-	if err != nil {
-		return nil, err
-	}
-
 	cidrSet := sets.String{}
-	for _, p := range conf.Peers {
-		for _, nodeSubnet := range p.NodeSubnets {
+
+	for _, peer := range m.getPeerEndpoints() {
+		for _, nodeSubnet := range peer.NodeSubnets {
 			if _, _, err := net.ParseCIDR(nodeSubnet); err != nil {
 				s := m.ipset.ConvertIPToCIDR(nodeSubnet)
 				cidrSet.Insert(s)
@@ -589,7 +419,7 @@ func (m *Manager) getAllPeerCIDRs() (sets.String, error) {
 			}
 		}
 
-		cidrSet.Insert(p.Subnets...)
+		cidrSet.Insert(peer.Subnets...)
 	}
 
 	return cidrSet, nil
