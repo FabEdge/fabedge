@@ -17,8 +17,8 @@ func (m *Manager) loadNetworkConf() error {
 		return err
 	}
 
-	m.lock.Lock()
-	defer m.lock.Unlock()
+	m.endpointLock.Lock()
+	defer m.endpointLock.Unlock()
 	m.currentEndpoint = Endpoint{
 		Endpoint: conf.Endpoint,
 	}
@@ -49,8 +49,8 @@ func (m *Manager) cleanExpiredEndpoints() {
 		return
 	}
 
-	m.lock.Lock()
-	defer m.lock.Unlock()
+	m.endpointLock.Lock()
+	defer m.endpointLock.Unlock()
 
 	now := time.Now()
 
@@ -106,8 +106,8 @@ func (m *Manager) loadLocalEndpoints() {
 		return
 	}
 
-	m.lock.Lock()
-	defer m.lock.Unlock()
+	m.endpointLock.Lock()
+	defer m.endpointLock.Unlock()
 
 	for _, endpoint := range endpoints {
 		endpoint.ExpireTime = time.Now().Add(m.EndpointTTL)
@@ -117,15 +117,15 @@ func (m *Manager) loadLocalEndpoints() {
 }
 
 func (m *Manager) getCurrentEndpoint() Endpoint {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
+	m.endpointLock.RLock()
+	defer m.endpointLock.RUnlock()
 
 	return m.currentEndpoint
 }
 
 func (m *Manager) getPeerEndpoints() []Endpoint {
-	m.lock.RLock()
-	m.lock.RUnlock()
+	m.endpointLock.RLock()
+	m.endpointLock.RUnlock()
 
 	peers := make([]Endpoint, 0, len(m.peerEndpoints))
 	for _, e := range m.peerEndpoints {

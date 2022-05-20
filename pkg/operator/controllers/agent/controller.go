@@ -63,9 +63,9 @@ type agentController struct {
 }
 
 type Config struct {
-	Allocator allocator.Interface
-	Store     storepkg.Interface
-	Manager   manager.Manager
+	Allocators []allocator.Interface
+	Store      storepkg.Interface
+	Manager    manager.Manager
 
 	Namespace         string
 	AgentImage        string
@@ -105,10 +105,10 @@ func AddToManager(cnf Config) error {
 
 func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 	var handlers []Handler
-	if cnf.Allocator != nil {
+	if len(cnf.Allocators) != 0 {
 		handlers = append(handlers, &allocatablePodCIDRsHandler{
 			store:           cnf.Store,
-			allocator:       cnf.Allocator,
+			allocators:      cnf.Allocators,
 			newEndpoint:     cnf.NewEndpoint,
 			getEndpointName: cnf.GetEndpointName,
 			client:          cli,
@@ -142,6 +142,8 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		log: log.WithName("certHandler"),
 	})
 
+	// agent pod created by agentPodHandler always use tls.crt as local-cert
+	cnf.AgentPodArguments.Set("local-cert", "tls.crt")
 	handlers = append(handlers, &agentPodHandler{
 		namespace: cnf.Namespace,
 		client:    cli,
@@ -193,8 +195,7 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 }
 
 func (ctl *agentController) shouldSkip(node corev1.Node) bool {
-	ip := nodeutil.GetIP(node)
-	return len(ip) == 0
+	return len(nodeutil.GetInternalIPs(node)) == 0
 }
 
 func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Context, nodeName string) error {

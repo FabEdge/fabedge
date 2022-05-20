@@ -16,30 +16,36 @@ package connector
 
 import (
 	"encoding/json"
-	"github.com/fabedge/fabedge/pkg/util/memberlist"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
-	"k8s.io/klog/v2"
+	debpkg "github.com/bep/debounce"
+	"github.com/go-logr/logr"
+	"github.com/spf13/pflag"
+	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/tunnel/strongswan"
-	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/memberlist"
 )
 
 type Manager struct {
 	Config
+
 	tm          tunnel.Manager
-	ipt         *iptables.IPTables
+	iptHandler  *IPTablesHandler
+	ipt6Handler *IPTablesHandler
 	connections []tunnel.ConnConfig
-	ipset       ipset.Interface
 	router      routing.Routing
 	mc          *memberlist.Client
+	log         logr.Logger
+
+	events   chan struct{}
+	debounce func(func())
 }
 
 type Config struct {
@@ -52,10 +58,17 @@ type Config struct {
 	initMembers      []string
 }
 
-func msgHandler(b []byte) {
-}
+func msgHandler(b []byte)         {}
+func nodeLeveHandler(name string) {}
 
-func nodeLeveHandler(name string) {
+func (c *Config) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&c.TunnelConfigFile, "tunnel-config", "/etc/fabedge/tunnels.yaml", "tunnel config file")
+	fs.StringVar(&c.CertFile, "cert-file", "/etc/ipsec.d/certs/tls.crt", "TLS certificate file")
+	fs.StringVar(&c.ViciSocket, "vici-socket", "/var/run/charon.vici", "vici socket file")
+	fs.StringVar(&c.CNIType, "cni-type", "flannel", "CNI type used in cloud")
+	fs.DurationVar(&c.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
+	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
+	fs.StringSliceVar(&c.initMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
 }
 
 func (c Config) Manager() (*Manager, error) {
@@ -63,11 +76,6 @@ func (c Config) Manager() (*Manager, error) {
 		strongswan.SocketFile(c.ViciSocket),
 		strongswan.StartAction("none"),
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	ipt, err := iptables.New()
 	if err != nil {
 		return nil, err
 	}
@@ -82,155 +90,150 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
+	ipt, err := newIP4TablesHandler()
+	if err != nil {
+		return nil, err
+	}
+
+	ipt6, err := newIP6TablesHandler()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Manager{
-		Config: c,
-		tm:     tm,
-		ipt:    ipt,
-		ipset:  ipset.New(),
-		router: router,
-		mc:     mc,
+		Config:      c,
+		tm:          tm,
+		iptHandler:  ipt,
+		ipt6Handler: ipt6,
+		router:      router,
+		mc:          mc,
+		log:         klogr.New().WithName("manager"),
+		events:      make(chan struct{}),
+		debounce:    debpkg.New(c.DebounceDuration),
 	}, nil
 }
 
-func runTasks(interval time.Duration, handler ...func()) {
-	t := time.Tick(interval)
+func (m *Manager) startTick() {
+	tick := time.NewTicker(m.SyncPeriod)
+	defer tick.Stop()
+
 	for {
-		for _, h := range handler {
-			h()
-		}
-		<-t
+		m.notify()
+		<-tick.C
 	}
 }
 
+func (m *Manager) notify() {
+	m.debounce(func() {
+		m.events <- struct{}{}
+	})
+}
+
 func (m *Manager) Start() {
-	routeTaskFn := func() {
-		active, err := m.tm.IsActive()
-		if err != nil {
-			klog.Errorf("failed to get tunnel manager status: %s", err)
-			return
-		}
-		if active {
-			if err = m.router.SyncRoutes(m.connections); err != nil {
-				klog.Errorf("failed to sync routes: %s", err)
-				return
-			}
-		} else {
-			if err = m.router.CleanRoutes(m.connections); err != nil {
-				klog.Errorf("failed to clean routes: %s", err)
-				return
-			}
-		}
-
-		klog.Info("routes are synced")
-	}
-
-	iptablesTaskFn := func() {
-		if err := m.ensureForwardIPTablesRules(); err != nil {
-			klog.Errorf("error when to add iptables forward rules: %s", err)
-		} else {
-			klog.Infof("iptables forward rules are added")
-		}
-
-		if err := m.ensureNatIPTablesRules(); err != nil {
-			klog.Errorf("error when to add iptables nat rules: %s", err)
-		} else {
-			klog.Infof("iptables nat rules are added")
-		}
-
-		if err := m.ensureInputIPTablesRules(); err != nil {
-			klog.Errorf("error when to add iptables input rules: %s", err)
-		} else {
-			klog.Infof("iptables input rules are added")
-		}
-	}
-
-	// Connector broadcasts the active routing info to all cloud agents.
-	broadcastToAgents := func() {
-		cp, err := m.router.GetConnectorPrefixes()
-		if err != nil {
-			klog.Errorf("failed to get connector prefixes:%s", err)
-			return
-		}
-		klog.V(5).Infof("get connector prefixes:%+v", cp)
-
-		if len(cp.RemotePrefixes) < 1 || len(cp.LocalPrefixes) < 1 {
-			return
-		}
-
-		b, err := json.Marshal(cp)
-		if err != nil {
-			klog.Errorf("failed to marshal prefixes:%s", err)
-		}
-
-		m.mc.Broadcast(b)
-	}
-
-	tunnelTaskFn := func() {
-		if err := m.syncConnections(); err != nil {
-			klog.Errorf("error when to sync tunnels: %s", err)
-		} else {
-			broadcastToAgents()
-			klog.Infof("tunnels are synced")
-		}
-	}
-
-	ipsetTaskFn := func() {
-		if err := m.syncEdgeNodeCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgeNodeCIDR, err)
-		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgeNodeCIDR)
-		}
-
-		if err := m.syncCloudPodCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudPodCIDR, err)
-		} else {
-			klog.Infof("ipset %s are synced", IPSetCloudPodCIDR)
-		}
-
-		if err := m.syncCloudNodeCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetCloudNodeCIDR, err)
-		} else {
-			klog.Infof("ipset %s are synced", IPSetCloudNodeCIDR)
-		}
-
-		if err := m.syncEdgePodCIDRSet(); err != nil {
-			klog.Errorf("error when to sync ipset %s: %s", IPSetEdgePodCIDR, err)
-		} else {
-			klog.Infof("ipset %s are synced", IPSetEdgePodCIDR)
-		}
-	}
-	tasks := []func(){tunnelTaskFn, routeTaskFn, ipsetTaskFn, iptablesTaskFn}
-
-	if err := m.clearFabedgeIptablesChains(); err != nil {
-		klog.Errorf("failed to clean iptables: %s", err)
-	}
-
-	// repeats regular tasks periodically
-	go runTasks(m.SyncPeriod, tasks...)
-
-	// sync ALL when config file changed
-	go m.onConfigFileChange(m.TunnelConfigFile, tasks...)
-
 	about.DisplayVersion()
-	klog.Info("manager started")
-	klog.V(5).Infof("config:%+v", m.Config)
+
+	m.clearFabEdgeIptablesChains()
+
+	go m.workLoop()
+	go m.startTick()
+	go m.onConfigFileChange(m.TunnelConfigFile)
+
+	m.log.V(5).Info("manager started", "config", m.Config)
 
 	// wait os signal
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 	m.gracefulShutdown()
-	klog.Info("connector stopped")
+
+	m.log.Info("manager stopped")
 }
 
 func (m *Manager) gracefulShutdown() {
 	err := m.router.CleanRoutes(m.connections)
 	if err != nil {
-		klog.Errorf("failed to clean routers: %s", err)
+		m.log.Error(err, "failed to clean routers")
 	}
 
-	err = m.CleanSNatIPTablesRules()
+	m.CleanSNatIPTablesRules()
+}
+
+func (m *Manager) CleanSNatIPTablesRules() {
+	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
+		if err := ipt.CleanSNatIPTablesRules(); err != nil {
+			m.log.Error(err, "failed to clean iptables")
+		}
+	}
+}
+
+func (m *Manager) clearFabEdgeIptablesChains() {
+	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
+		if err := ipt.clearFabEdgeIptablesChains(); err != nil {
+			m.log.Error(err, "failed to clean iptables")
+		}
+	}
+}
+
+func (m *Manager) mainRoutes() {
+	active, err := m.tm.IsActive()
 	if err != nil {
-		klog.Errorf("failed to clean iptables: %s", err)
+		m.log.Error(err, "failed to get tunnel manager status")
+		return
+	}
+
+	if active {
+		m.log.V(5).Info("tunnel manager is active, try to synchronize routes in table 220")
+		if err = m.router.SyncRoutes(m.connections); err != nil {
+			m.log.Error(err, "failed to sync routes")
+			return
+		}
+	} else {
+		m.log.V(5).Info("tunnel manager is not active, try to clean routes in route table 220")
+		if err = m.router.CleanRoutes(m.connections); err != nil {
+			m.log.Error(err, "failed to clean routes")
+			return
+		}
+	}
+
+	m.log.V(5).Info("routes are synced")
+}
+
+func (m *Manager) mainTunnels() {
+	if err := m.syncConnections(); err != nil {
+		m.log.Error(err, "error when to sync tunnels")
+	} else {
+		m.log.V(5).Info("tunnels are synced")
+	}
+}
+
+// broadcastConnectorPrefixes broadcasts the active routing info to all cloud agents.
+func (m *Manager) broadcastConnectorPrefixes() {
+	cp, err := m.router.GetConnectorPrefixes()
+	if err != nil {
+		m.log.Error(err, "failed to get connector prefixes")
+		return
+	}
+
+	log := m.log.WithValues("connectorPrefixes", cp)
+	log.V(5).Info("get connector prefixes")
+	b, err := json.Marshal(cp)
+	if err != nil {
+		log.Error(err, "failed to marshal prefixes")
+		return
+	}
+
+	m.mc.Broadcast(b)
+	log.V(5).Info("connector prefixes is broadcast to cloud-agents")
+}
+
+func (m *Manager) workLoop() {
+	for range m.events {
+		m.mainTunnels()
+		m.mainRoutes()
+		m.broadcastConnectorPrefixes()
+		m.iptHandler.maintainIPTables()
+		m.ipt6Handler.maintainIPTables()
+		m.iptHandler.maintainIPSet()
+		m.ipt6Handler.maintainIPSet()
 	}
 }

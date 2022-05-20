@@ -15,25 +15,26 @@
 package connector
 
 import (
-	"github.com/bep/debounce"
+	"time"
+
 	"github.com/fsnotify/fsnotify"
 	"k8s.io/klog/v2"
-	"time"
 )
 
 func eventOpIs(ent fsnotify.Event, Op fsnotify.Op) bool {
 	return ent.Op&Op == Op
 }
 
-func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
+func (m *Manager) onConfigFileChange(fileToWatch string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		klog.Errorf("failed to initialize fsnotify: %s", err)
+		m.log.Error(err, "failed to initialize fsnotify")
 		return
 	}
+
 	defer func() {
 		if err = watcher.Close(); err != nil {
-			klog.Errorf("failed to close fsnotify watcher: %s", err)
+			m.log.Error(err, "failed to close fsnotify watcher")
 		}
 	}()
 
@@ -42,33 +43,26 @@ func (m *Manager) onConfigFileChange(fileToWatch string, callbacks ...func()) {
 		return
 	}
 
-	// use debounce to avoid too much fsnotify events
-	debounced := debounce.New(m.DebounceDuration)
-
 	for {
 		select {
 		case event, _ := <-watcher.Events:
 			switch {
 			case eventOpIs(event, fsnotify.Remove):
-				klog.Infof("file removed, add it back. event: %s", event)
+				m.log.Info("file removed, add it back", "event", event)
 				if err = watcher.Add(fileToWatch); err != nil {
-					klog.Errorf("failed to watch %s. Error: %s", fileToWatch, err)
+					m.log.Error(err, "failed to watch file", "file", fileToWatch)
 				}
 			default:
-				klog.Infof("file changed, start to sync. event: %s", event)
-				debounced(func() {
-					for _, c := range callbacks {
-						c()
-					}
-				})
+				m.log.Info("file changed, start to sync", "event", event)
+				m.notify()
 			}
 
 		case err, _ = <-watcher.Errors:
-			klog.Errorf("fsnotify has an error: %s", err)
+			m.log.Error(err, "fsnotify has an error")
 			// not encounter it so far, hope it can be recovered after some time
 			time.Sleep(5 * time.Minute)
 			if err = watcher.Add(fileToWatch); err != nil {
-				klog.Errorf("failed to monitor %s. Error: %s", fileToWatch, err)
+				m.log.Error(err, "failed to monitor file", "file", fileToWatch)
 				return
 			}
 		}

@@ -25,18 +25,22 @@ import (
 	"github.com/fabedge/fabedge/third_party/ipset"
 )
 
+type IPSet = ipset.IPSet
+
 const (
 	HashIP  = ipset.HashIP
 	HashNet = ipset.HashNet
+
+	ProtocolFamilyIPV4 = ipset.ProtocolFamilyIPV4
+	ProtocolFamilyIPV6 = ipset.ProtocolFamilyIPV6
 )
 
 type Interface interface {
-	EnsureIPSet(setName string, setType ipset.Type) (*ipset.IPSet, error)
-	AddIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
-	DelIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error
-	ListEntries(setName string, setType ipset.Type) (sets.String, error)
-	SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String, setType ipset.Type) error
-	ConvertIPToCIDR(ip string) string
+	// EnsureIPSet ensure specified are created and ensure this ipset only contains all entries
+	// specified in entrySet.
+	// Allowed SetType are HashNet and HashIP
+	// Data in entrySet must be either an IP or a CIDR
+	EnsureIPSet(set *ipset.IPSet, entrySet sets.String) error
 }
 
 type execer struct {
@@ -49,46 +53,49 @@ func New() Interface {
 	}
 }
 
-func (e *execer) EnsureIPSet(setName string, setType ipset.Type) (*ipset.IPSet, error) {
-	set := &ipset.IPSet{
-		Name:    setName,
-		SetType: setType,
+func (e *execer) EnsureIPSet(set *ipset.IPSet, allIPSetEntrySet sets.String) error {
+	if set.SetType != HashIP && set.SetType != HashNet {
+		return fmt.Errorf("unsupported ipset type: %s", set.SetType)
 	}
+
 	if err := e.ipset.CreateSet(set, true); err != nil {
-		return nil, err
+		return err
 	}
-	return set, nil
+
+	oldIPSetEntrySet, err := e.ListEntries(set.Name)
+	if err != nil {
+		return err
+	}
+
+	needAddEntries := allIPSetEntrySet.Difference(oldIPSetEntrySet)
+	for entry := range needAddEntries {
+		if err := e.AddIPSetEntry(set, entry); err != nil {
+			return err
+		}
+	}
+
+	needDelEntries := oldIPSetEntrySet.Difference(allIPSetEntrySet)
+	for entry := range needDelEntries {
+		if err := e.DelIPSetEntry(set, entry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (e *execer) AddIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error {
-	entry := &ipset.Entry{
-		SetType: setType,
-	}
-
-	switch setType {
-	case ipset.HashIP:
-		entry.IP = ip
-	case ipset.HashNet:
-		entry.Net = ip
-	}
-
-	if !entry.Validate(set) {
-		return fmt.Errorf("failed to validate ipset entry, ipset: %v, entry: %v", set, entry)
+func (e *execer) AddIPSetEntry(set *ipset.IPSet, ip string) error {
+	entry, err := newEntry(set, ip)
+	if err != nil {
+		return err
 	}
 
 	return e.ipset.AddEntry(entry.String(), set, true)
 }
 
-func (e *execer) DelIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) error {
-	entry := &ipset.Entry{
-		SetType: setType,
-	}
-
-	switch setType {
-	case ipset.HashIP:
-		entry.IP = ip
-	case ipset.HashNet:
-		entry.Net = ip
+func (e *execer) DelIPSetEntry(set *ipset.IPSet, ip string) error {
+	entry, err := newEntry(set, ip)
+	if err != nil {
+		return err
 	}
 
 	if !entry.Validate(set) {
@@ -98,47 +105,45 @@ func (e *execer) DelIPSetEntry(set *ipset.IPSet, ip string, setType ipset.Type) 
 	return e.ipset.DelEntry(entry.String(), set.Name)
 }
 
-func (e *execer) ListEntries(setName string, setType ipset.Type) (sets.String, error) {
-	entrySet := sets.NewString()
+func (e *execer) ListEntries(setName string) (sets.String, error) {
 	entries, err := e.ipset.ListEntries(setName)
 	if err != nil {
 		return nil, err
 	}
 
-	if setType != ipset.HashNet {
-		entrySet.Insert(entries...)
-		return entrySet, nil
-	}
-
-	for _, entry := range entries {
-		// translate the IP address to CIDR is needed
-		// because hash:net ipset saves 10.20.8.4/32 to 10.20.8.4
-		if _, _, err := net.ParseCIDR(entry); err != nil {
-			entry = e.ConvertIPToCIDR(entry)
-		}
-		entrySet.Insert(entry)
-	}
-
-	return entrySet, nil
+	return sets.NewString(entries...), nil
 }
 
-func (e *execer) SyncIPSetEntries(ipsetObj *ipset.IPSet, allIPSetEntrySet, oldIPSetEntrySet sets.String, setType ipset.Type) error {
-	needAddEntries := allIPSetEntrySet.Difference(oldIPSetEntrySet)
-	for entry := range needAddEntries {
-		if err := e.AddIPSetEntry(ipsetObj, entry, setType); err != nil {
-			return err
-		}
+func convertIPToCIDR(ip string) string {
+	if strings.IndexByte(ip, '/') != -1 {
+		return ip
 	}
 
-	needDelEntries := oldIPSetEntrySet.Difference(allIPSetEntrySet)
-	for entry := range needDelEntries {
-		if err := e.DelIPSetEntry(ipsetObj, entry, setType); err != nil {
-			return err
-		}
+	if strings.IndexByte(ip, ':') == -1 {
+		return fmt.Sprintf("%s/32", ip)
+	} else {
+		return fmt.Sprintf("%s/128", ip)
 	}
-	return nil
 }
 
-func (e *execer) ConvertIPToCIDR(ip string) string {
-	return strings.Join([]string{ip, "32"}, "/")
+func newEntry(set *ipset.IPSet, addr string) (entry *ipset.Entry, err error) {
+	if ip := net.ParseIP(addr); ip != nil {
+		entry = &ipset.Entry{
+			IP:      addr,
+			SetType: HashIP,
+		}
+	} else if _, _, err := net.ParseCIDR(addr); err != nil {
+		return nil, err
+	} else {
+		entry = &ipset.Entry{
+			Net:     addr,
+			SetType: HashNet,
+		}
+	}
+
+	if !entry.Validate(set) {
+		return nil, fmt.Errorf("failed to validate ipset entry, ipset: %v, entry: %v", set, entry)
+	}
+
+	return entry, nil
 }

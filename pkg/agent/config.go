@@ -124,7 +124,10 @@ func (cfg Config) Manager() (*Manager, error) {
 		}
 	}
 
-	tm, err := strongswan.New()
+	tm, err := strongswan.New(
+		strongswan.StartAction("clear"),
+		strongswan.DpdDelay("10s"),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -134,10 +137,16 @@ func (cfg Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
+	ipt6, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
+	if err != nil {
+		return nil, err
+	}
+
 	m := &Manager{
 		Config: cfg,
 		tm:     tm,
-		ipt:    ipt,
+		ipt4:   ipt,
+		ipt6:   ipt6,
 		log:    klogr.New().WithName("manager"),
 
 		events:        make(chan struct{}),

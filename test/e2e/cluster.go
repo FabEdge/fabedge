@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
@@ -34,7 +34,9 @@ type Cluster struct {
 	client                client.Client
 	clientset             kubernetes.Interface
 	serviceCloudNginx     string
+	serviceCloudNginx6    string
 	serviceEdgeNginx      string
+	serviceEdgeNginx6     string
 	serviceHostCloudNginx string
 	serviceHostEdgeNginx  string
 	ready                 bool
@@ -47,21 +49,12 @@ func (c Cluster) isHost() bool {
 // generateCluster generates the cluster with its corresponding kubeconfig storage Dir and kubeconfig file named by actual IP address of master node.
 //
 // The API server maybe like "https://vip.edge.io:6443" in kubeconfig file, thus we need to change the domain of the API server to the actual IP address of master node
-// for accessing the API server outside of the cluster.
-func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
-	// path e.g. /tmp/e2ekubeconfig/10.20.8.20
-	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(cfgDir, ip))
+// for accessing the API server outside the cluster.
+func generateCluster(kubeconfigPath string) (cluster Cluster, err error) {
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return
 	}
-
-	// rewrite config host, e.g. "https://vip.edge.io:6443" => "https://10.20.8.20:6443"
-	segments := strings.Split(cfg.Host, ":")
-	if len(segments) < 2 {
-		return cluster, fmt.Errorf("the kubeconfig server %s can not rewrite to ip:port style, cluster ip is <%s> ", cfg.Host, ip)
-	}
-	segments[1] = fmt.Sprintf("//%s", ip)
-	cfg.Host = strings.Join(segments, ":")
 
 	cli, err := client.New(cfg, client.Options{})
 	if err != nil {
@@ -83,7 +76,7 @@ func generateCluster(cfgDir, ip string) (cluster Cluster, err error) {
 	if err != nil {
 		return
 	}
-	cluster.getServiceNames()
+	cluster.makeupServiceNames()
 
 	return cluster, nil
 }
@@ -110,7 +103,7 @@ func (c *Cluster) getNameAndRole() error {
 }
 
 // 将所有边缘节点添加到同一个社区，确保所有节点上的pod可以通信
-func (c Cluster) addAllEdgesToCommunity(name string) {
+func (c Cluster) addAllEdgesToCommunity() {
 	framework.Logf("add all edge nodes to community %s", communityEdges)
 
 	var nodes corev1.NodeList
@@ -153,11 +146,33 @@ func (c Cluster) addAllEdgesToCommunity(name string) {
 	})
 }
 
-func (c *Cluster) getServiceNames() {
+// Because coredns has cache, so to avoid old services DNS information
+// is cached, we give each service a random suffix per run
+func (c *Cluster) makeupServiceNames() {
 	c.serviceCloudNginx = getName(serviceCloudNginx)
+	c.serviceCloudNginx6 = getName(serviceCloudNginx6)
 	c.serviceEdgeNginx = getName(serviceEdgeNginx)
+	c.serviceEdgeNginx6 = getName(serviceEdgeNginx6)
 	c.serviceHostCloudNginx = getName(serviceHostCloudNginx)
 	c.serviceHostEdgeNginx = getName(serviceHostEdgeNginx)
+}
+
+func (c Cluster) cloudNginxServiceNames() []string {
+	serviceNames := []string{c.serviceCloudNginx}
+	if framework.TestContext.IPv6Enabled {
+		serviceNames = append(serviceNames, c.serviceCloudNginx6)
+	}
+
+	return serviceNames
+}
+
+func (c Cluster) edgeNginxServiceNames() []string {
+	serviceNames := []string{c.serviceEdgeNginx}
+	if framework.TestContext.IPv6Enabled {
+		serviceNames = append(serviceNames, c.serviceEdgeNginx6)
+	}
+
+	return serviceNames
 }
 
 func (c Cluster) prepareNamespace(namespace string) {
@@ -187,17 +202,13 @@ func (c Cluster) preparePodsOnEachNode(namespace string) {
 	framework.ExpectNoError(c.client.List(context.TODO(), &nodes))
 
 	for _, node := range nodes.Items {
-		serviceName := c.serviceCloudNginx
-		if nodeutil.IsEdgeNode(node) {
-			if framework.TestContext.IsMultiClusterTest() {
-				// multi cluster e2e-test not create pod on edge nodes
-				continue
-			}
-			serviceName = c.serviceEdgeNginx
+		if nodeutil.IsEdgeNode(node) && framework.TestContext.IsMultiClusterTest() {
+			// multi cluster e2e-test don't create pod on edge nodes
+			continue
 		}
 
 		framework.Logf("create nginx pod on node %s.%s", c.name, node.Name)
-		pod := newNginxPod(node, namespace, serviceName)
+		pod := newNginxPod(node, namespace)
 		createObject(c.client, &pod)
 
 		framework.Logf("create net-tool pod on node %s.%s", c.name, node.Name)
@@ -211,13 +222,8 @@ func (c Cluster) prepareHostNetworkPodsOnEachNode(namespace string) {
 	framework.ExpectNoError(c.client.List(context.TODO(), &nodes))
 
 	for _, node := range nodes.Items {
-		serviceName := c.serviceHostCloudNginx
-		if nodeutil.IsEdgeNode(node) {
-			serviceName = c.serviceHostEdgeNginx
-		}
-
 		framework.Logf("create hostNetwork nginx pod on node %s.%s", c.name, node.Name)
-		pod := newHostNginxPod(node, serviceName, namespace)
+		pod := newHostNginxPod(node, namespace)
 		createObject(c.client, &pod)
 
 		framework.Logf("create hostNetwork net-tool pod on node %s.%s", c.name, node.Name)
@@ -226,7 +232,7 @@ func (c Cluster) prepareHostNetworkPodsOnEachNode(namespace string) {
 	}
 }
 
-func (c Cluster) prepareService(name, namespace string) {
+func (c Cluster) prepareService(name, namespace string, ipFamily corev1.IPFamily, location Location, useHostNetwork bool) {
 	framework.Logf("create service %s/%s on %s", namespace, name, c.name)
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -234,9 +240,11 @@ func (c Cluster) prepareService(name, namespace string) {
 			Namespace: namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			Type: corev1.ServiceTypeClusterIP,
+			Type:       corev1.ServiceTypeClusterIP,
+			IPFamilies: []corev1.IPFamily{ipFamily},
 			Selector: map[string]string{
-				labelKeyInstance: name,
+				labelKeyLocation:       string(location),
+				labelKeyUseHostNetwork: fmt.Sprint(useHostNetwork),
 			},
 			Ports: []corev1.ServicePort{
 				{
@@ -301,6 +309,25 @@ func (c Cluster) ping(pod corev1.Pod, ip string) error {
 	timeout := fmt.Sprint(framework.TestContext.PingTimeout)
 	_, _, err := c.execute(pod, []string{"ping", "-w", timeout, "-c", "1", ip})
 	return err
+}
+
+func (c Cluster) expectPodsCanCommunicate(p1, p2 corev1.Pod, filter PodIPFilterFunc) {
+	if p1.Name == p2.Name {
+		return
+	}
+
+	if filter == nil {
+		filter = bothIPv4AndIPv6
+	}
+
+	framework.Logf("ping between %s and %s", p1.Name, p2.Name)
+	for _, podIP := range filter(p2.Status.PodIPs) {
+		framework.ExpectNoErrorWithOffset(2, c.ping(p1, podIP))
+	}
+
+	for _, podIP := range filter(p1.Status.PodIPs) {
+		framework.ExpectNoErrorWithOffset(2, c.ping(p2, podIP))
+	}
 }
 
 func (c Cluster) execCurl(pod corev1.Pod, url string) (string, string, error) {
@@ -429,4 +456,37 @@ func getIP(str string) string {
 func getName(prefix string) string {
 	time.Sleep(time.Millisecond)
 	return fmt.Sprintf("%s-%d", prefix, rand.Int31n(1000))
+}
+
+type PodIPFilterFunc func(podIPs []corev1.PodIP) []string
+
+func bothIPv4AndIPv6(podIPs []corev1.PodIP) []string {
+	var ips []string
+	for _, podIP := range podIPs {
+		ips = append(ips, podIP.IP)
+	}
+
+	return ips
+}
+
+func onlyIPv4(podIPs []corev1.PodIP) []string {
+	var ips []string
+	for _, podIP := range podIPs {
+		if netutil.IsIPv4String(podIP.IP) {
+			ips = append(ips, podIP.IP)
+		}
+	}
+
+	return ips
+}
+
+func onlyIPv6(podIPs []corev1.PodIP) []string {
+	var ips []string
+	for _, podIP := range podIPs {
+		if netutil.IsIPv6String(podIP.IP) {
+			ips = append(ips, podIP.IP)
+		}
+	}
+
+	return ips
 }

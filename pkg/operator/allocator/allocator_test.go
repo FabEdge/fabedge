@@ -18,36 +18,63 @@ import (
 	"net"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 )
 
 var _ = Describe("Allocator", func() {
+	DescribeTable("function New should return error if either any parameter is invalid", func(netCIDR string, subnetMaskSize int) {
+		_, err := allocator.New(netCIDR, subnetMaskSize)
+		Expect(err).NotTo(BeNil())
+	},
+		Entry("invalid IPv4 netCIDR", "2.2.2.2.2/16", 24),
+		Entry("invalid IPv4 subnetMaskSize", "2.2.2.2/16", 1),
+		Entry("invalid IPv4 subnetMaskSize", "2.2.2.2/16", 16),
+		Entry("invalid IPv4 subnetMaskSize", "2.2.2.2/16", 33),
+		Entry("invalid IPv6 netCIDR", "fd85:ee78:d8a6:8607::1:0000/129", 125),
+		Entry("invalid IPv6 subnetMaskSize", "fd85:ee78:d8a6:8607::1:0000/112", 1),
+		Entry("invalid IPv6 subnetMaskSize", "fd85:ee78:d8a6:8607::1:0000/112", 112),
+		Entry("invalid IPv6 subnetMaskSize", "fd85:ee78:d8a6:8607::1:0000/112", 129),
+	)
 
-	It("should support recording subnet allocation and reclaim subnet", func() {
-		alloc, _ := allocator.New("2.2.0.0/16")
-		_, subnet, _ := net.ParseCIDR("2.2.2.1/26")
+	DescribeTable("support recording subnet allocation and reclaim subnet", func(netCIDR string, subnetMaskSize int, inRangePodCIDR, outRangePodCIDR string) {
+		alloc, err := allocator.New(netCIDR, subnetMaskSize)
+		Expect(err).To(BeNil())
 
-		alloc.Record(*subnet)
+		_, subnet, _ := net.ParseCIDR(inRangePodCIDR)
+		Expect(alloc.Record(*subnet)).To(Succeed())
 		Expect(alloc.IsAllocated(*subnet)).To(BeTrue())
 
-		alloc.Reclaim(*subnet)
+		Expect(alloc.Reclaim(*subnet)).To(Succeed())
 		Expect(alloc.IsAllocated(*subnet)).To(BeFalse())
-	})
 
-	It("can check where an subnet is in pool's range", func() {
-		alloc, _ := allocator.New("2.2.0.0/16")
-		_, subnet, _ := net.ParseCIDR("2.2.2.1/26")
+		_, subnet, _ = net.ParseCIDR(outRangePodCIDR)
+		Expect(alloc.Record(*subnet)).To(HaveOccurred())
+		Expect(alloc.Reclaim(*subnet)).To(HaveOccurred())
+	},
+		Entry("", "2.2.0.0/16", 26, "2.2.2.1/26", "2.3.2.1/26"),
+		Entry("", "fd85:ee78:d8a6:8607::1:0000/112", 122, "fd85:ee78:d8a6:8607::1:0001/122", "fd85:ee79:d8a6:8607::1:0001/122"),
+	)
 
+	DescribeTable("can check where an subnet is in pool's range", func(netCIDR string, subnetMaskSize int, inRangePodCIDR, outRangePodCIDR string) {
+		alloc, err := allocator.New(netCIDR, subnetMaskSize)
+		Expect(err).To(BeNil())
+
+		_, subnet, _ := net.ParseCIDR(inRangePodCIDR)
 		Expect(alloc.Contains(*subnet)).To(BeTrue())
 
-		_, subnet, _ = net.ParseCIDR("2.3.2.1/26")
+		_, subnet, _ = net.ParseCIDR(outRangePodCIDR)
 		Expect(alloc.Contains(*subnet)).To(BeFalse())
-	})
+	},
+		Entry("IPv4", "2.2.0.0/16", 26, "2.2.2.1/26", "2.3.2.1/26"),
+		Entry("IPv6", "fd85:ee78:d8a6:8607::1:0000/112", 122, "fd85:ee78:d8a6:8607::1:0001/122", "fd85:ee79:d8a6:8607::1:0001/122"),
+	)
 
-	It("should get different subnet every time", func() {
-		alloc, _ := allocator.New("2.2.0.0/16")
+	DescribeTable("should get different subnet every time", func(netCIDR string, subnetMaskSize int) {
+		alloc, err := allocator.New(netCIDR, subnetMaskSize)
+		Expect(err).To(BeNil())
 
 		subnet, err := alloc.GetFreeSubnetBlock("node")
 		Expect(err).ShouldNot(HaveOccurred())
@@ -56,27 +83,15 @@ var _ = Describe("Allocator", func() {
 		subnets := make(map[string]bool, 1024)
 		for i := 0; i < 1023; i++ {
 			sn, err := alloc.GetFreeSubnetBlock("node")
-			Expect(err).ShouldNot(HaveOccurred())
+			Expect(err).To(BeNil())
 			Expect(alloc.IsAllocated(*sn)).To(BeTrue())
 
 			subnets[sn.String()] = true
 		}
 
 		Expect(subnets[subnet.String()]).Should(BeFalse())
-	})
-
-	It("should return error if no available subnets", func() {
-		alloc, _ := allocator.New("2.2.2.1/26")
-
-		_, err := alloc.GetFreeSubnetBlock("node")
-		Expect(err).ShouldNot(HaveOccurred())
-
-		_, err = alloc.GetFreeSubnetBlock("node")
-		Expect(allocator.IsNoTAvailable(err)).Should(BeTrue())
-	})
-
-	It("Method new should return an error given wrong cidr", func() {
-		_, err := allocator.New("2.2.2.2.2")
-		Expect(err).Should(HaveOccurred())
-	})
+	},
+		Entry("IPv4", "2.2.0.0/16", 26),
+		Entry("IPv6", "fd85:ee78:d8a6:8607::1:0000/112", 122),
+	)
 })

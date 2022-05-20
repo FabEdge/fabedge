@@ -17,6 +17,7 @@ package agent
 import (
 	"context"
 	"net"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +33,7 @@ var _ Handler = &allocatablePodCIDRsHandler{}
 
 type allocatablePodCIDRsHandler struct {
 	client          client.Client
-	allocator       allocator.Interface
+	allocators      []allocator.Interface
 	store           storepkg.Interface
 	newEndpoint     types.NewEndpointFunc
 	getEndpointName types.GetNameFunc
@@ -46,6 +47,7 @@ func (handler *allocatablePodCIDRsHandler) Do(ctx context.Context, node corev1.N
 		if err := handler.allocateSubnet(ctx, node); err != nil {
 			return err
 		}
+		handler.reclaimPodCIDRs(currentEndpoint.Subnets)
 	} else {
 		handler.store.SaveEndpointAsLocal(currentEndpoint)
 	}
@@ -58,13 +60,22 @@ func (handler *allocatablePodCIDRsHandler) isValidSubnets(cidrs []string) bool {
 		return false
 	}
 
+	if len(cidrs) != len(handler.allocators) {
+		return false
+	}
+
 	for _, cidr := range cidrs {
 		_, subnet, err := net.ParseCIDR(cidr)
 		if err != nil {
 			return false
 		}
 
-		if !handler.allocator.Contains(*subnet) {
+		inRange := false
+		for _, alloc := range handler.allocators {
+			inRange = inRange || alloc.Contains(*subnet)
+		}
+
+		if !inRange {
 			return false
 		}
 	}
@@ -75,33 +86,67 @@ func (handler *allocatablePodCIDRsHandler) isValidSubnets(cidrs []string) bool {
 func (handler *allocatablePodCIDRsHandler) allocateSubnet(ctx context.Context, node corev1.Node) error {
 	log := handler.log.WithValues("nodeName", node.Name)
 
-	log.V(5).Info("this node need subnet allocation")
-	subnet, err := handler.allocator.GetFreeSubnetBlock(node.Name)
-	if err != nil {
-		log.Error(err, "failed to allocate subnet for node")
-		return err
-	}
+	log.V(5).Info("this node need subnets allocation")
 
-	log = log.WithValues("subnet", subnet.String())
-	log.V(5).Info("an subnet is allocated to node")
+	var subnetStrs []string
+	var subnets []*net.IPNet
+	for i, alloc := range handler.allocators {
+		subnet, err := alloc.GetFreeSubnetBlock(node.Name)
+		if err != nil {
+			log.Error(err, "failed to allocate subnet for node")
+
+			// reclaim allocated subnet if possible
+			if i > 0 {
+				_ = handler.allocators[0].Reclaim(*subnets[0])
+			}
+			return err
+		}
+
+		subnets = append(subnets, subnet)
+		subnetStrs = append(subnetStrs, subnet.String())
+	}
+	subnetsStr := strings.Join(subnetStrs, ",")
+
+	log.V(5).Info("subnets are allocated to node", "subnets", subnetStrs)
 
 	if node.Annotations == nil {
 		node.Annotations = map[string]string{}
 	}
 	// for now, we just supply one subnet allocation
-	node.Annotations[constants.KeyPodSubnets] = subnet.String()
+	node.Annotations[constants.KeyPodSubnets] = subnetsStr
 
-	err = handler.client.Update(ctx, &node)
+	err := handler.client.Update(ctx, &node)
 	if err != nil {
-		log.Error(err, "failed to record node subnet allocation")
+		log.Error(err, "failed to record node subnet allocation", "subnets", subnetStrs)
 
-		handler.allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed")
+		for i, subnet := range subnets {
+			_ = handler.allocators[i].Reclaim(*subnet)
+		}
+
+		log.V(5).Info("subnets are reclaimed")
 		return err
 	}
 
 	handler.store.SaveEndpointAsLocal(handler.newEndpoint(node))
 	return nil
+}
+
+// reclaimPodCIDRs try its best to reclaim podCIDRs to corresponding
+// allocator, if a podCIDR is out of range of any allocators, it will just be discarded
+func (handler *allocatablePodCIDRsHandler) reclaimPodCIDRs(podCIDRs []string) {
+	for _, podCIDR := range podCIDRs {
+		_, ipNet, err := net.ParseCIDR(podCIDR)
+		if err != nil {
+			handler.log.Error(err, "failed to parse PodCIDR", "podCIDR", podCIDR)
+			continue
+		}
+
+		for _, alloc := range handler.allocators {
+			if alloc.Contains(*ipNet) {
+				_ = alloc.Reclaim(*ipNet)
+			}
+		}
+	}
 }
 
 func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName string) error {
@@ -122,8 +167,13 @@ func (handler *allocatablePodCIDRsHandler) Undo(ctx context.Context, nodeName st
 			log.Error(err, "invalid subnet, skip reclaiming subnets")
 			continue
 		}
-		handler.allocator.Reclaim(*subnet)
-		log.V(5).Info("subnet is reclaimed", "subnet", subnet)
+
+		for _, alloc := range handler.allocators {
+			if alloc.Contains(*subnet) {
+				_ = alloc.Reclaim(*subnet)
+				log.V(5).Info("subnet is reclaimed", "subnet", subnet)
+			}
+		}
 	}
 
 	return nil

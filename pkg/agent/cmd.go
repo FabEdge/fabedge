@@ -68,11 +68,12 @@ func Execute() error {
 		log.V(5).Info("tunnels or services config may change", "file", event.Name, "event", event.Op.String())
 		manager.notify()
 	})
-
 	if err != nil {
-		log.Error(err, "failed to watch tunnelsconf", "file", cfg.TunnelsConfPath)
+		log.Error(err, "failed to watch tunnels config file", "file", cfg.TunnelsConfPath)
+		return err
 	}
-	return err
+
+	return nil
 }
 
 func watchFiles(tunnelsConfpath, servicesConfPath string, handleFn func(event fsnotify.Event)) error {
