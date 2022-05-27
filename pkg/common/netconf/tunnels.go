@@ -17,7 +17,7 @@ package netconf
 import (
 	"io/ioutil"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 )
