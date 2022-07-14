@@ -17,7 +17,7 @@ GOLDFLAGS ?= -s -w
 LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
-KUBEBUILDER_VERSION ?= 2.3.1
+K8S_VERSION=1.21.2
 GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 GOARCH ?= amd64
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -28,6 +28,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 export KUBEBUILDER_ASSETS ?= $(GOBIN)
+export ACK_GINKGO_DEPRECATIONS ?= 1.16.4
 
 all: clean bin
 
@@ -116,6 +117,7 @@ else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
-install-test-dependencies:
-	curl -sL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v$(KUBEBUILDER_VERSION)/kubebuilder_$(KUBEBUILDER_VERSION)_$(GOOS)_$(GOARCH).tar.gz | \
+# https://book.kubebuilder.io/reference/envtest.html
+install-test-tools:
+	curl -sL "https://go.kubebuilder.io/test-tools/${K8S_VERSION}/${GOOS}/${GOARCH}" | \
                     tar -zx -C ${GOBIN} --strip-components=2

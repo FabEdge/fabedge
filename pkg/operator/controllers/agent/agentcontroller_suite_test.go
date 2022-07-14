@@ -64,7 +64,7 @@ var _ = AfterSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 })
 
-func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
+func newNodePodCIDRsInAnnotations(name, ips, subnets string) corev1.Node {
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -75,12 +75,7 @@ func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
 			PodCIDRs: []string{"2.2.2.2/26"},
 		},
 		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
+			Addresses: newInternalAddresses(ips),
 		},
 	}
 
@@ -93,7 +88,7 @@ func newNodePodCIDRsInAnnotations(name, ip, subnets string) corev1.Node {
 	return node
 }
 
-func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
+func newNodeUsingRawPodCIDRs(name, ips, subnets string) corev1.Node {
 	return corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -104,12 +99,7 @@ func newNodeUsingRawPodCIDRs(name, ip, subnets string) corev1.Node {
 			PodCIDRs: strings.Split(subnets, ","),
 		},
 		Status: corev1.NodeStatus{
-			Addresses: []corev1.NodeAddress{
-				{
-					Type:    corev1.NodeInternalIP,
-					Address: ip,
-				},
-			},
+			Addresses: newInternalAddresses(ips),
 		},
 	}
 }
@@ -127,4 +117,19 @@ func expectOwnerReference(obj client.Object, node corev1.Node) {
 		Controller:         &t,
 		BlockOwnerDeletion: &t,
 	}))
+}
+
+func newInternalAddresses(ips string) []corev1.NodeAddress {
+	var addresses []corev1.NodeAddress
+	for _, ip := range strings.Split(ips, ",") {
+		if ip == "" {
+			continue
+		}
+		addresses = append(addresses, corev1.NodeAddress{
+			Type:    corev1.NodeInternalIP,
+			Address: ip,
+		})
+	}
+
+	return addresses
 }

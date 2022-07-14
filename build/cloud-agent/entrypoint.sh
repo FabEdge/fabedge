@@ -14,7 +14,7 @@ else
    echo "entrypoint:    use iptables of legacy mode"
 fi
 
-cmd="/fabedge-cloud-agent $@"
+cmd="/usr/local/bin/fabedge-cloud-agent $@"
 echo "entrypoint:    run command: $cmd"
 
 exec $cmd

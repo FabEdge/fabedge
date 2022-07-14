@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"path"
 	"sync"
 	"testing"
 	"time"
@@ -33,10 +34,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	"github.com/fabedge/fabedge/test/e2e/framework"
 )
 
+type Location string
+
 const (
+	LocationEdge  = "edge"
+	LocationCloud = "cloud"
+
 	namespaceSingle = "fabedge-e2e-test"
 	communityEdges  = "e2e-all-edges"
 
@@ -47,14 +54,17 @@ const (
 	instanceNetTool     = "net-tool"
 	instanceHostNetTool = "host-net-tool"
 
-	labelKeyApp      = "app"
-	labelKeyInstance = "instance"
-
+	labelKeyApp            = "app"
+	labelKeyInstance       = "instance"
+	labelKeyLocation       = "location"
+	labelKeyUseHostNetwork = "use-host-network"
 	// add a random label, prevent kubeedge to cache it
 	labelKeyRand = "random"
 
 	serviceCloudNginx     = "cloud-nginx"
+	serviceCloudNginx6    = "cloud-nginx6"
 	serviceEdgeNginx      = "edge-nginx"
+	serviceEdgeNginx6     = "edge-nginx6"
 	serviceHostCloudNginx = "host-cloud-nginx"
 	serviceHostEdgeNginx  = "host-edge-nginx"
 )
@@ -146,12 +156,11 @@ func singleClusterE2eTestPrepare() {
 		framework.Failf("failed to get cluster name or role: %v", err)
 	}
 
-	cluster.getServiceNames()
-
+	cluster.makeupServiceNames()
 	clusters = append(clusters, cluster)
 
 	if framework.TestContext.CreateEdgeCommunity {
-		cluster.addAllEdgesToCommunity(communityEdges)
+		cluster.addAllEdgesToCommunity()
 	}
 	prepareClustersNamespace(namespaceSingle)
 	preparePodsOnEachClusterNode(namespaceSingle)
@@ -163,50 +172,32 @@ func singleClusterE2eTestPrepare() {
 
 func multiClusterE2eTestPrepare() {
 	framework.Logf("multi cluster e2e test")
-	// read dir get all cluster IPs
-	configDir := framework.TestContext.MultiClusterConfigDir
-	filelist, err := ioutil.ReadDir(configDir)
+	configDir := framework.TestContext.KubeConfigsDir
+	files, err := ioutil.ReadDir(configDir)
 	if err != nil {
 		framework.Failf("Error reading kubeconfig dir: %v", err)
 	}
 
-	clusterIPs := make([]string, 0)
-	for _, f := range filelist {
-		ipStr := f.Name()
-		clusterIPs = append(clusterIPs, ipStr)
-	}
-	if len(clusterIPs) <= 1 {
-		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterIPs))
+	if len(files) <= 1 {
+		framework.Failf("only %d kubeconfig files are found, can not do multi-cluster e2e test", len(files))
 	}
 
-	framework.Logf("get cluster IP list: %v from kubeconfigDir=%v", clusterIPs, configDir)
-
-	clusterNameList := []string{}
 	hasHostCluster := false
-
-	for _, clusterIP := range clusterIPs {
-		cluster, err := generateCluster(configDir, clusterIP)
+	for _, f := range files {
+		kubeconfigPath := path.Join(configDir, f.Name())
+		cluster, err := generateCluster(kubeconfigPath)
 		if err != nil {
-			framework.Logf("generating cluster <%s> err: %v", clusterIP, err)
+			framework.Logf("failed to get cluster info with kubeconfig: %s. %s", kubeconfigPath, err)
 			continue
 		}
 
-		if cluster.isHost() {
-			hasHostCluster = true
-		}
-
-		clusterNameList = append(clusterNameList, cluster.name+":"+clusterIP)
 		clusters = append(clusters, cluster)
+		hasHostCluster = hasHostCluster || cluster.isHost()
 	}
 
-	if len(clusterNameList) <= 1 {
-		framework.Failf("only %d clusters are found, can not do e2e test", len(clusterNameList))
-	}
 	if !hasHostCluster {
 		framework.Failf("no host cluster found, can not do e2e test")
 	}
-
-	framework.Logf("cluster list: %v", clusterNameList)
 
 	addAllConnectorsToCommunity()
 	prepareClustersNamespace(namespaceMulti)
@@ -268,11 +259,19 @@ func preparePodsOnEachClusterNode(namespace string) {
 
 func prepareServicesOnEachCluster(namespace string) {
 	for _, cluster := range clusters {
-		cluster.prepareService(cluster.serviceCloudNginx, namespace)
+		cluster.prepareService(cluster.serviceCloudNginx, namespace, corev1.IPv4Protocol, LocationCloud, false)
+		if framework.TestContext.IPv6Enabled {
+			cluster.prepareService(cluster.serviceCloudNginx6, namespace, corev1.IPv6Protocol, LocationCloud, false)
+		}
+
 		if !framework.TestContext.IsMultiClusterTest() {
-			cluster.prepareService(cluster.serviceEdgeNginx, namespace)
-			cluster.prepareService(cluster.serviceHostCloudNginx, namespace)
-			cluster.prepareService(cluster.serviceHostEdgeNginx, namespace)
+			cluster.prepareService(cluster.serviceEdgeNginx, namespace, corev1.IPv4Protocol, LocationEdge, false)
+			if framework.TestContext.IPv6Enabled {
+				cluster.prepareService(cluster.serviceEdgeNginx6, namespace, corev1.IPv6Protocol, LocationEdge, false)
+			}
+
+			cluster.prepareService(cluster.serviceHostCloudNginx, namespace, corev1.IPv4Protocol, LocationCloud, true)
+			cluster.prepareService(cluster.serviceHostEdgeNginx, namespace, corev1.IPv4Protocol, LocationEdge, true)
 		}
 	}
 }
@@ -292,30 +291,42 @@ func WaitForAllClusterPodsReady(namespace string) {
 	}
 }
 
-func newNginxPod(node corev1.Node, namespace, serviceName string) corev1.Pod {
+func newNginxPod(node corev1.Node, namespace string) corev1.Pod {
+	location := LocationCloud
+	if nodeutil.IsEdgeNode(node) {
+		location = LocationEdge
+	}
+
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("nginx-%s", node.Name),
 			Namespace: namespace,
 			Labels: map[string]string{
-				labelKeyApp:      appNetTool,
-				labelKeyInstance: serviceName,
-				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
+				labelKeyApp:            appNetTool,
+				labelKeyLocation:       location,
+				labelKeyUseHostNetwork: "false",
+				labelKeyRand:           fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
 		Spec: podSpec(node.Name),
 	}
 }
 
-func newHostNginxPod(node corev1.Node, serviceName, namespace string) corev1.Pod {
+func newHostNginxPod(node corev1.Node, namespace string) corev1.Pod {
+	location := LocationCloud
+	if nodeutil.IsEdgeNode(node) {
+		location = LocationEdge
+	}
+
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("host-nginx-%s", node.Name),
 			Namespace: namespace,
 			Labels: map[string]string{
-				labelKeyApp:      appNetTool,
-				labelKeyInstance: serviceName,
-				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
+				labelKeyApp:            appNetTool,
+				labelKeyLocation:       location,
+				labelKeyUseHostNetwork: "true",
+				labelKeyRand:           fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
 		Spec: hostNetworkPodSpec(node.Name),

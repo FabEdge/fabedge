@@ -91,8 +91,8 @@ func (m *Manager) receiveEndpoint() {
 
 		m.log.V(5).Info("Message is saved", "message", msg, "source", src.String())
 		func() {
-			m.lock.Lock()
-			defer m.lock.Unlock()
+			m.endpointLock.Lock()
+			defer m.endpointLock.Unlock()
 
 			m.peerEndpoints[msg.Name] = Endpoint{
 				Endpoint:   msg.Endpoint,

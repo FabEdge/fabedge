@@ -36,15 +36,15 @@ func GetEdgeNodeLabels() map[string]string {
 	return edgeNodeLabels
 }
 
-func GetIP(node corev1.Node) string {
-	var ip string
+func GetInternalIPs(node corev1.Node) []string {
+	var ips []string
 	for _, addr := range node.Status.Addresses {
 		if addr.Type == corev1.NodeInternalIP {
-			ip = addr.Address
+			ips = append(ips, addr.Address)
 		}
 	}
 
-	return ip
+	return ips
 }
 
 func GetPodCIDRs(node corev1.Node) []string {

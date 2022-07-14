@@ -35,6 +35,18 @@ func StartAction(startAction string) option {
 	}
 }
 
+func DpdAction(action string) option {
+	return func(m *StrongSwanManager) {
+		m.dpdAction = action
+	}
+}
+
+func DpdDelay(delay string) option {
+	return func(m *StrongSwanManager) {
+		m.dpdDelay = delay
+	}
+}
+
 func InterfaceID(id *uint) option {
 	return func(m *StrongSwanManager) {
 		m.interfaceID = id

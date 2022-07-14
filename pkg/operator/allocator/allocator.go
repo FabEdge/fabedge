@@ -24,12 +24,15 @@ import (
 	"time"
 )
 
-var errNoAvailableSubnet = fmt.Errorf("no subnet available")
+var (
+	ErrNoAvailableSubnet     = fmt.Errorf("no subnet available")
+	ErrInvalidSubnetMaskSize = fmt.Errorf("invalid subnet mask size")
+)
 
 type NextBlockFunc func() *net.IPNet
 type Interface interface {
-	Record(ipNet net.IPNet)
-	Reclaim(ipNet net.IPNet)
+	Record(ipNet net.IPNet) error
+	Reclaim(ipNet net.IPNet) error
 	IsAllocated(net.IPNet) bool
 	Contains(ipNet net.IPNet) bool
 	GetFreeSubnetBlock(hostname string) (*net.IPNet, error)
@@ -38,43 +41,70 @@ type Interface interface {
 var _ Interface = &allocator{}
 
 type allocator struct {
-	netCIDR string
-	pool    *net.IPNet
+	netCIDR   string
+	pool      *net.IPNet
+	blockMask net.IPMask
 
 	subnetCache map[string]bool
 
 	mux sync.RWMutex
 }
 
-func New(netCIDR string) (Interface, error) {
+func New(netCIDR string, subnetMaskSize int) (Interface, error) {
 	_, pool, err := net.ParseCIDR(netCIDR)
 	if err != nil {
 		return nil, err
 	}
 
+	var blockMask net.IPMask
+	if pool.IP.To4() != nil {
+		maskSize, _ := pool.Mask.Size()
+		if maskSize >= subnetMaskSize || subnetMaskSize > 32 {
+			return nil, ErrInvalidSubnetMaskSize
+		}
+		blockMask = net.CIDRMask(subnetMaskSize, 32)
+	} else {
+		maskSize, _ := pool.Mask.Size()
+		if maskSize >= subnetMaskSize || subnetMaskSize > 128 {
+			return nil, ErrInvalidSubnetMaskSize
+		}
+		blockMask = net.CIDRMask(subnetMaskSize, 128)
+	}
+
 	return &allocator{
 		netCIDR:     netCIDR,
+		blockMask:   blockMask,
 		pool:        pool,
 		subnetCache: make(map[string]bool),
 	}, nil
 }
 
-func (a *allocator) Record(ipNet net.IPNet) {
+func (a *allocator) Record(ipNet net.IPNet) error {
+	if !a.Contains(ipNet) {
+		return fmt.Errorf("%s is out of range of %s", ipNet, a.pool)
+	}
+
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
 	a.record(ipNet)
+	return nil
 }
 
 func (a *allocator) record(ipNet net.IPNet) {
 	a.subnetCache[ipNet.String()] = true
 }
 
-func (a *allocator) Reclaim(ipNet net.IPNet) {
+func (a *allocator) Reclaim(ipNet net.IPNet) error {
+	if !a.Contains(ipNet) {
+		return fmt.Errorf("%s is out of range of %s", ipNet, a.pool)
+	}
+
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
 	a.reclaim(ipNet)
+	return nil
 }
 
 func (a *allocator) reclaim(ipNet net.IPNet) {
@@ -109,14 +139,11 @@ func (a *allocator) GetFreeSubnetBlock(hostname string) (*net.IPNet, error) {
 		}
 	}
 
-	return nil, errNoAvailableSubnet
+	return nil, ErrNoAvailableSubnet
 }
 
 func (a *allocator) generateNextBlock(hostname string) NextBlockFunc {
-	pool := a.pool
-
-	baseIP := pool.IP
-	blockMask := net.CIDRMask(26, 32)
+	pool, baseIP, blockMask := a.pool, a.pool.IP, a.blockMask
 
 	// Determine the number of blocks within this pool.
 	ones, size := pool.Mask.Size()
@@ -230,5 +257,5 @@ func lastIP(subnet net.IPNet) net.IP {
 }
 
 func IsNoTAvailable(err error) bool {
-	return err == errNoAvailableSubnet
+	return err == ErrNoAvailableSubnet
 }

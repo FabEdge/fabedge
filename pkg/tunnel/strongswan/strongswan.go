@@ -42,6 +42,8 @@ type StrongSwanManager struct {
 	// The value trap installs a trap policy, which triggers the tunnel as soon as matching traffic has been detected.
 	// The value start initiates the connection actively.
 	startAction string
+	dpdAction   string
+	dpdDelay    string
 	interfaceID *uint
 }
 
@@ -53,6 +55,7 @@ type connection struct {
 	Children    map[string]childSAConf `vici:"children"`
 	IF_ID_IN    *uint                  `vici:"if_id_in"`
 	IF_ID_OUT   *uint                  `vici:"if_id_out"`
+	DpdDelay    string                 `vici:"dpd_delay,omitempty"`
 }
 
 type authConf struct {
@@ -187,6 +190,7 @@ func (m StrongSwanManager) IsActive() (bool, error) {
 		}
 
 		msg = msg.Get("ikesas").(*vici.Message)
+
 		total, _ := strconv.Atoi(msg.Get("total").(string))
 		active = total > 0
 
@@ -216,21 +220,25 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 			ID:         cnf.RemoteID,
 			AuthMethod: "pubkey",
 		},
+		DpdDelay: m.dpdDelay,
 		Children: map[string]childSAConf{
 			fmt.Sprintf("%s-p2p", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
+				DpdAction:   m.dpdAction,
 			},
 			fmt.Sprintf("%s-n2p", cnf.Name): {
 				LocalTS:     cnf.LocalNodeSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
 				StartAction: m.startAction,
+				DpdAction:   m.dpdAction,
 			},
 			fmt.Sprintf("%s-p2n", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteNodeSubnets,
 				StartAction: m.startAction,
+				DpdAction:   m.dpdAction,
 			},
 		},
 	}

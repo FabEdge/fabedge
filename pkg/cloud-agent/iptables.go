@@ -15,11 +15,11 @@
 package cloud_agent
 
 import (
+	"fmt"
+
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/fabedge/fabedge/pkg/connector/routing"
-	ipsetUtil "github.com/fabedge/fabedge/pkg/util/ipset"
+	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -30,94 +30,123 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
 	IPSetRemotePodCIDR      = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetRemotePodCIDR6     = "FABEDGE-REMOTE-POD-CIDR6"
 )
 
-var (
-	ipt   *iptables.IPTables
-	ipset = ipsetUtil.New()
-)
+type IptablesHandler struct {
+	ipt        *iptables.IPTables
+	ipset      ipsetutil.Interface
+	ipsetName  string
+	hashFamily string
+}
 
-func init() {
-	var err error
-	ipt, err = iptables.New()
+func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
+	var (
+		ipsetName  string
+		hashFamily string
+	)
+
+	switch version {
+	case iptables.ProtocolIPv4:
+		ipsetName, hashFamily = IPSetRemotePodCIDR, ipsetutil.ProtocolFamilyIPV4
+	case iptables.ProtocolIPv6:
+		ipsetName, hashFamily = IPSetRemotePodCIDR6, ipsetutil.ProtocolFamilyIPV6
+	default:
+		return nil, fmt.Errorf("unknown version")
+	}
+
+	ipt, err := iptables.NewWithProtocol(version)
 	if err != nil {
-		klog.Exit("failed to get iptables client:%s", err)
+		return nil, err
+	}
+
+	return &IptablesHandler{
+		ipt:        ipt,
+		ipset:      ipsetutil.New(),
+		ipsetName:  ipsetName,
+		hashFamily: hashFamily,
+	}, nil
+}
+
+func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
+	if err := h.syncRemotePodCIDRSet(remotePodCIDRs); err != nil {
+		logger.Error(err, "failed to sync ipset", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+	} else {
+		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+	}
+
+	if err := h.syncForwardRules(); err != nil {
+		logger.Error(err, "failed to sync iptables forward chain")
+	} else {
+		logger.V(5).Info("iptables forward chain is synced")
+	}
+
+	if err := h.syncPostRoutingRules(); err != nil {
+		logger.Error(err, "failed to sync iptables post-routing chain")
+	} else {
+		logger.V(5).Info("iptables post-routing chain is synced")
 	}
 }
 
-func syncForwardRules() (err error) {
-	if err = ipt.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
+func (h IptablesHandler) syncForwardRules() (err error) {
+	if err = h.ipt.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
 		return err
 	}
-	exists, err := ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
+		if err = h.ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
 			return err
 		}
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetRemotePodCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", IPSetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func syncPostRoutingRules() (err error) {
-	if err = ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+func (h IptablesHandler) syncPostRoutingRules() (err error) {
+	if err = h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
 		return err
 	}
-	exists, err := ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
 			return err
 		}
 	}
 
-	if err = ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	return ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", IPSetRemotePodCIDR, "src", "-j", "ACCEPT")
+	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
 
 }
 
-func syncRemotePodCIDRSet(cp routing.ConnectorPrefixes) error {
-	ipsetObj, err := ipset.EnsureIPSet(IPSetRemotePodCIDR, ipsetUtil.HashNet)
-	if err != nil {
-		return err
+func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
+	set := &ipsetutil.IPSet{
+		Name:       h.ipsetName,
+		HashFamily: h.hashFamily,
+		SetType:    ipsetutil.HashNet,
 	}
 
-	allRemotePodCIDRs := getAllRemotePodCIDRs(cp)
-
-	oldRemotePodCIDRs, err := getOldRemotePodCIDRs()
-	if err != nil {
-		return err
-	}
-
-	return ipset.SyncIPSetEntries(ipsetObj, allRemotePodCIDRs, oldRemotePodCIDRs, ipsetUtil.HashNet)
-}
-
-func getAllRemotePodCIDRs(cp routing.ConnectorPrefixes) sets.String {
-	return sets.NewString(cp.RemotePrefixes...)
-}
-
-func getOldRemotePodCIDRs() (sets.String, error) {
-	return ipset.ListEntries(IPSetRemotePodCIDR, ipsetUtil.HashNet)
+	return h.ipset.EnsureIPSet(set, sets.NewString(remotePodCIDRs...))
 }

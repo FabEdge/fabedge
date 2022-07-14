@@ -16,18 +16,28 @@ package routing
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"strings"
+
+	"github.com/vishvananda/netlink"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2/klogr"
+
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
-	routeUtil "github.com/fabedge/fabedge/pkg/util/route"
-	"github.com/vishvananda/netlink"
-	"net"
-	"strings"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
+	routeutil "github.com/fabedge/fabedge/pkg/util/route"
 )
 
+var logger = klogr.New().WithName("router")
+
 type ConnectorPrefixes struct {
-	NodeName       string   `json:"name"`
-	LocalPrefixes  []string `json:"local-prefixes"`
-	RemotePrefixes []string `json:"remote-prefixes"`
+	NodeName        string   `json:"name"`
+	LocalPrefixes   []string `json:"local-prefixes"`
+	LocalPrefixes6  []string `json:"local-prefixes6"`
+	RemotePrefixes  []string `json:"remote-prefixes"`
+	RemotePrefixes6 []string `json:"remote-prefixes6"`
 }
 
 type Routing interface {
@@ -36,118 +46,167 @@ type Routing interface {
 	GetConnectorPrefixes() (*ConnectorPrefixes, error)
 }
 
+type GeneralRouter struct {
+	getLocalPrefixes func() (lp4, lp6 []string, err error)
+}
+
 func GetRouter(cni string) (Routing, error) {
 	var router Routing
-	var err error
-
 	switch strings.ToUpper(cni) {
 	case "CALICO":
-		router = NewCalicoRouter()
+		router = &GeneralRouter{getLocalPrefixes: getCalicoLocalPrefixes}
 	case "FLANNEL":
-		router = NewFlannelRouter()
+		router = &GeneralRouter{getLocalPrefixes: getFlannelLocalPrefixes}
 	default:
-		err = fmt.Errorf("cni:%s is not implemented", cni)
+		return nil, fmt.Errorf("cni:%s is not implemented", cni)
 	}
 
-	return router, err
+	return router, nil
 }
 
-func IsInConns(dst *net.IPNet, connections []tunnel.ConnConfig) (bool, error) {
-	for _, con := range connections {
-		for _, subnet := range con.RemoteSubnets {
-			s, err := netlink.ParseIPNet(subnet)
-			if err != nil {
-				return false, err
-			}
-			if s.String() == dst.String() {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
-}
-
-func addAllEdgeRoutes(conns []tunnel.ConnConfig, table int) error {
-	gw, err := routeUtil.GetDefaultGateway()
-	if err != nil {
+func (_ GeneralRouter) SyncRoutes(connections []tunnel.ConnConfig) error {
+	if err := purgeStaleStrongSwanRoutes(connections); err != nil {
 		return err
 	}
-
-	for _, conn := range conns {
-		for _, subnet := range conn.RemoteSubnets {
-			s, err := netlink.ParseIPNet(subnet)
-			if err != nil {
-				return err
-			}
-			// add into table 220
-			route := netlink.Route{Dst: s, Gw: gw, Table: table}
-			err = netlink.RouteAdd(&route)
-			if err != nil && !routeUtil.FileExistsError(err) {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return addAllEdgeRoutes(connections)
 }
 
-func delEdgeRoute(subnet *net.IPNet) error {
-	gw, err := routeUtil.GetDefaultGateway()
+func (_ GeneralRouter) CleanRoutes(conns []tunnel.ConnConfig) error {
+	dstSet := getRemoteSubnetSet(conns)
+	return routeutil.PurgeStrongSwanRoutes(routeutil.NewDstBlacklist(dstSet))
+}
+
+func (r GeneralRouter) GetConnectorPrefixes() (*ConnectorPrefixes, error) {
+	cp := new(ConnectorPrefixes)
+
+	lp4, lp6, err := r.getLocalPrefixes()
 	if err != nil {
-		return err
+		logger.Error(err, "failed to get local prefixes")
+		return nil, err
 	}
-	route := netlink.Route{Dst: subnet, Gw: gw, Table: constants.TableStrongswan}
-	return netlink.RouteDel(&route)
-}
+	cp.LocalPrefixes = lp4
+	cp.LocalPrefixes6 = lp6
 
-func delAllEdgeRoutes(conns []tunnel.ConnConfig) error {
-	for _, conn := range conns {
-		for _, subnet := range conn.RemoteSubnets {
-			s, err := netlink.ParseIPNet(subnet)
-			if err != nil {
-				return err
-			}
-			err = delEdgeRoute(s)
-			if err != nil && !routeUtil.NoSuchProcessError(err) {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func delRoutesNotInConnections(connections []tunnel.ConnConfig, table int) error {
-	var routeFilter = &netlink.Route{
-		Table: table,
-	}
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
+	remotePrefixes4, remotePrefixes6, err := getRemotePrefixes()
 	if err != nil {
-		return err
+		logger.Error(err, "failed to get remote prefixes")
+		return nil, err
+	}
+	cp.RemotePrefixes = remotePrefixes4
+	cp.RemotePrefixes6 = remotePrefixes6
+
+	cp.NodeName, _ = os.Hostname()
+
+	return cp, nil
+}
+
+func getFlannelLocalPrefixes() (lp4, lp6 []string, err error) {
+	cni0, err := netlink.LinkByName("cni0")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	routes, err := netlink.RouteList(cni0, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	for _, r := range routes {
-		if yes, err := IsInConns(r.Dst, connections); err == nil && !yes {
-			err = delEdgeRoute(r.Dst)
+		if netutil.IsIPv4CIDR(r.Dst) {
+			lp4 = append(lp4, r.Dst.String())
+		} else {
+			lp6 = append(lp6, r.Dst.String())
 		}
 	}
 
-	return err
+	return lp4, lp6, nil
 }
 
-func GetRemotePrefixes() ([]string, error) {
+func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
+	tunl, err := netlink.LinkByName("tunl0")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	addrs, err := netlink.AddrList(tunl, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, a := range addrs {
+		ipNet := a.IPNet
+		if netutil.IsIPv4CIDR(ipNet) {
+			lp4 = append(lp4, ipNet.String())
+		} else {
+			lp6 = append(lp6, ipNet.String())
+		}
+	}
+
+	return lp4, lp6, nil
+}
+
+func addAllEdgeRoutes(conns []tunnel.ConnConfig) error {
+	logger.V(5).Info("add routes for edge pod CIDRs in strongswan table")
+
+	var gatewayIPs []net.IP
+	gw4, err := routeutil.GetDefaultGateway()
+	if err != nil {
+		logger.Error(err, "failed to get IPv4 default gateway")
+	} else {
+		gatewayIPs = append(gatewayIPs, gw4)
+	}
+
+	gw6, err := routeutil.GetDefaultGateway6()
+	if err != nil {
+		logger.Error(err, "failed to get IPv6 default gateway")
+	} else {
+		gatewayIPs = append(gatewayIPs, gw6)
+	}
+
+	for _, gw := range gatewayIPs {
+		for _, conn := range conns {
+			if err = routeutil.EnsureStrongswanRoutes(conn.RemoteSubnets, gw); err != nil {
+				logger.Error(err, "failed to maintain routes under strongswan table", "connectionName", conn.Name, "RemoteSubnets", conn.RemoteSubnets, "gw", gw)
+			}
+		}
+	}
+
+	return nil
+}
+
+func purgeStaleStrongSwanRoutes(connections []tunnel.ConnConfig) error {
+	logger.V(5).Info("purge stale strongswan routes")
+	dstSet := getRemoteSubnetSet(connections)
+	return routeutil.PurgeStrongSwanRoutes(routeutil.NewDstWhitelist(dstSet))
+}
+
+func getRemoteSubnetSet(connections []tunnel.ConnConfig) sets.String {
+	set := sets.NewString()
+	for _, conn := range connections {
+		for _, subnet := range conn.RemoteSubnets {
+			set.Insert(subnet)
+		}
+	}
+
+	return set
+}
+
+func getRemotePrefixes() (prefixes4, prefixes6 []string, err error) {
 	var routeFilter = &netlink.Route{
 		Table: constants.TableStrongswan,
 	}
-	routes, err := netlink.RouteListFiltered(netlink.FAMILY_V4, routeFilter, netlink.RT_FILTER_TABLE)
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, routeFilter, netlink.RT_FILTER_TABLE)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	var prefixes []string
 	for _, r := range routes {
-		prefixes = append(prefixes, r.Dst.String())
+		if netutil.IsIPv4CIDR(r.Dst) {
+			prefixes4 = append(prefixes4, r.Dst.String())
+		} else {
+			prefixes6 = append(prefixes6, r.Dst.String())
+		}
 	}
 
-	return prefixes, nil
+	return prefixes4, prefixes6, nil
 }

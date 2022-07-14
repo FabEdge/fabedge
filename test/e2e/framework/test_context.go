@@ -35,29 +35,30 @@ const (
 )
 
 type Context struct {
-	MultiClusterConfigDir string
-	KubeConfig            string
-	EdgeLabels            string
-	GenReport             bool
-	ReportFile            string
-	WaitTimeout           int64
-	PingTimeout           int64
-	CurlTimeout           int64
-	NetToolImage          string
-	PreserveResources     string
-	ShowExecError         bool
-	CreateEdgeCommunity   bool
+	KubeConfigsDir      string
+	KubeConfig          string
+	EdgeLabels          string
+	GenReport           bool
+	ReportFile          string
+	WaitTimeout         int64
+	PingTimeout         int64
+	CurlTimeout         int64
+	NetToolImage        string
+	PreserveResources   string
+	ShowExecError       bool
+	CreateEdgeCommunity bool
+	IPv6Enabled         bool
 }
 
 func (c Context) IsMultiClusterTest() bool {
-	return len(c.MultiClusterConfigDir) > 0
+	return len(c.KubeConfigsDir) > 0
 }
 
 var TestContext Context
 
 func RegisterAndHandleFlags() {
-	flag.StringVar(&TestContext.MultiClusterConfigDir, "multi-cluster-kube-config-dir", "",
-		"Multi cluster kubeconfig each named by it's own host IP, all stored in this dir for testing")
+	flag.StringVar(&TestContext.KubeConfigsDir, "kube-configs-dir", "",
+		"The path to a directory which contains all kubeconfig files of clusters to test")
 	flag.StringVar(&TestContext.KubeConfig, "kube-config", clientcmd.RecommendedHomeFile,
 		"Path to config containing embedded authinfo for kubernetes.")
 	flag.StringVar(&TestContext.PreserveResources, "preserve-resources", string(PreserveResourcesOnFailure),
@@ -72,7 +73,7 @@ func RegisterAndHandleFlags() {
 		"How long for ping command to wait for response. Unit: seconds")
 	flag.Int64Var(&TestContext.CurlTimeout, "curl-timeout", 30,
 		"Maxtime for curl to finish. Unit: seconds")
-	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "praqma/network-multitool:minimal",
+	flag.StringVar(&TestContext.NetToolImage, "net-tool-image", "fabedge/net-tool:v0.1.0",
 		"The net-tool image")
 	flag.BoolVar(&TestContext.ShowExecError, "show-exec-error", false,
 		"display error of executing curl or ping")
@@ -80,6 +81,7 @@ func RegisterAndHandleFlags() {
 		"Labels to filter edge nodes, (e.g. key1,key2=,key3=value3)")
 	flag.BoolVar(&TestContext.CreateEdgeCommunity, "create-edge-community", true,
 		"Create community for all edge nodes if set to true")
+	flag.BoolVar(&TestContext.IPv6Enabled, "6", false, "Whether to test IPv6 services")
 
 	flag.Parse()
 

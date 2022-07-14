@@ -15,7 +15,8 @@
 package connector
 
 import (
-	"k8s.io/klog/v2"
+	"fmt"
+	"strings"
 
 	"github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/common/netconf"
@@ -23,9 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-var (
-	connNames sets.String
-)
+var errInvalidEndpointType = fmt.Errorf("invalid endpoint type")
 
 func (m *Manager) readCfgFromFile() error {
 	nc, err := netconf.LoadNetworkConf(m.TunnelConfigFile)
@@ -33,12 +32,9 @@ func (m *Manager) readCfgFromFile() error {
 		return err
 	}
 
-	m.connections = nil
-	connNames = sets.NewString()
-
+	var connections []tunnel.ConnConfig
 	for _, peer := range nc.Peers {
-
-		con := tunnel.ConnConfig{
+		conn := tunnel.ConnConfig{
 			Name: peer.Name,
 
 			LocalID:          nc.ID,
@@ -54,55 +50,138 @@ func (m *Manager) readCfgFromFile() error {
 			RemoteNodeSubnets: peer.NodeSubnets,
 			RemoteType:        peer.Type,
 		}
-		m.connections = append(m.connections, con)
-		connNames.Insert(con.Name)
+		connections = append(connections, conn)
 	}
+	m.connections = connections
 
+	m.classifyConnectionSubnets()
 	return nil
 }
 
-func (m *Manager) syncConnections() error {
-	if err := m.readCfgFromFile(); err != nil {
-		return err
-	}
+func (m *Manager) classifyConnectionSubnets() {
+	var (
+		edgePodCIDRs   = sets.NewString()
+		edgePodCIDRs6  = sets.NewString()
+		edgeNodeCIDRs  = sets.NewString()
+		edgeNodeCIDRs6 = sets.NewString()
 
-	klog.V(5).Infof("connections:%+v", m.connections)
+		cloudPodCIDRs   = sets.NewString()
+		cloudPodCIDRs6  = sets.NewString()
+		cloudNodeCIDRs  = sets.NewString()
+		cloudNodeCIDRs6 = sets.NewString()
+	)
 
-	oldNames, err := m.tm.ListConnNames()
-	if err != nil {
-		return err
-	}
+	for _, conn := range m.connections {
+		for _, cidr := range conn.RemoteSubnets {
+			if isIPv6(cidr) {
+				edgePodCIDRs6.Insert(cidr)
+			} else {
+				edgePodCIDRs.Insert(cidr)
+			}
+		}
 
-	// remove inactive connections
-	for _, name := range oldNames {
-		if !connNames.Has(name) {
-			if err = m.tm.UnloadConn(name); err != nil {
-				return err
+		for _, cidr := range conn.LocalSubnets {
+			if isIPv6(cidr) {
+				cloudPodCIDRs6.Insert(cidr)
+			} else {
+				cloudPodCIDRs.Insert(cidr)
+			}
+		}
+
+		if !inSameCluster(conn) {
+			continue
+		}
+
+		for _, cidr := range conn.RemoteNodeSubnets {
+			if isIPv6(cidr) {
+				edgeNodeCIDRs6.Insert(cidr)
+			} else {
+				edgeNodeCIDRs.Insert(cidr)
+			}
+		}
+
+		for _, cidr := range conn.LocalNodeSubnets {
+			if isIPv6(cidr) {
+				cloudNodeCIDRs6.Insert(cidr)
+			} else {
+				cloudNodeCIDRs.Insert(cidr)
 			}
 		}
 	}
 
+	m.iptHandler.setIPSetEntrySet(edgePodCIDRs, edgeNodeCIDRs, cloudPodCIDRs, cloudNodeCIDRs)
+	m.ipt6Handler.setIPSetEntrySet(edgePodCIDRs6, edgeNodeCIDRs6, cloudPodCIDRs6, cloudNodeCIDRs6)
+}
+
+func (m *Manager) syncConnections() error {
+	err := m.readCfgFromFile()
+	if err != nil {
+		m.log.Error(err, "failed to read tunnel config file")
+		return err
+	} else {
+		m.log.V(5).Info("new connections is loaded", "connections", m.connections)
+	}
+
 	// load active connections
+	nameSet := sets.NewString()
 	for _, c := range m.connections {
+		nameSet.Insert(c.Name)
+
+		log := m.log.WithValues("connection", c)
 		switch c.RemoteType {
 		case v1alpha1.EdgeNode:
 			c.LocalAddress = nil  // we do not care local ip address
 			c.RemoteAddress = nil // we just wait the connection from remote edge nodes
 			if err = m.tm.LoadConn(c); err != nil {
-				klog.Errorf("failed to load connection:%s", err)
+				log.Error(err, "failed to load connection")
 			}
 		case v1alpha1.Connector:
 			c.LocalAddress = nil // we do not care local ip address
 			if err = m.tm.LoadConn(c); err != nil {
-				klog.Errorf("failed to load connection:%s", err)
+				log.Error(err, "failed to load connection")
 			}
 			if err = m.tm.InitiateConn(c.Name); err != nil {
-				klog.Errorf("failed to initiate connection:%s", err)
+				log.Error(err, "failed to initiate connection")
 			}
 		default:
-			klog.Errorf("connection type:%s is not implemented", c.RemoteType)
+			log.Error(errInvalidEndpointType, "failed to load connection", "remoteType", c.RemoteType)
+		}
+	}
+
+	oldNames, err := m.tm.ListConnNames()
+	if err != nil {
+		m.log.Error(err, "failed to get existing connection from tunnel manager")
+		return err
+	}
+
+	// remove inactive connections
+	for _, name := range oldNames {
+		if nameSet.Has(name) {
+			continue
+		}
+
+		if err = m.tm.UnloadConn(name); err != nil {
+			m.log.Error(err, "failed to unload tunnel connection", "name", name)
+		} else {
+			m.log.V(5).Info("A staled tunnel connection is unloaded", "name", name)
 		}
 	}
 
 	return nil
+}
+
+// isIP6 check if ip is an IP6 address or a CIDR address
+func isIPv6(ip string) bool {
+	return strings.IndexByte(ip, ':') != -1
+}
+
+func inSameCluster(c tunnel.ConnConfig) bool {
+	if c.RemoteType == v1alpha1.Connector {
+		return false
+	}
+
+	l := strings.Split(c.LocalID, ".")  // e.g. fabedge.connector
+	r := strings.Split(c.RemoteID, ".") // e.g. fabedge.edge1
+
+	return l[0] == r[0]
 }

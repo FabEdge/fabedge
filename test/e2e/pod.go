@@ -34,6 +34,10 @@ var _ = Describe("FabEdge", func() {
 				framework.ExpectNoError(err)
 
 				for _, c2 := range clusters {
+					if c1.name == c2.name {
+						continue
+					}
+
 					cloudPodsJ, _, err := framework.ListCloudAndEdgePods(c2.client,
 						client.InNamespace(namespaceMulti),
 						client.MatchingLabels{labelKeyInstance: instanceNetTool},
@@ -42,9 +46,14 @@ var _ = Describe("FabEdge", func() {
 
 					for _, p1 := range cloudPodsI {
 						for _, p2 := range cloudPodsJ {
-							framework.Logf("ping between %s of cluster %s and %s of cluster %s", p1.Name, c1.name, p2.Name, c2.name)
-							framework.ExpectNoError(c1.ping(p1, p2.Status.PodIP))
-							framework.ExpectNoError(c2.ping(p2, p1.Status.PodIP))
+							framework.Logf("ping between %s/%s and %s/%s", c1.name, p1.Name, c2.name, p2.Name)
+							for _, podIP := range p2.Status.PodIPs {
+								framework.ExpectNoError(c1.ping(p1, podIP.IP))
+							}
+
+							for _, podIP := range p1.Status.PodIPs {
+								framework.ExpectNoError(c2.ping(p2, podIP.IP))
+							}
 						}
 					}
 				}
@@ -67,16 +76,9 @@ var _ = Describe("FabEdge", func() {
 			)
 			framework.ExpectNoError(err)
 
-			By("pods communicate with each other")
 			for _, p1 := range edgePods {
 				for _, p2 := range edgePods {
-					if p1.Name == p2.Name {
-						continue
-					}
-
-					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
-					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+					cluster.expectPodsCanCommunicate(p1, p2, bothIPv4AndIPv6)
 				}
 			}
 		})
@@ -89,17 +91,10 @@ var _ = Describe("FabEdge", func() {
 			)
 			framework.ExpectNoError(err)
 
-			By("pods communicate with each other")
 			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 			for _, p1 := range edgePods {
 				for _, p2 := range cloudPods {
-					if p1.Name == p2.Name {
-						continue
-					}
-
-					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
-					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+					cluster.expectPodsCanCommunicate(p1, p2, bothIPv4AndIPv6)
 				}
 			}
 		})
@@ -122,14 +117,13 @@ var _ = Describe("FabEdge", func() {
 			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 			for _, p1 := range edgePods {
 				for _, p2 := range hostEdgePods {
-					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
-					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+					// for now, not all edge framework support dual stack, so only IPv4 is tested
+					cluster.expectPodsCanCommunicate(p1, p2, onlyIPv4)
 				}
 			}
 		})
 
-		// 测试非主机网络Pods与主机网络Pod的互通
+		// 测试非主机网络Pods与主机网络Pod的云边互通
 		It("let edge pods communicate with cloud pods using host network[p2n][e2c]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
@@ -143,18 +137,16 @@ var _ = Describe("FabEdge", func() {
 			)
 			framework.ExpectNoError(err)
 
-			By("pods communicate with each other")
 			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 			for _, p1 := range edgePods {
 				for _, p2 := range hostCloudPods {
-					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
-					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+					// for now, not all edge framework support dual stack, so only IPv4 is tested
+					cluster.expectPodsCanCommunicate(p1, p2, onlyIPv4)
 				}
 			}
 		})
 
-		// 测试主机网络Pods与非主机网络Pod的互通
+		// 测试主机网络边缘Pods与非主机网络Pod的互通
 		It("let edge pods using host network communicate with cloud pods[n2p][e2c]", func() {
 			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
@@ -172,9 +164,8 @@ var _ = Describe("FabEdge", func() {
 			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 			for _, p1 := range hostEdgePods {
 				for _, p2 := range cloudPods {
-					framework.Logf("ping between %s and %s", p1.Name, p2.Name)
-					framework.ExpectNoError(cluster.ping(p1, p2.Status.PodIP))
-					framework.ExpectNoError(cluster.ping(p2, p1.Status.PodIP))
+					// for now, not all edge framework support dual stack, so only IPv4 is tested
+					cluster.expectPodsCanCommunicate(p1, p2, onlyIPv4)
 				}
 			}
 		})
