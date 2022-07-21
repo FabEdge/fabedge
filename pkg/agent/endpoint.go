@@ -20,6 +20,8 @@ import (
 	"path"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/fabedge/fabedge/pkg/common/netconf"
 )
 
@@ -37,6 +39,7 @@ func (m *Manager) loadNetworkConf() error {
 		Endpoint: conf.Endpoint,
 	}
 
+	nameSet := sets.NewString()
 	for _, peer := range conf.Peers {
 		// local endpoints has higher priority than tunnel endpoint
 		if old := m.peerEndpoints[peer.Name]; old.IsLocal {
@@ -45,6 +48,17 @@ func (m *Manager) loadNetworkConf() error {
 
 		m.peerEndpoints[peer.Name] = Endpoint{
 			Endpoint: peer,
+		}
+		nameSet.Insert(peer.Name)
+	}
+
+	for name, peer := range m.peerEndpoints {
+		if peer.IsLocal {
+			continue
+		}
+
+		if !nameSet.Has(name) {
+			delete(m.peerEndpoints, name)
 		}
 	}
 
