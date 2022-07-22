@@ -16,7 +16,6 @@
 
   
 
-
 ## 安装FabEdge
 
 1. 确保防火墙或安全组允许以下协议和端口 
@@ -25,7 +24,7 @@
 2. 获取集群配置信息，供后面使用  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.5.0/get_cluster_info.sh | bash -
+	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
