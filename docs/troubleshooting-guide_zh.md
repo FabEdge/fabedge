@@ -44,7 +44,7 @@ kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-conns
 kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 ```
 
-如果隧道不能建立，要确认防火墙是否开放相关端口，具体参考[安装手册](install.md)
+如果隧道不能建立，要确认防火墙是否开放相关端口，具体参考[安装手册](get-started.md)
 
 ## 检查路由表
 

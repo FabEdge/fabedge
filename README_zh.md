@@ -45,7 +45,10 @@ FabEdge和现有的CNI，比如Calico，Flannel，互为补充，解决不同的
 
 ## 用户手册
 
-请参考 [文档](docs/).
+* [快速安装](docs/get-started_zh.md)
+* [使用指南](docs/user-guide.md)
+* [卸载FabEdge](docs/uninstall.md)
+* [问题排查指南](docs/troubleshooting-guide.md)
 
 ## 社区例会
 

@@ -47,7 +47,7 @@ kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-conns
 kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 ```
 
-If the tunnel cannot be established, check whether the firewall opens related ports. For details, see the  [install](install.md).
+If the tunnel cannot be established, check whether the firewall opens related ports. For details, see the  [install](get-started.md).
 
 
 
