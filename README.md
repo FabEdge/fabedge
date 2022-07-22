@@ -25,7 +25,6 @@ FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
  
 * **Cloud-Edge/Edge-Edge Collaboration**: Secure tunnels between cloud-edge, edge-edge nodes for synergy.
  
-
 * **Topology-aware Service Discovery**: reduces service access latency, by using the nearest available service endpoint.
 
 
@@ -57,8 +56,13 @@ FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
 
 Fabedge is not to replace the traditional Kubernetes network plugins such as Calico/Flannel. As in the above architecture diagram, Calico/Flannel is used within the cloud for communication between cloud nodes, while Fabedge is a complement to it for the edge-cloud, edge-edge communication. 
 
-## Guides
-See  [the docs](docs/).
+## Documentation
+
+* [Getting started](docs/get-started.md) 
+* [User Guide](docs/user-guide.md) 
+* [Uninstall FabEdge](docs/uninstall.md)
+* [Troubleshooting](docs/troubleshooting-guide.md)
+
 
 ## Meeting
 Regular community meeting at  2nd and 4th Thursday of every month  
