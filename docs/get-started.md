@@ -41,7 +41,7 @@
 1. Deploy FabEdge   
 
    ```shell
-   $ curl 116.62.127.76/installer/v0.5.0/quickstart.sh | bash -s -- \
+   $ curl 116.62.127.76/installer/v0.6.0/quickstart.sh | bash -s -- \
    	--cluster-name beijing  \
    	--cluster-role host \
    	--cluster-zone beijing  \
@@ -53,9 +53,9 @@
    	--chart http://116.62.127.76/fabedge-0.6.0.tgz
    ```
    > Note：     
-   > **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector
-   > **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge
-   > **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.
+   > **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
+   > **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge  
+   > **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.  
    > **--connector-public-addresses**:  ip addresses of k8s nodes which connectors are located  
 
 2. Verify the deployment  
@@ -153,10 +153,10 @@ If any member cluster,  register it in the host cluster first, then deploy FabEd
 		--operator-api-server https://10.22.46.47:30303 \
 		--init-token ey...Jh
 	```
-	> Note： 
-	> **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector
-	> **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge
-	> **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.
+	> Note:  
+	> **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
+	> **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge  
+	> **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.  
 	> **--connector-public-addresses**: ip address of k8s nodes on which connectors are located in the member cluster  
 	> **--init-token**: token when the member cluster is added in the host cluster  
 	> **--service-hub-api-server**: endpoint of serviceHub in the host cluster  

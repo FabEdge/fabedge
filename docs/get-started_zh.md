@@ -42,7 +42,7 @@
 1. 安装FabEdge   
 
    ```shell
-   $ curl 116.62.127.76/installer/v0.5.0/quickstart.sh | bash -s -- \
+   $ curl 116.62.127.76/installer/v0.6.0/quickstart.sh | bash -s -- \
    	--cluster-name beijing  \
    	--cluster-role host \
    	--cluster-zone beijing  \
@@ -54,10 +54,10 @@
    	--chart http://116.62.127.76/fabedge-0.6.0.tgz
    ```
    > 说明：   
-   > **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签
-   > **--edges:** 边缘节点名称，指定的节点会被打上node-role.kubernetes.io/edge标签
-   > **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠
-   > **--connector-public-addresses**: connector所在节点的公网IP地址，从边缘节点必须网络可达 
+   > **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签  
+   > **--edges:** 边缘节点名称，指定的节点会被打上node-role.kubernetes.io/edge标签  
+   > **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠  
+   > **--connector-public-addresses**: connector所在节点的公网IP地址，从边缘节点必须网络可达  
    
 3.  确认部署正常  
 	
@@ -153,12 +153,12 @@
 		--init-token ey...Jh
 	```
 	> 说明：  
-	> **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签  
+	> **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签    
 	> **--edges:** 边缘节点名称，指定的节点会被打上node-role.kubernetes.io/edge标签  
-	> **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠
-	> **--connector-public-addresses**: member集群connectors所在节点的ip地址 
-	> **--service-hub-api-server**: host集群serviceHub服务的地址和端口 
-	> **--host-operator-api-server**: host集群operator-api服务的地址和端口 
+	> **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠   
+	> **--connector-public-addresses**: member集群connectors所在节点的ip地址  
+	> **--service-hub-api-server**: host集群serviceHub服务的地址和端口  
+	> **--operator-api-server**: host集群operator-api服务的地址和端口  
 	> **--init-token**: host集群获取的token  
 	
 4. 确认部署正常 

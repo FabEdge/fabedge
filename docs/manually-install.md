@@ -25,7 +25,7 @@ This article will show you how to install FabEdge without `quickstart.sh`。The 
 2. Collect the configuration of the current cluster  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.5.0/get_cluster_info.sh | bash -
+	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
