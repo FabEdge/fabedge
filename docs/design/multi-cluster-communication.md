@@ -55,8 +55,7 @@ Cluster是主集群用来记录其他集群端点信息的数据结构，有以�
  * token. 用于成员集群初始化，token由主集群的operator生成。
 
  * endpoints. 该集群内部所有需要跟其他集群通信的端点信息，其中Connector是必须上传的。
-
-   	* Name. 必须唯一，建议需要通信的集群在配置cluster domain时也保持唯一。
+   * Name. 必须唯一，建议需要通信的集群在配置cluster domain时也保持唯一。
    * PublicAddresses. 集群用于对外通信的公网地址，该地址必须可以被其他集群和本集群的边缘节点(如果有)访问
    * Subnets. 主要是集群的PodCIDRs数据，但也含有提供集群的ServiceCIDR。
    * NodeCIDRs. 集群内部云端节点的所有节点的IP地址
