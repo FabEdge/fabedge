@@ -275,6 +275,36 @@ var _ = Describe("Controller", func() {
 		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
 	})
 
+	It("should recreate a tls secret for connector if commonName is wrong", func() {
+		time.Sleep(interval + time.Second)
+
+		key := client.ObjectKey{
+			Name:      constants.ConnectorTLSName,
+			Namespace: config.Namespace,
+		}
+		var secret corev1.Secret
+		Expect(k8sClient.Get(context.Background(), key, &secret)).Should(Succeed())
+
+		By("Changing TLS secret with wrong commonName")
+		certDER, keyDER, _ := certManager.NewCertKey(certutil.Config{
+			CommonName:     "wrong-connector-name",
+			ValidityPeriod: time.Hour,
+		})
+		secret.Data[corev1.TLSCertKey] = certutil.EncodeCertPEM(certDER)
+		secret.Data[corev1.TLSPrivateKeyKey] = certutil.EncodePrivateKeyPEM(keyDER)
+		Expect(k8sClient.Update(context.Background(), &secret)).Should(Succeed())
+
+		time.Sleep(2 * interval)
+
+		By("Checking if TLS secret updated")
+		secret = corev1.Secret{}
+		Expect(k8sClient.Get(context.Background(), key, &secret)).Should(Succeed())
+
+		cert, err := parseCertFromSecret(secret)
+		Expect(err).Should(BeNil())
+		Expect(cert.Subject.CommonName).To(Equal(getConnectorEndpoint().Name))
+	})
+
 	It("should delete connector pods if a tls secret is generated", func() {
 		expectConnectorDeleted(connectorPod, interval+time.Second)
 

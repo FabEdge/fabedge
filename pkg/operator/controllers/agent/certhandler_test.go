@@ -16,6 +16,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -97,6 +98,29 @@ var _ = Describe("CertHandler", func() {
 		caCertPEM, certPEM = secretutil.GetCACert(secret), secretutil.GetCert(secret)
 		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
 		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
+	})
+
+	It("should regenerate a certificate and private key if certificate's commonName is wrong", func() {
+		var secret corev1.Secret
+		secretName := getCertSecretName(node.Name)
+		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+
+		By("Changing TLS secret with expired cert")
+		handler.getEndpointName = func(nodeName string) string {
+			return fmt.Sprintf("beijing.%s", nodeName)
+		}
+
+		Expect(handler.Do(context.Background(), node)).Should(Equal(errRestartAgent))
+
+		By("Checking if TLS secret updated")
+		secret = corev1.Secret{}
+		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: secretName}, &secret)).Should(Succeed())
+		expectOwnerReference(&secret, node)
+
+		cert, err := parseCertFromSecret(secret)
+		Expect(err).To(BeNil())
+		Expect(certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
+		Expect(cert.Subject.CommonName).To(Equal(handler.getEndpointName(node.Name)))
 	})
 
 	It("should be able to delete cert secret created for specified node", func() {

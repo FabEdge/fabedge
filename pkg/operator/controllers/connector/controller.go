@@ -16,6 +16,8 @@ package connector
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"sync"
 	"time"
@@ -241,10 +243,9 @@ func (ctl *controller) generateCertIfNeeded() bool {
 		return true
 	}
 
-	certPEM := secretutil.GetCert(secret)
-	err = ctl.CertManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	err = ctl.verifyCert(secret)
 	if err == nil {
-		log.V(5).Info("cert is verified")
+		log.V(5).Info("connector's certificate is verified")
 		return false
 	}
 
@@ -262,6 +263,19 @@ func (ctl *controller) generateCertIfNeeded() bool {
 	}
 
 	return true
+}
+
+func (ctl *controller) verifyCert(secret corev1.Secret) error {
+	cert, err := parseCertFromSecret(secret)
+	if err != nil {
+		return err
+	}
+
+	if cert.Subject.CommonName != ctl.Endpoint.Name {
+		return fmt.Errorf("wrong commonName %s is found, %s is expected", cert.Subject.CommonName, ctl.Endpoint.Name)
+	}
+
+	return ctl.CertManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)
 }
 
 func (ctl *controller) restartConnectorPods() {
@@ -433,4 +447,11 @@ func (ctl *controller) getConnectorEndpoint() apis.Endpoint {
 	defer ctl.mux.RUnlock()
 
 	return ctl.Endpoint
+}
+
+func parseCertFromSecret(secret corev1.Secret) (*x509.Certificate, error) {
+	certPEM := secretutil.GetCert(secret)
+	block, _ := pem.Decode(certPEM)
+
+	return x509.ParseCertificate(block.Bytes)
 }

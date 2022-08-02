@@ -16,6 +16,8 @@ package agent
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -80,8 +82,7 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 		return errRestartAgent
 	}
 
-	certPEM := secretutil.GetCert(secret)
-	err = handler.certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)
+	err = handler.verifyCert(secret, node)
 	if err == nil {
 		log.V(5).Info("cert is verified")
 		return nil
@@ -105,6 +106,20 @@ func (handler *certHandler) Do(ctx context.Context, node corev1.Node) error {
 	}
 
 	return errRestartAgent
+}
+
+func (handler *certHandler) verifyCert(secret corev1.Secret, node corev1.Node) error {
+	cert, err := parseCertFromSecret(secret)
+	if err != nil {
+		return err
+	}
+
+	endpointName := handler.getEndpointName(node.Name)
+	if cert.Subject.CommonName != endpointName {
+		return fmt.Errorf("wrong commonName %s is found, %s is expected", cert.Subject.CommonName, endpointName)
+	}
+
+	return handler.certManager.VerifyCert(cert, certutil.ExtKeyUsagesServerAndClient)
 }
 
 func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
@@ -151,4 +166,11 @@ func (handler *certHandler) Undo(ctx context.Context, nodeName string) error {
 
 func getCertSecretName(nodeName string) string {
 	return fmt.Sprintf("fabedge-agent-tls-%s", nodeName)
+}
+
+func parseCertFromSecret(secret corev1.Secret) (*x509.Certificate, error) {
+	certPEM := secretutil.GetCert(secret)
+	block, _ := pem.Decode(certPEM)
+
+	return x509.ParseCertificate(block.Bytes)
 }
