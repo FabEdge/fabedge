@@ -80,7 +80,7 @@ var _ = Describe("loadBalanceConfigKeeper", func() {
 				Name:      configName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					constants.KeyFabedgeAPP: constants.AppAgent,
+					constants.KeyFabEdgeAPP: constants.AppAgent,
 					constants.KeyCreatedBy:  constants.AppOperator,
 				},
 			},
