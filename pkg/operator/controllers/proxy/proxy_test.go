@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -129,14 +130,16 @@ var _ = Describe("Proxy", func() {
 					},
 					Ports: []corev1.ServicePort{
 						{
-							Name:     "http",
-							Port:     80,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "http",
+							Port:       80,
+							TargetPort: intstr.FromInt(10080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 						{
-							Name:     "health",
-							Port:     8080,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "health",
+							Port:       8080,
+							TargetPort: intstr.FromInt(18080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 					},
 				},
@@ -197,10 +200,10 @@ var _ = Describe("Proxy", func() {
 
 				for _, port := range service.Spec.Ports {
 					// prepare service info
-					p := Port{Port: port.Port, Protocol: port.Protocol}
+					p := Port{Name: port.Name, Port: port.Port, Protocol: port.Protocol, TargetPort: port.TargetPort.IntVal}
 					endpoint := Endpoint{
 						IP:   endpointIP,
-						Port: port.Port,
+						Port: p.TargetPort,
 					}
 					endpointSet := make(EndpointSet)
 					endpointSet.Add(endpoint)
@@ -377,14 +380,16 @@ var _ = Describe("Proxy", func() {
 					},
 					Ports: []corev1.ServicePort{
 						{
-							Name:     "http",
-							Port:     80,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "http",
+							Port:       80,
+							TargetPort: intstr.FromInt(10080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 						{
-							Name:     "health",
-							Port:     8080,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "health",
+							Port:       8080,
+							TargetPort: intstr.FromInt(18080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 					},
 				},
@@ -439,7 +444,7 @@ var _ = Describe("Proxy", func() {
 				p := port
 				endpointSlice.Ports = append(endpointSlice.Ports, discoveryv1.EndpointPort{
 					Name:     &p.Name,
-					Port:     &p.Port,
+					Port:     &p.TargetPort.IntVal,
 					Protocol: &p.Protocol,
 				})
 			}
@@ -454,29 +459,29 @@ var _ = Describe("Proxy", func() {
 			Expect(serviceInfo.ClusterIP).Should(Equal(service.Spec.ClusterIP))
 			Expect(serviceInfo.SessionAffinity).Should(Equal(corev1.ServiceAffinityClientIP))
 			Expect(serviceInfo.StickyMaxAgeSeconds).Should(Equal(timeoutSeconds))
-			Expect(len(serviceInfo.EndpointMap)).Should(Equal(2))
+			Expect(len(serviceInfo.EndpointMap)).Should(Equal(len(service.Spec.Ports)))
 
-			ess, ok := serviceInfo.EndpointMap[Port{Port: 80, Protocol: corev1.ProtocolTCP}]
+			ess, ok := serviceInfo.EndpointMap[Port{Name: "http", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: 10080}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 80}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 80}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 80}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.184", Port: 80}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 10080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 10080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 10080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.184", Port: 10080}))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 8080, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "health", Port: 8080, Protocol: corev1.ProtocolTCP, TargetPort: 18080}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 8080}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 8080}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 8080}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.184", Port: 8080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 18080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 18080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 18080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.184", Port: 18080}))
 
 			Expect(len(serviceInfo.EndpointToNodes)).To(Equal(6))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 80}, "node1"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 8080}, "node1"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.182", Port: 80}, "node2"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.182", Port: 8080}, "node2"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 80}, "node3"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 8080}, "node3"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 10080}, "node1"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 18080}, "node1"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.182", Port: 10080}, "node2"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.182", Port: 18080}, "node2"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 10080}, "node3"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 18080}, "node3"))
 
 			By("update endpoints in endpointslice")
 			endpointSlice.Endpoints[2].Conditions.Ready = &endpointReady
@@ -490,23 +495,23 @@ var _ = Describe("Proxy", func() {
 			Expect(serviceInfo.ClusterIP).Should(Equal(service.Spec.ClusterIP))
 			Expect(serviceInfo.SessionAffinity).Should(Equal(corev1.ServiceAffinityClientIP))
 			Expect(serviceInfo.StickyMaxAgeSeconds).Should(Equal(timeoutSeconds))
-			Expect(len(serviceInfo.EndpointMap)).Should(Equal(2))
+			Expect(len(serviceInfo.EndpointMap)).Should(Equal(len(service.Spec.Ports)))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 80, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "http", Port: 80, TargetPort: 10080, Protocol: corev1.ProtocolTCP}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 80}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 80}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 80}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 10080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 10080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 10080}))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 8080, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "health", Port: 8080, TargetPort: 18080, Protocol: corev1.ProtocolTCP}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 8080}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 8080}))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 8080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 18080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.182", Port: 18080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.183", Port: 18080}))
 
 			Expect(len(serviceInfo.EndpointToNodes)).To(Equal(6))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 80}, "node3"))
-			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 8080}, "node3"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 10080}, "node3"))
+			Expect(serviceInfo.EndpointToNodes).To(HaveKeyWithValue(Endpoint{IP: "10.40.20.183", Port: 18080}, "node3"))
 
 			By("delete some endpoints in endpointslice")
 			endpointSlice.Endpoints = endpointSlice.Endpoints[:1]
@@ -516,23 +521,23 @@ var _ = Describe("Proxy", func() {
 			By("check service cache")
 			serviceInfo, ok = serviceMap[ObjectKey{Name: service.Name, Namespace: service.Namespace}]
 			Expect(ok).To(BeTrue())
-			Expect(len(serviceInfo.EndpointMap)).Should(Equal(2))
+			Expect(len(serviceInfo.EndpointMap)).Should(Equal(len(service.Spec.Ports)))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 80, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "http", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: 10080}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 80}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.182", Port: 80}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.183", Port: 80}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 10080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.182", Port: 10080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.183", Port: 10080}))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 8080, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "health", Port: 8080, Protocol: corev1.ProtocolTCP, TargetPort: 18080}]
 			Expect(ok).To(BeTrue())
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 8080}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.182", Port: 8080}))
-			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.183", Port: 8080}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 18080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.182", Port: 18080}))
+			Expect(ess).ShouldNot(HaveKey(Endpoint{IP: "10.40.20.183", Port: 18080}))
 
 			Expect(len(serviceInfo.EndpointToNodes)).To(Equal(2))
-			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 80}, "node1"))
-			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 8080}, "node1"))
+			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 10080}, "node1"))
+			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 18080}, "node1"))
 
 			By("remove port in endpointslice")
 			endpointSlice.Ports = endpointSlice.Ports[:1]
@@ -544,16 +549,16 @@ var _ = Describe("Proxy", func() {
 			Expect(ok).To(BeTrue())
 			Expect(len(serviceInfo.EndpointMap)).Should(Equal(1))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 80, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "http", Port: 80, Protocol: corev1.ProtocolTCP, TargetPort: 10080}]
 			Expect(ok).To(BeTrue())
 			Expect(len(ess)).Should(Equal(1))
-			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 80}))
+			Expect(ess).Should(HaveKey(Endpoint{IP: "10.40.20.181", Port: 10080}))
 
-			ess, ok = serviceInfo.EndpointMap[Port{Port: 8080, Protocol: corev1.ProtocolTCP}]
+			ess, ok = serviceInfo.EndpointMap[Port{Name: "health", Port: 8080, Protocol: corev1.ProtocolTCP, TargetPort: 18080}]
 			Expect(ok).To(BeFalse())
 
 			Expect(len(serviceInfo.EndpointToNodes)).Should(Equal(1))
-			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 80}, "node1"))
+			Expect(serviceInfo.EndpointToNodes).Should(HaveKeyWithValue(Endpoint{IP: "10.40.20.181", Port: 10080}, "node1"))
 
 			By("delete endpointslice")
 			Expect(k8sClient.Delete(context.Background(), &endpointSlice)).NotTo(HaveOccurred())
@@ -587,14 +592,16 @@ var _ = Describe("Proxy", func() {
 					},
 					Ports: []corev1.ServicePort{
 						{
-							Name:     "http",
-							Port:     80,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "http",
+							Port:       80,
+							TargetPort: intstr.FromInt(10080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 						{
-							Name:     "health",
-							Port:     8080,
-							Protocol: corev1.ProtocolTCP,
+							Name:       "health",
+							Port:       8080,
+							TargetPort: intstr.FromInt(18080),
+							Protocol:   corev1.ProtocolTCP,
 						},
 					},
 				},
@@ -633,7 +640,7 @@ var _ = Describe("Proxy", func() {
 				p := port
 				endpointSlice.Ports = append(endpointSlice.Ports, discoveryv1.EndpointPort{
 					Name:     &p.Name,
-					Port:     &p.Port,
+					Port:     &p.TargetPort.IntVal,
 					Protocol: &p.Protocol,
 				})
 			}
@@ -667,7 +674,7 @@ var _ = Describe("Proxy", func() {
 							Expect(len(endpointSet)).Should(Equal(1))
 							Expect(endpointSet).Should(HaveKey(Endpoint{
 								IP:   ep.Addresses[0],
-								Port: port.Port,
+								Port: port.TargetPort.IntVal,
 							}))
 						}
 					}
@@ -712,7 +719,7 @@ var _ = Describe("Proxy", func() {
 			Expect(len(endpointSet)).Should(Equal(1))
 			Expect(endpointSet).Should(HaveKey(Endpoint{
 				IP:   "10.40.20.181",
-				Port: 80,
+				Port: 10080,
 			}))
 
 			By("delete endpointslice")
