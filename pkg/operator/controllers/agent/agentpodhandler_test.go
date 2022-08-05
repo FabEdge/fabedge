@@ -71,16 +71,14 @@ var _ = Describe("AgentPodHandler", func() {
 	})
 
 	It("should create a agent pod if it's not exists", func() {
-		var pod corev1.Pod
-		agentPodName := getAgentPodName(node.Name)
-		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
-		Expect(err).ShouldNot(HaveOccurred())
+		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		Expect(err).Should(BeNil())
+
 		expectOwnerReference(&pod, node)
 
-		// pod
 		Expect(pod.Spec.NodeName).To(Equal(node.Name))
 		Expect(pod.Namespace).To(Equal(namespace))
-		Expect(pod.Name).To(Equal(agentPodName))
+		Expect(pod.GenerateName).To(Equal(agentNamePrefix))
 		Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyAlways))
 		Expect(pod.Labels[constants.KeyPodHash]).ShouldNot(BeEmpty())
 
@@ -288,30 +286,26 @@ var _ = Describe("AgentPodHandler", func() {
 		ctx := context.WithValue(context.Background(), keyRestartAgent, errRestartAgent)
 		Expect(handler.Do(ctx, node)).Should(Succeed())
 
-		pod := corev1.Pod{}
-		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
+		pod, err := handler.getAgentPod(context.Background(), agentPodName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
 	})
 
 	It("should delete agent pod if is not matched to expected pod spec", func() {
-		var pod corev1.Pod
-		Expect(k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)).Should(Succeed())
+		pod, err := handler.getAgentPod(context.Background(), agentPodName)
 
 		pod.Labels[constants.KeyPodHash] = "different-hash"
 		Expect(k8sClient.Update(context.Background(), &pod)).Should(Succeed())
 
 		Expect(handler.Do(context.Background(), node)).Should(Succeed())
 
-		pod = corev1.Pod{}
-		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
+		pod, err = handler.getAgentPod(context.Background(), agentPodName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
 	})
 
 	It("is able to delete agent pod for specified node", func() {
 		Expect(handler.Undo(context.TODO(), node.Name)).To(Succeed())
 
-		pod := corev1.Pod{}
-		err := k8sClient.Get(context.Background(), ObjectKey{Namespace: namespace, Name: agentPodName}, &pod)
+		pod, err := handler.getAgentPod(context.Background(), agentPodName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
 	})
 })

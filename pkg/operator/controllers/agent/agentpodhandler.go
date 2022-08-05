@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +33,8 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
+
+const agentNamePrefix = "fabedge-agent-"
 
 var _ Handler = &agentPodHandler{}
 
@@ -52,8 +55,7 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 
 	log := handler.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", handler.namespace)
 
-	var oldPod corev1.Pod
-	err := handler.client.Get(ctx, ObjectKey{Name: agentPodName, Namespace: handler.namespace}, &oldPod)
+	oldPod, err := handler.getAgentPod(ctx, agentPodName)
 	switch {
 	case err == nil:
 		needRestart := ctx.Value(keyRestartAgent) == errRestartAgent
@@ -94,6 +96,26 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 	}
 }
 
+func (handler *agentPodHandler) getAgentPod(ctx context.Context, podName string) (pod corev1.Pod, err error) {
+	var podList corev1.PodList
+	err = handler.client.List(ctx, &podList,
+		client.MatchingLabels{
+			constants.KeyFabEdgeName: podName,
+			constants.KeyFabEdgeAPP:  constants.AppAgent,
+			constants.KeyCreatedBy:   constants.AppOperator,
+		},
+		client.InNamespace(handler.namespace))
+	if err != nil {
+		return
+	}
+
+	if len(podList.Items) == 0 {
+		return pod, errors.NewNotFound(schema.GroupResource{Resource: "pods"}, podName)
+	}
+
+	return podList.Items[0], nil
+}
+
 func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName string) *corev1.Pod {
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
@@ -103,11 +125,12 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: namespace,
+			GenerateName: agentNamePrefix,
+			Namespace:    namespace,
 			Labels: map[string]string{
-				constants.KeyFabedgeAPP: constants.AppAgent,
-				constants.KeyCreatedBy:  constants.AppOperator,
+				constants.KeyFabEdgeAPP:  constants.AppAgent,
+				constants.KeyCreatedBy:   constants.AppOperator,
+				constants.KeyFabEdgeName: podName,
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -321,20 +344,22 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {
-	pod := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      getAgentPodName(nodeName),
-			Namespace: handler.namespace,
-		},
-	}
-	err := handler.client.Delete(ctx, &pod)
+	podName := getAgentPodName(nodeName)
+	pod, err := handler.getAgentPod(ctx, podName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			err = nil
-		} else {
-			handler.log.Error(err, "failed to delete pod", "name", pod.Name, "namespace", pod.Namespace)
+			return nil
 		}
+
+		handler.log.Error(err, "failed to get pod", "name", podName, "namespace", handler.namespace)
+		return err
 	}
+
+	err = handler.client.Delete(ctx, &pod)
+	if err != nil {
+		handler.log.Error(err, "failed to delete pod", "name", pod.Name, "namespace", pod.Namespace)
+	}
+
 	return err
 }
 

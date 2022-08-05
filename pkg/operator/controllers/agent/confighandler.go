@@ -76,7 +76,7 @@ func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
 				Name:      configName,
 				Namespace: handler.namespace,
 				Labels: map[string]string{
-					constants.KeyFabedgeAPP: constants.AppAgent,
+					constants.KeyFabEdgeAPP: constants.AppAgent,
 					constants.KeyCreatedBy:  constants.AppOperator,
 				},
 			},

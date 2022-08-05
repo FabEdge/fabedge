@@ -16,7 +16,8 @@ package constants
 
 const (
 	KeyPodSubnets          = "fabedge.io/subnets"
-	KeyFabedgeAPP          = "fabedge.io/app"
+	KeyFabEdgeAPP          = "fabedge.io/app"
+	KeyFabEdgeName         = "fabedge.io/name"
 	KeyCreatedBy           = "fabedge.io/created-by"
 	KeyNode                = "fabedge.io/node"
 	KeyNodePublicAddresses = "fabedge.io/node-public-addresses"
