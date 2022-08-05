@@ -44,12 +44,14 @@ type ServiceInfo struct {
 }
 
 type Port struct {
-	Protocol corev1.Protocol
-	Port     int32
+	Name       string
+	Port       int32
+	TargetPort int32
+	Protocol   corev1.Protocol
 }
 
 func (p Port) String() string {
-	return fmt.Sprintf("%d:%s", p.Port, p.Protocol)
+	return fmt.Sprintf("%d:%d:%s", p.Port, p.TargetPort, p.Protocol)
 }
 
 type ServicePort struct {
@@ -71,7 +73,7 @@ type ServicePortName struct {
 }
 
 func (s ServicePortName) String() string {
-	return fmt.Sprintf("%s:%d", s.NamespacedName, s.Port)
+	return fmt.Sprintf("%s/%s:%d", s.Namespace, s.Name, s.Port)
 }
 
 type EndpointInfo struct {

@@ -357,7 +357,7 @@ func (p *proxy) OnEndpointSliceUpdate(ctx context.Context, request reconcile.Req
 	}
 
 	serviceChanged := p.syncServiceInfoFromService(serviceKey, &service)
-	p.syncServiceEndpointsFromEndpointSlice(p.makeEndpointSliceInfo(&es), serviceChanged)
+	p.syncServiceEndpointsFromEndpointSlice(p.makeEndpointSliceInfo(&es, &service), serviceChanged)
 
 	return Result{}, nil
 }
@@ -390,7 +390,7 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 		for _, ep := range newES.Endpoints {
 			endpoint := Endpoint{
 				IP:   ep.IP,
-				Port: port.Port,
+				Port: port.TargetPort,
 			}
 			endpointSet.Add(endpoint)
 			serviceInfo.EndpointToNodes[endpoint] = ep.NodeName
@@ -433,7 +433,7 @@ func (p *proxy) syncServiceEndpointsFromEndpointSlice(newES EndpointSliceInfo, s
 			if portRemoved || endpointRemoved {
 				endpoint := Endpoint{
 					IP:   ep.IP,
-					Port: port.Port,
+					Port: port.TargetPort,
 				}
 				endpointSet.Remove(endpoint)
 
@@ -556,7 +556,7 @@ func (p *proxy) removeServicePortFromNode(nodeName string, spn ServicePortName) 
 	p.nodeSet[nodeName] = node
 }
 
-func (p *proxy) makeEndpointSliceInfo(es *EndpointSlice) EndpointSliceInfo {
+func (p *proxy) makeEndpointSliceInfo(es *EndpointSlice, svc *corev1.Service) EndpointSliceInfo {
 	info := EndpointSliceInfo{
 		ObjectKey: ObjectKey{
 			Name:      es.Name,
@@ -572,8 +572,14 @@ func (p *proxy) makeEndpointSliceInfo(es *EndpointSlice) EndpointSliceInfo {
 
 	for _, port := range es.Ports {
 		p := Port{
-			Port:     *port.Port,
-			Protocol: *port.Protocol,
+			Name:       *port.Name,
+			TargetPort: *port.Port,
+			Protocol:   *port.Protocol,
+		}
+		for _, sPort := range svc.Spec.Ports {
+			if p.Name == sPort.Name {
+				p.Port = sPort.Port
+			}
 		}
 		info.Ports[p] = Empty{}
 	}
