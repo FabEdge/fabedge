@@ -67,6 +67,9 @@ const (
 	serviceEdgeNginx6     = "edge-nginx6"
 	serviceHostCloudNginx = "host-cloud-nginx"
 	serviceHostEdgeNginx  = "host-edge-nginx"
+
+	defaultHttpPort  = 30080
+	defaultHttpsPort = 30443
 )
 
 var (
@@ -308,7 +311,7 @@ func newNginxPod(node corev1.Node, namespace string) corev1.Pod {
 				labelKeyRand:           fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
-		Spec: podSpec(node.Name),
+		Spec: podSpec(node.Name, defaultHttpPort, defaultHttpsPort),
 	}
 }
 
@@ -329,7 +332,7 @@ func newHostNginxPod(node corev1.Node, namespace string) corev1.Pod {
 				labelKeyRand:           fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
-		Spec: hostNetworkPodSpec(node.Name),
+		Spec: hostNetworkPodSpec(node.Name, defaultHttpPort, defaultHttpsPort),
 	}
 }
 
@@ -344,24 +347,11 @@ func newNetToolPod(node corev1.Node, namespace string) corev1.Pod {
 				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
-		Spec: podSpec(node.Name),
+		Spec: podSpec(node.Name, defaultHttpPort, defaultHttpsPort),
 	}
 }
 
 func newHostNetToolPod(node corev1.Node, namespace string) corev1.Pod {
-	// change default port to avoid ports conflict with host service's endpoints
-	spec := hostNetworkPodSpec(node.Name)
-	spec.Containers[0].Env = []corev1.EnvVar{
-		{
-			Name:  "HTTP_PORT",
-			Value: "18080",
-		},
-		{
-			Name:  "HTTPS_PORT",
-			Value: "18083",
-		},
-	}
-
 	return corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("host-net-tool-%s", node.Name),
@@ -372,19 +362,18 @@ func newHostNetToolPod(node corev1.Node, namespace string) corev1.Pod {
 				labelKeyRand:     fmt.Sprintf("%d", time.Now().Nanosecond()),
 			},
 		},
-		Spec: spec,
+		// change default port to avoid ports conflict with host service's endpoints
+		Spec: hostNetworkPodSpec(node.Name, 10080, 10443),
 	}
 }
 
-func hostNetworkPodSpec(nodeName string) corev1.PodSpec {
-	spec := podSpec(nodeName)
+func hostNetworkPodSpec(nodeName string, httpPort, httpsPort int32) corev1.PodSpec {
+	spec := podSpec(nodeName, httpPort, httpsPort)
 	spec.HostNetwork = true
-	spec.Containers[0].Ports = nil
-
 	return spec
 }
 
-func podSpec(nodeName string) corev1.PodSpec {
+func podSpec(nodeName string, httpPort, httpsPort int32) corev1.PodSpec {
 	return corev1.PodSpec{
 		HostNetwork: false,
 		NodeName:    nodeName,
@@ -399,7 +388,21 @@ func podSpec(nodeName string) corev1.PodSpec {
 				Ports: []corev1.ContainerPort{
 					{
 						Name:          "http",
-						ContainerPort: 80,
+						ContainerPort: httpPort,
+					},
+					{
+						Name:          "https",
+						ContainerPort: httpsPort,
+					},
+				},
+				Env: []corev1.EnvVar{
+					{
+						Name:  "HTTP_PORT",
+						Value: fmt.Sprint(httpPort),
+					},
+					{
+						Name:  "HTTPS_PORT",
+						Value: fmt.Sprint(httpsPort),
 					},
 				},
 			},

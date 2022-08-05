@@ -248,9 +248,15 @@ func (c Cluster) prepareService(name, namespace string, ipFamily corev1.IPFamily
 			},
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "default",
+					Name:       "http",
 					Port:       80,
-					TargetPort: intstr.FromInt(80),
+					TargetPort: intstr.FromInt(defaultHttpPort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+				{
+					Name:       "https",
+					Port:       443,
+					TargetPort: intstr.FromInt(defaultHttpsPort),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
@@ -473,17 +479,6 @@ func onlyIPv4(podIPs []corev1.PodIP) []string {
 	var ips []string
 	for _, podIP := range podIPs {
 		if netutil.IsIPv4String(podIP.IP) {
-			ips = append(ips, podIP.IP)
-		}
-	}
-
-	return ips
-}
-
-func onlyIPv6(podIPs []corev1.PodIP) []string {
-	var ips []string
-	for _, podIP := range podIPs {
-		if netutil.IsIPv6String(podIP.IP) {
 			ips = append(ips, podIP.IP)
 		}
 	}
