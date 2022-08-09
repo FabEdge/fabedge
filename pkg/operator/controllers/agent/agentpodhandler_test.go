@@ -58,6 +58,7 @@ var _ = Describe("AgentPodHandler", func() {
 			strongswanImage: strongswanImage,
 			imagePullPolicy: corev1.PullIfNotPresent,
 			args:            argMap.ArgumentArray(),
+			argMap:          argMap,
 			client:          k8sClient,
 			log:             klogr.New().WithName("agentPodHandler"),
 		}
@@ -280,6 +281,31 @@ var _ = Describe("AgentPodHandler", func() {
 				ReadOnly:  true,
 			},
 		}))
+	})
+
+	It("should use arguments from node's annotation and default arguments to build agent pod", func() {
+		nodeName := getNodeName()
+		agentPodName = getAgentPodName(nodeName)
+		node = newNode(nodeName, "10.40.20.182", "2.2.2.3/26")
+		node.UID = "234567"
+		node.Annotations = map[string]string{
+			"argument.fabedge.io/enable-proxy": "true",
+			"argument.fabedge.io/cni-version":  "0.3.2",
+		}
+
+		Expect(handler.Do(context.TODO(), node)).To(Succeed())
+
+		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		Expect(err).Should(BeNil())
+		Expect(pod.Spec.Containers[0].Args).To(ConsistOf(
+			"--cni-version=0.3.2",
+			"--enable-hairpinmode=true",
+			"--enable-proxy=true",
+			"--masq-outgoing=false",
+			"--network-plugin-mtu=1400",
+			"--use-xfrm=false",
+			"--v=3",
+		))
 	})
 
 	It("should delete agent pod if errRestartAgent is passed in context", func() {

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-logr/logr"
@@ -31,10 +32,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
-const agentNamePrefix = "fabedge-agent-"
+const (
+	agentNamePrefix = "fabedge-agent-"
+	keyArgument     = "argument.fabedge.io"
+)
 
 var _ Handler = &agentPodHandler{}
 
@@ -44,6 +49,7 @@ type agentPodHandler struct {
 	agentImage      string
 	strongswanImage string
 	imagePullPolicy corev1.PullPolicy
+	argMap          types.AgentArgumentMap
 	args            []string
 
 	client client.Client
@@ -51,16 +57,16 @@ type agentPodHandler struct {
 }
 
 func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error {
-	agentPodName := getAgentPodName(node.Name)
+	agentName := getAgentPodName(node.Name)
 
-	log := handler.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", handler.namespace)
+	log := handler.log.WithValues("nodeName", node.Name, "agentName", agentName, "namespace", handler.namespace)
 
-	oldPod, err := handler.getAgentPod(ctx, agentPodName)
+	oldPod, err := handler.getAgentPod(ctx, agentName)
 	switch {
 	case err == nil:
 		needRestart := ctx.Value(keyRestartAgent) == errRestartAgent
 		if !needRestart {
-			newPod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
+			newPod := handler.buildAgentPod(handler.namespace, agentName, node)
 			needRestart = newPod.Labels[constants.KeyPodHash] != oldPod.Labels[constants.KeyPodHash]
 		}
 
@@ -78,7 +84,7 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 		return err
 	case errors.IsNotFound(err):
 		log.V(5).Info("Agent pod is not found, create it now")
-		newPod := handler.buildAgentPod(handler.namespace, node.Name, agentPodName)
+		newPod := handler.buildAgentPod(handler.namespace, agentName, node)
 
 		if err = controllerutil.SetControllerReference(&node, newPod, scheme.Scheme); err != nil {
 			log.Error(err, "failed to set ownerReference to TLS secret")
@@ -116,7 +122,7 @@ func (handler *agentPodHandler) getAgentPod(ctx context.Context, podName string)
 	return podList.Items[0], nil
 }
 
-func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName string) *corev1.Pod {
+func (handler *agentPodHandler) buildAgentPod(namespace, podName string, node corev1.Node) *corev1.Pod {
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathDirectoryOrCreate := corev1.HostPathDirectoryOrCreate
 	privileged := true
@@ -135,7 +141,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 		},
 		Spec: corev1.PodSpec{
 			AutomountServiceAccountToken: &automountServiceAccountToken,
-			NodeName:                     nodeName,
+			NodeName:                     node.Name,
 			HostNetwork:                  true,
 			RestartPolicy:                corev1.RestartPolicyAlways,
 			Tolerations: []corev1.Toleration{
@@ -176,7 +182,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name:            "agent",
 					Image:           handler.agentImage,
 					ImagePullPolicy: handler.imagePullPolicy,
-					Args:            handler.args,
+					Args:            handler.buildAgentArgs(node),
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},
@@ -258,7 +264,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: getAgentConfigMapName(nodeName),
+								Name: getAgentConfigMapName(node.Name),
 							},
 							DefaultMode: &defaultMode,
 						},
@@ -268,7 +274,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name: "ipsec-d",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName:  getCertSecretName(nodeName),
+							SecretName:  getCertSecretName(node.Name),
 							DefaultMode: &defaultMode,
 							Items: []corev1.KeyToPath{
 								{
@@ -291,7 +297,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 					Name: "ipsec-secrets",
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName:  getCertSecretName(nodeName),
+							SecretName:  getCertSecretName(node.Name),
 							DefaultMode: &defaultMode,
 							Items: []corev1.KeyToPath{
 								{
@@ -341,6 +347,28 @@ func (handler *agentPodHandler) buildAgentPod(namespace, nodeName, podName strin
 
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)
 	return pod
+}
+
+func (handler *agentPodHandler) buildAgentArgs(node corev1.Node) []string {
+	argMap := types.NewAgentArgumentMap()
+	for key, value := range node.Annotations {
+		if strings.HasPrefix(key, keyArgument) {
+			// 20 is the length of "argument.fabedge.io/"
+			argMap.Set(key[20:], value)
+		}
+	}
+
+	if len(argMap) == 0 {
+		return handler.args
+	}
+
+	for key, value := range handler.argMap {
+		if !argMap.HasKey(key) {
+			argMap.Set(key, value)
+		}
+	}
+
+	return argMap.ArgumentArray()
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {

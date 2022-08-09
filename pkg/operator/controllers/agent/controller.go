@@ -152,6 +152,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		imagePullPolicy: corev1.PullPolicy(cnf.ImagePullPolicy),
 		agentImage:      cnf.AgentImage,
 		strongswanImage: cnf.StrongswanImage,
+		argMap:          cnf.AgentPodArguments,
 		args:            cnf.AgentPodArguments.ArgumentArray(),
 	})
 
