@@ -57,16 +57,16 @@ type agentPodHandler struct {
 }
 
 func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error {
-	agentPodName := getAgentPodName(node.Name)
+	agentName := getAgentPodName(node.Name)
 
-	log := handler.log.WithValues("nodeName", node.Name, "podName", agentPodName, "namespace", handler.namespace)
+	log := handler.log.WithValues("nodeName", node.Name, "agentName", agentName, "namespace", handler.namespace)
 
-	oldPod, err := handler.getAgentPod(ctx, agentPodName)
+	oldPod, err := handler.getAgentPod(ctx, agentName)
 	switch {
 	case err == nil:
 		needRestart := ctx.Value(keyRestartAgent) == errRestartAgent
 		if !needRestart {
-			newPod := handler.buildAgentPod(handler.namespace, agentPodName, node)
+			newPod := handler.buildAgentPod(handler.namespace, agentName, node)
 			needRestart = newPod.Labels[constants.KeyPodHash] != oldPod.Labels[constants.KeyPodHash]
 		}
 
@@ -84,7 +84,7 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 		return err
 	case errors.IsNotFound(err):
 		log.V(5).Info("Agent pod is not found, create it now")
-		newPod := handler.buildAgentPod(handler.namespace, agentPodName, node)
+		newPod := handler.buildAgentPod(handler.namespace, agentName, node)
 
 		if err = controllerutil.SetControllerReference(&node, newPod, scheme.Scheme); err != nil {
 			log.Error(err, "failed to set ownerReference to TLS secret")
