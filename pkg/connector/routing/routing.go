@@ -148,6 +148,14 @@ func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
 func addAllEdgeRoutes(conns []tunnel.ConnConfig) error {
 	logger.V(5).Info("add routes for edge pod CIDRs in strongswan table")
 
+	var hasIPv6CIDR = false
+	for _, conn := range conns {
+		if netutil.HasIPv6CIDRString(conn.RemoteSubnets) {
+			hasIPv6CIDR = true
+			break
+		}
+	}
+
 	var gatewayIPs []net.IP
 	gw4, err := routeutil.GetDefaultGateway()
 	if err != nil {
@@ -156,11 +164,14 @@ func addAllEdgeRoutes(conns []tunnel.ConnConfig) error {
 		gatewayIPs = append(gatewayIPs, gw4)
 	}
 
-	gw6, err := routeutil.GetDefaultGateway6()
-	if err != nil {
-		logger.Error(err, "failed to get IPv6 default gateway")
-	} else {
-		gatewayIPs = append(gatewayIPs, gw6)
+	var gw6 net.IP
+	if hasIPv6CIDR {
+		gw6, err = routeutil.GetDefaultGateway6()
+		if err != nil {
+			logger.Error(err, "failed to get IPv6 default gateway")
+		} else {
+			gatewayIPs = append(gatewayIPs, gw6)
+		}
 	}
 
 	for _, gw := range gatewayIPs {

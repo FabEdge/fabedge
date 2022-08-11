@@ -74,3 +74,13 @@ func IsIPv4OrIPv4CIDRString(ipOrCIDR string) bool {
 func IsCompatible(ip *net.IPNet, ipNet net.IP) bool {
 	return (IsIPv4CIDR(ip) && IsIPv4(ipNet)) || (IsIPv6CIDR(ip) && IsIPv6(ipNet))
 }
+
+func HasIPv6CIDRString(cidrs []string) bool {
+	for _, cidr := range cidrs {
+		if IsIPv6CIDRString(cidr) {
+			return true
+		}
+	}
+
+	return false
+}
