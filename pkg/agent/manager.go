@@ -30,6 +30,7 @@ import (
 
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	routeutil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
@@ -146,17 +147,20 @@ func (m *Manager) mainNetwork() error {
 }
 
 func (m *Manager) ensureConnections() error {
+	current, peers := m.getCurrentEndpoint(), m.getPeerEndpoints()
+
 	gw, err := routeutil.GetDefaultGateway()
 	if err != nil {
 		m.log.Error(err, "failed to get IPv4 default gateway")
 	}
 
-	gw6, err := routeutil.GetDefaultGateway6()
-	if err != nil {
-		m.log.Error(err, "failed to get IPv6 default gateway")
+	var gw6 net.IP
+	if netutil.HasIPv6CIDRString(current.Subnets) {
+		gw6, err = routeutil.GetDefaultGateway6()
+		if err != nil {
+			m.log.Error(err, "failed to get IPv6 default gateway")
+		}
 	}
-
-	current, peers := m.getCurrentEndpoint(), m.getPeerEndpoints()
 
 	newNames := sets.NewString()
 	for _, peer := range peers {
