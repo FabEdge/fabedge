@@ -105,6 +105,11 @@ func (m *Manager) configureOutboundRules(ipt *iptables.IPTables, set *ipset.IPSe
 			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
 			return err
 		}
+	} else {
+		if err := ensureChain(ipt, TableNat, ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
+			return err
+		}
 	}
 
 	for _, subnet := range subnets {
