@@ -16,11 +16,16 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
 	"github.com/avast/retry-go"
+
+	sysctlutil "github.com/fabedge/fabedge/third_party/sysctl"
 )
+
+var sysctl = sysctlutil.New()
 
 // retryForever retry fn until it success
 func retryForever(ctx context.Context, retryableFunc retry.RetryableFunc, onRetryFunc retry.OnRetryFunc) {
@@ -33,4 +38,14 @@ func retryForever(ctx context.Context, retryableFunc retry.RetryableFunc, onRetr
 		retry.LastErrorOnly(true),
 		retry.OnRetry(onRetryFunc),
 	)
+}
+
+// ensureSysctl sets a kernel sysctl to a given numeric value.
+func ensureSysctl(name string, newVal int) error {
+	if oldVal, _ := sysctl.GetSysctl(name); oldVal != newVal {
+		if err := sysctl.SetSysctl(name, newVal); err != nil {
+			return fmt.Errorf("can't set sysctl %s to %d: %v", name, newVal, err)
+		}
+	}
+	return nil
 }
