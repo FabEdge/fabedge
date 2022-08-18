@@ -16,7 +16,7 @@ package ipset
 
 import (
 	"fmt"
-	"net"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -28,8 +28,9 @@ import (
 type IPSet = ipset.IPSet
 
 const (
-	HashIP  = ipset.HashIP
-	HashNet = ipset.HashNet
+	HashIP       = ipset.HashIP
+	HashNet      = ipset.HashNet
+	HashIPPortIP = ipset.HashIPPortIP
 
 	ProtocolFamilyIPV4 = ipset.ProtocolFamilyIPV4
 	ProtocolFamilyIPV6 = ipset.ProtocolFamilyIPV6
@@ -54,10 +55,6 @@ func New() Interface {
 }
 
 func (e *execer) EnsureIPSet(set *ipset.IPSet, allIPSetEntrySet sets.String) error {
-	if set.SetType != HashIP && set.SetType != HashNet {
-		return fmt.Errorf("unsupported ipset type: %s", set.SetType)
-	}
-
 	if err := e.ipset.CreateSet(set, true); err != nil {
 		return err
 	}
@@ -98,10 +95,6 @@ func (e *execer) DelIPSetEntry(set *ipset.IPSet, ip string) error {
 		return err
 	}
 
-	if !entry.Validate(set) {
-		return fmt.Errorf("failed to validate ipset entry, ipset: %v, entry: %v", set, entry)
-	}
-
 	return e.ipset.DelEntry(entry.String(), set.Name)
 }
 
@@ -114,30 +107,32 @@ func (e *execer) ListEntries(setName string) (sets.String, error) {
 	return sets.NewString(entries...), nil
 }
 
-func convertIPToCIDR(ip string) string {
-	if strings.IndexByte(ip, '/') != -1 {
-		return ip
-	}
-
-	if strings.IndexByte(ip, ':') == -1 {
-		return fmt.Sprintf("%s/32", ip)
-	} else {
-		return fmt.Sprintf("%s/128", ip)
-	}
-}
-
 func newEntry(set *ipset.IPSet, addr string) (entry *ipset.Entry, err error) {
-	if ip := net.ParseIP(addr); ip != nil {
-		entry = &ipset.Entry{
-			IP:      addr,
-			SetType: HashIP,
+	entry = &ipset.Entry{
+		IP:      addr,
+		SetType: set.SetType,
+	}
+
+	if set.SetType == HashIPPortIP {
+		parts := strings.SplitN(addr, ",", 3)
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("%s not an valid hash:ip,port,ip entry", addr)
 		}
-	} else if _, _, err := net.ParseCIDR(addr); err != nil {
-		return nil, err
-	} else {
-		entry = &ipset.Entry{
-			Net:     addr,
-			SetType: HashNet,
+
+		entry.IP, entry.IP2 = parts[0], parts[2]
+
+		parts = strings.SplitN(parts[1], ":", 2)
+		switch len(parts) {
+		case 1:
+			entry.Port, err = strconv.Atoi(parts[0])
+		case 2:
+			entry.Protocol = parts[0]
+			entry.Port, err = strconv.Atoi(parts[1])
+		default:
+			return nil, fmt.Errorf("%s not an valid hash:ip,port,ip entry", addr)
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 
