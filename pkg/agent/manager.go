@@ -44,7 +44,9 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
+	IPSetFabEdgeLoopBack    = "FABEDGE-LOOP-BACK"
 	IPSetFabEdgePeerCIDR6   = "FABEDGE-PEER-CIDR6"
+	IPSetFabEdgeLoopBack6   = "FABEDGE-LOOP-BACK6"
 )
 
 type Manager struct {
