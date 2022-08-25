@@ -18,6 +18,7 @@ import (
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 	. "github.com/fabedge/fabedge/pkg/util/ginkgoext"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
@@ -58,6 +59,7 @@ var _ = Describe("Controller", func() {
 				Store:         storepkg.NewStore(),
 				PrivateKey:    privateKey,
 				TokenDuration: time.Hour,
+				CIDRMap:       types.NewClusterCIDRsMap(),
 			},
 			clusterCache: make(map[string]EndpointNameSet),
 			client:       mgr.GetClient(),
@@ -88,6 +90,7 @@ var _ = Describe("Controller", func() {
 				Name: "root",
 			},
 			Spec: apis.ClusterSpec{
+				CIDRs: []string{"2.2.0.0/16"},
 				EndPoints: []apis.Endpoint{
 					{
 						Name: "root.connector",
@@ -131,7 +134,11 @@ var _ = Describe("Controller", func() {
 
 	AfterEach(func() {
 		cancel()
-		Expect(k8sClient.Delete(context.Background(), &cluster))
+		var clusters apis.ClusterList
+		Expect(k8sClient.List(context.Background(), &clusters)).To(Succeed())
+		for _, c := range clusters.Items {
+			Expect(k8sClient.Delete(context.Background(), &c))
+		}
 	})
 
 	It("generate token if token is blank", func() {
@@ -161,6 +168,12 @@ var _ = Describe("Controller", func() {
 			Expect(ok).Should(BeTrue())
 			Expect(ep2).Should(Equal(ep))
 		}
+	})
+
+	It("should save cluster CIDRs if CIDRs exist", func() {
+		cidrs, ok := ctrl.CIDRMap.Get(cluster.Name)
+		Expect(ok).Should(BeTrue())
+		Expect(cidrs).Should(Equal(cluster.Spec.CIDRs))
 	})
 
 	It("should update endpoints of cluster to store when cluster is updated", func() {
@@ -199,7 +212,22 @@ var _ = Describe("Controller", func() {
 		Expect(ep2).Should(Equal(ep))
 	})
 
-	It("should delete endpoints from store when cluster is deleted", func() {
+	It("should sync cluster CIDRs when cluster is updated", func() {
+		err := k8sClient.Get(context.Background(), client.ObjectKey{Name: cluster.Name}, &cluster)
+		Expect(err).Should(BeNil())
+
+		cluster.Spec.CIDRs = []string{"2.2.0.0/18", "192.168.0.0/18"}
+		Expect(k8sClient.Update(context.Background(), &cluster)).Should(Succeed())
+		Eventually(requests, 5*time.Second).Should(ReceiveKey(client.ObjectKey{
+			Name: cluster.Name,
+		}))
+
+		cidrs, ok := ctrl.CIDRMap.Get(cluster.Name)
+		Expect(ok).Should(BeTrue())
+		Expect(cidrs).To(Equal(cluster.Spec.CIDRs))
+	})
+
+	It("should delete endpoints from store and delete CIDRs from cidrMap when cluster is deleted", func() {
 		Expect(k8sClient.Delete(context.Background(), &cluster)).Should(Succeed())
 		Eventually(requests, 5*time.Second).Should(ReceiveKey(client.ObjectKey{
 			Name: cluster.Name,
@@ -212,9 +240,13 @@ var _ = Describe("Controller", func() {
 			_, ok := ctrl.Store.GetEndpoint(ep.Name)
 			Expect(ok).Should(BeFalse())
 		}
+
+		cidrs, ok := ctrl.CIDRMap.Get(cluster.Name)
+		Expect(ok).Should(BeFalse())
+		Expect(cidrs).To(BeNil())
 	})
 
-	It("will skip cluster with name specified in controller", func() {
+	It("will skip storing endpoints of local cluster", func() {
 		cluster = apis.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: ctrl.Cluster,
@@ -249,5 +281,41 @@ var _ = Describe("Controller", func() {
 
 		_, ok = ctrl.Store.GetEndpoint(cluster.Spec.EndPoints[0].Name)
 		Expect(ok).Should(BeFalse())
+	})
+
+	It("will sync CIDRs of local cluster", func() {
+		cluster = apis.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: ctrl.Cluster,
+			},
+			Spec: apis.ClusterSpec{
+				Token: "test",
+				CIDRs: []string{"2.2.0.0/18"},
+				EndPoints: []apis.Endpoint{
+					{
+						Name: "test.connector",
+						PublicAddresses: []string{
+							"10.10.10.10",
+							"test.example",
+						},
+						Subnets: []string{
+							"2.2.0.0/16",
+						},
+						NodeSubnets: []string{
+							"192.168.1.1",
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(context.Background(), &cluster)).Should(Succeed())
+		Eventually(requests, 5*time.Second).Should(ReceiveKey(client.ObjectKey{
+			Name: cluster.Name,
+		}))
+
+		cidrs, ok := ctrl.CIDRMap.Get(cluster.Name)
+		Expect(ok).To(BeTrue())
+		Expect(cidrs).To(Equal(cluster.Spec.CIDRs))
 	})
 })

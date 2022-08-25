@@ -16,7 +16,7 @@ FLAG_GIT_COMMIT := ${META}.gitCommit=${GIT_COMMIT}
 GOLDFLAGS ?= -s -w
 LDFLAGS := -ldflags "${GOLDFLAGS} -X ${FLAG_VERSION} -X ${FLAG_BUILD_TIME} -X ${FLAG_GIT_COMMIT}"
 
-CRD_OPTIONS ?= "crd:trivialVersions=true"
+CRD_OPTIONS ?= "crd"
 K8S_VERSION=1.21.2
 GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 GOARCH ?= amd64

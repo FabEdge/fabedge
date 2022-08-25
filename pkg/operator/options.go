@@ -74,6 +74,7 @@ type Options struct {
 	// Member: operator has to fetch CA cert and create certificate from host cluster's API server
 	ClusterRole             string
 	Namespace               string
+	ClusterCIDRs            []string
 	EdgePodCIDRv4           string
 	EdgePodCIDRv6           string
 	EdgePodCIDRMaskSizeIPv4 int
@@ -81,6 +82,7 @@ type Options struct {
 	EndpointIDFormat        string
 	EdgeLabels              map[string]string
 	CNIType                 string
+	AutoKeepIPPools         bool
 
 	CASecretName     string
 	CertValidPeriod  int64
@@ -98,13 +100,14 @@ type Options struct {
 	TokenValidPeriod       time.Duration
 	InitToken              string
 
-	Store        storepkg.Interface
-	PodCIDRStore types.PodCIDRStore
-	NewEndpoint  types.NewEndpointFunc
-	Manager      manager.Manager
-	APIServer    *http.Server
-	APIClient    fclient.Interface
-	PrivateKey   *rsa.PrivateKey
+	Store           storepkg.Interface
+	ClusterCIDRsMap *types.ClusterCIDRsMap
+	PodCIDRStore    types.PodCIDRStore
+	NewEndpoint     types.NewEndpointFunc
+	Manager         manager.Manager
+	APIServer       *http.Server
+	APIClient       fclient.Interface
+	PrivateKey      *rsa.PrivateKey
 }
 
 func (opts *Options) AddFlags(flag *pflag.FlagSet) {
@@ -112,6 +115,8 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
 	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
+	flag.BoolVar(&opts.AutoKeepIPPools, "auto-keep-ippools", true, "Let fabedge operator manage calico ippool, this will save you from manually configuring ippools of CIDRs of other clusters")
+	flag.StringSliceVar(&opts.ClusterCIDRs, "cluster-cidr", nil, "The value of cluster-cidr parameter of current kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDRv4, "edge-pod-cidr", "", "Specify range of IPv4 addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico and want to use IPv4")
 	flag.StringVar(&opts.EdgePodCIDRv6, "edge-pod-cidr6", "", "Specify range of IPv6 addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico and want to use IPv6")
 	flag.IntVar(&opts.EdgePodCIDRMaskSizeIPv4, "edge-cidr-mask-size", 24, "Set the mask size for IPv4 edge node cidr in dual-stack cluster")
@@ -234,6 +239,7 @@ func (opts *Options) Complete() (err error) {
 	}
 
 	opts.Store = storepkg.NewStore()
+	opts.ClusterCIDRsMap = types.NewClusterCIDRsMap()
 
 	opts.Agent.Namespace = opts.Namespace
 	opts.Agent.CertManager = certManager
@@ -258,9 +264,10 @@ func (opts *Options) Complete() (err error) {
 
 	if opts.ClusterRole == RoleHost {
 		opts.APIServer, err = apiserver.New(apiserver.Config{
-			Addr:        opts.APIServerListenAddress,
 			CertManager: certManager,
+			Addr:        opts.APIServerListenAddress,
 			Store:       opts.Store,
+			CIDRMap:     opts.ClusterCIDRsMap,
 			Client:      opts.Manager.GetClient(),
 			Log:         log.WithName("apiserver"),
 		})
@@ -350,6 +357,15 @@ func (opts Options) Validate() (err error) {
 		return fmt.Errorf("connector public addresses is needed")
 	}
 
+	if len(opts.ClusterCIDRs) == 0 {
+		return fmt.Errorf("cluster-cidr is needed")
+	}
+	for _, cidr := range opts.ClusterCIDRs {
+		if _, _, err = net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("invalid cluster cidr: %s. %w", cidr, err)
+		}
+	}
+
 	for _, subnet := range opts.Connector.ProvidedSubnets {
 		if _, _, err := net.ParseCIDR(subnet); err != nil {
 			return fmt.Errorf("invalid subnet: %s. %w", subnet, err)
@@ -367,7 +383,7 @@ func (opts Options) Validate() (err error) {
 		}
 
 		if opts.isOverlappedWithProvidedSubnets(subnet) {
-			return fmt.Errorf("EdgePodCIDR4 is overlaped with connector's subnets")
+			return fmt.Errorf("EdgePodCIDR4 is overlaped with connector's subnets or cluster CIDR")
 		}
 
 		if opts.EdgePodCIDRv6 != "" {
@@ -381,7 +397,7 @@ func (opts Options) Validate() (err error) {
 			}
 
 			if opts.isOverlappedWithProvidedSubnets(subnet) {
-				return fmt.Errorf("EdgePodCIDR6 is overlaped with connector's subnets")
+				return fmt.Errorf("EdgePodCIDR6 is overlaped with connector's subnets or cluster CIDR")
 			}
 		}
 	}
@@ -422,6 +438,13 @@ func (opts Options) isOverlappedWithProvidedSubnets(ipNet *net.IPNet) bool {
 
 	for _, s := range opts.Connector.ProvidedSubnets {
 		ip2, subnet2, _ := net.ParseCIDR(s)
+		if ipNet.Contains(ip2) || subnet2.Contains(ipNet.IP) {
+			return true
+		}
+	}
+
+	for _, cidr := range opts.ClusterCIDRs {
+		ip2, subnet2, _ := net.ParseCIDR(cidr)
 		if ipNet.Contains(ip2) || subnet2.Contains(ipNet.IP) {
 			return true
 		}
@@ -523,6 +546,28 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 			log.Error(err, "failed to add IPAMBlockMonitor to manager")
 			return err
 		}
+
+		if opts.AutoKeepIPPools {
+			opts.createIPPoolsForEdgePodCIDRs(ctx)
+
+			getClusterCIDRInfo := func() (map[string][]string, error) {
+				return opts.ClusterCIDRsMap.GetCopy(), nil
+			}
+			if opts.ClusterRole == RoleMember {
+				getClusterCIDRInfo = opts.APIClient.GetClusterCIDRs
+			}
+
+			if err := opts.Manager.Add(routines.NewIPPoolKeeper(
+				timeutil.Minutes(1),
+				opts.Cluster,
+				opts.Manager.GetClient(),
+				getClusterCIDRInfo,
+			)); err != nil {
+				// IPPoolKeeper is used to save users from configuring a lot of ippool manually,
+				// but it's ok if it's registered successfully
+				log.Error(err, "failed to add calico ippool keeper to manager")
+			}
+		}
 	}
 
 	err := opts.recordEndpoints(ctx)
@@ -562,6 +607,7 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 	if opts.ClusterRole == RoleHost {
 		reporter := &routines.LocalClusterReporter{
 			Cluster:      opts.Cluster,
+			ClusterCIDRs: opts.ClusterCIDRs,
 			GetConnector: getConnectorEndpoint,
 			SyncInterval: 10 * time.Second,
 			Client:       opts.Manager.GetClient(),
@@ -578,6 +624,7 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 			PrivateKey:    opts.PrivateKey,
 			TokenDuration: opts.TokenValidPeriod,
 			Store:         opts.Store,
+			CIDRMap:       opts.ClusterCIDRsMap,
 		}); err != nil {
 			log.Error(err, "failed to add cluster controller to manager")
 			return err
@@ -593,13 +640,19 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 			return err
 		}
 
-		err = opts.Manager.Add(routines.ExportEndpoints(
+		// the Connector.ProvidedSubnets is basically service-cluster-ip-range parameter of cluster
+		// it's better to put service-cluster-ip-range in clusterCIDRs to avoid SNAT when cloud pods
+		// visit service of external clusters by cluster-ip
+		clusterCIDRS := append(opts.ClusterCIDRs, opts.Connector.ProvidedSubnets...)
+		err = opts.Manager.Add(routines.ExportCluster(
 			timeutil.Seconds(10),
+			opts.Cluster,
+			clusterCIDRS,
 			getConnectorEndpoint,
-			opts.APIClient.UpdateEndpoints,
+			opts.APIClient.UpdateCluster,
 		))
 		if err != nil {
-			log.Error(err, "failed to start exportEndpoints routine")
+			log.Error(err, "failed to start exportCluster routine")
 			return err
 		}
 	}
@@ -753,6 +806,18 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 
 	err = kubeClient.Create(context.Background(), &secret)
 	return secret, err
+}
+
+func (opts Options) createIPPoolsForEdgePodCIDRs(ctx context.Context) {
+	pool := routines.NewIPPool(opts.Cluster, opts.EdgePodCIDRv4)
+	if err := opts.Manager.GetClient().Create(ctx, &pool); err != nil {
+		if errors.IsAlreadyExists(err) {
+			return
+		}
+		log.Error(err, "failed to create ippool for edge pod cidr, it may cause calico do SNAT when cloud pods communicate with edge pods")
+	}
+	// for now, calico don't support IPv6 in ipip mode which is the mode fabedge supports
+	// todo: create ippool for EdgePodCIDR6
 }
 
 func fileExists(filename string) bool {

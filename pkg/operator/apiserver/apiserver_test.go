@@ -30,9 +30,11 @@ import (
 
 var _ = Describe("APIServer", func() {
 	var (
+		cidrMap                       *types.ClusterCIDRsMap
 		store                         storepkg.Interface
 		certManager                   certutil.Manager
 		clusterName                   string
+		clusterCIDRs                  []string
 		server                        *http.Server
 		rootEndpoint, rootConnector   apis.Endpoint
 		childEndpoint, childConnector apis.Endpoint
@@ -43,8 +45,10 @@ var _ = Describe("APIServer", func() {
 
 	BeforeEach(func() {
 		clusterName = "cluster1"
+		clusterCIDRs = []string{"192.168.0.0/16"}
 
 		store = storepkg.NewStore()
+		cidrMap = types.NewClusterCIDRsMap()
 		rootEndpoint = apis.Endpoint{
 			ID:              "cluster2.edge1",
 			Name:            "cluster2.edge1",
@@ -99,6 +103,7 @@ var _ = Describe("APIServer", func() {
 				Name: "cluster1",
 			},
 			Spec: apis.ClusterSpec{
+				CIDRs: clusterCIDRs,
 				EndPoints: []apis.Endpoint{
 					childConnector, childEndpoint,
 				},
@@ -125,6 +130,7 @@ var _ = Describe("APIServer", func() {
 			CertManager: certManager,
 			Client:      k8sClient,
 			Store:       store,
+			CIDRMap:     cidrMap,
 			Log:         klogr.New(),
 		})
 		Expect(err).Should(BeNil())
@@ -217,6 +223,56 @@ var _ = Describe("APIServer", func() {
 			Expect(ea.Communities[community.Name]).Should(ConsistOf(rootConnector.Name, childConnector.Name))
 		})
 
+		It("can provide cluster CIDRs", func() {
+			clusterName, cidrs := "beijing", []string{"192.168.0.0/18"}
+			cidrMap.Set(clusterName, cidrs)
+
+			req, _ := http.NewRequest("GET", apiserver.URLGetCIDRs, nil)
+			req.TLS = connectionState
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusOK))
+
+			content, err := ioutil.ReadAll(resp.Body)
+			Expect(err).Should(BeNil())
+
+			var cidrMap2 map[string][]string
+			Expect(json.Unmarshal(content, &cidrMap2)).Should(Succeed())
+			Expect(len(cidrMap2)).To(Equal(1))
+			Expect(cidrMap2).To(HaveKeyWithValue(clusterName, cidrs))
+		})
+
+		It("can update cluster info of requesting cluster", func() {
+			requestCluster := apis.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName,
+				},
+				Spec: apis.ClusterSpec{
+					CIDRs: []string{"2.2.0.0/17"},
+					EndPoints: []apis.Endpoint{
+						childConnector,
+					},
+				},
+			}
+
+			clusterJson, err := json.Marshal(requestCluster)
+			Expect(err).Should(BeNil())
+
+			reqBody := bytes.NewBuffer(clusterJson)
+			req, _ := http.NewRequest("PUT", apiserver.URLUpdateCluster, reqBody)
+			req.TLS = connectionState
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusNoContent))
+
+			err = k8sClient.Get(context.Background(), client.ObjectKey{Name: clusterName}, &cluster)
+			Expect(err).Should(BeNil())
+			Expect(cluster.Spec.CIDRs).Should(Equal(requestCluster.Spec.CIDRs))
+			Expect(cluster.Spec.EndPoints).Should(ConsistOf(childConnector))
+		})
+
 		It("can update endpoints of requesting cluster", func() {
 			endpoints := []apis.Endpoint{
 				childConnector,
@@ -236,6 +292,7 @@ var _ = Describe("APIServer", func() {
 			err = k8sClient.Get(context.Background(), client.ObjectKey{Name: clusterName}, &cluster)
 			Expect(err).Should(BeNil())
 
+			Expect(cluster.Spec.CIDRs).Should(Equal(clusterCIDRs))
 			Expect(cluster.Spec.EndPoints).Should(ConsistOf(childConnector))
 		})
 
@@ -274,6 +331,14 @@ var _ = Describe("APIServer", func() {
 			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
 		})
 
+		It("response unauthorized for getEndpointsAndCommunities request", func() {
+			req, _ := http.NewRequest("GET", apiserver.URLGetCIDRs, nil)
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
+		})
+
 		It("response unauthorized for updateEndpoints request", func() {
 			endpoints := []apis.Endpoint{
 				childConnector,
@@ -284,6 +349,30 @@ var _ = Describe("APIServer", func() {
 
 			reqBody := bytes.NewBuffer(endpointsJson)
 			req, _ := http.NewRequest("PUT", apiserver.URLUpdateEndpoints, reqBody)
+			req.Header.Add(apiserver.HeaderClusterName, clusterName)
+
+			resp := executeRequest(req, server)
+			Expect(resp.Code).Should(Equal(http.StatusUnauthorized))
+		})
+
+		It("response unauthorized for updateEndpoints request", func() {
+			cluster := apis.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName,
+				},
+				Spec: apis.ClusterSpec{
+					CIDRs: clusterCIDRs,
+					EndPoints: []apis.Endpoint{
+						childConnector,
+					},
+				},
+			}
+
+			clusterJson, err := json.Marshal(cluster)
+			Expect(err).Should(BeNil())
+
+			reqBody := bytes.NewBuffer(clusterJson)
+			req, _ := http.NewRequest("PUT", apiserver.URLUpdateCluster, reqBody)
 			req.Header.Add(apiserver.HeaderClusterName, clusterName)
 
 			resp := executeRequest(req, server)

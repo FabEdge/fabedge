@@ -18,6 +18,7 @@ import (
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
 )
 
@@ -25,7 +26,9 @@ const (
 	URLGetCA                      = "/api/ca-cert"
 	URLSignCERT                   = "/api/sign-cert"
 	URLUpdateEndpoints            = "/api/endpoints"
+	URLUpdateCluster              = "/api/cluster"
 	URLGetEndpointsAndCommunities = "/api/endpoints-and-communities"
+	URLGetCIDRs                   = "/api/cidrs"
 
 	HeaderClusterName   = "X-FabEdge-Cluster"
 	HeaderAuthorization = "Authorization"
@@ -38,6 +41,7 @@ type Config struct {
 	Client      client.Client
 	Log         logr.Logger
 	Store       storepkg.Interface
+	CIDRMap     *types.ClusterCIDRsMap
 }
 
 type EndpointsAndCommunity struct {
@@ -53,8 +57,12 @@ func New(cfg Config) (*http.Server, error) {
 
 	r.Group(func(r chi.Router) {
 		r.Use(cfg.verifyCert)
+		// /api/endpoints is deprecated and /api/cluster is preferred, we leave it here for backward compatibility
 		r.Put(URLUpdateEndpoints, cfg.updateEndpoints)
+		r.Put(URLUpdateCluster, cfg.updateCluster)
+
 		r.Get(URLGetEndpointsAndCommunities, cfg.getEndpointsAndCommunity)
+		r.Get(URLGetCIDRs, cfg.getCIDRs)
 	})
 
 	return &http.Server{
@@ -151,6 +159,49 @@ func (cfg Config) verifyCert(next http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
+func (cfg Config) updateCluster(w http.ResponseWriter, r *http.Request) {
+	jsonData, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		cfg.response(w, http.StatusBadRequest, fmt.Sprintf("failed to read request body: %s", err))
+		return
+	}
+
+	var reqCluster apis.Cluster
+	if err = json.Unmarshal(jsonData, &reqCluster); err != nil {
+		cfg.response(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// It's ok cluster.Spec.CIDRs is empty since it is not necessary
+	if len(reqCluster.Spec.EndPoints) == 0 {
+		cfg.response(w, http.StatusBadRequest, "at least one endpoint is required")
+		return
+	}
+
+	clusterName := cfg.getCluster(r)
+	var cluster apis.Cluster
+	err = cfg.Client.Get(r.Context(), client.ObjectKey{Name: clusterName}, &cluster)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			cfg.response(w, http.StatusNotFound, fmt.Sprintf("unknown cluster %s", clusterName))
+			return
+		}
+
+		cfg.response(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	cluster.Spec.CIDRs = reqCluster.Spec.CIDRs
+	cluster.Spec.EndPoints = reqCluster.Spec.EndPoints
+	if err := cfg.Client.Update(r.Context(), &cluster); err != nil {
+		cfg.response(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	w.Write(nil)
+}
+
 func (cfg Config) updateEndpoints(w http.ResponseWriter, r *http.Request) {
 	endpointsJson, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -234,6 +285,14 @@ func (cfg Config) getEndpointsAndCommunity(w http.ResponseWriter, r *http.Reques
 	}
 
 	content, _ := json.Marshal(&ea)
+
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(content)
+}
+
+func (cfg Config) getCIDRs(w http.ResponseWriter, r *http.Request) {
+	cidrMap := cfg.CIDRMap.GetCopy()
+	content, _ := json.Marshal(&cidrMap)
 
 	w.Header().Add("Content-Type", "application/json")
 	w.Write(content)

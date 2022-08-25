@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -14,8 +15,34 @@ import (
 	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
+type UpdateCluster func(cluster apis.Cluster) error
 type UpdateEndpointsFunc func(endpoints []apis.Endpoint) error
 type GetEndpointsAndCommunitiesFunc func() (apiserver.EndpointsAndCommunity, error)
+
+// ExportCluster is used to export cluster CIDRs and endpoints to host cluster
+func ExportCluster(interval time.Duration, clusterName string, clusterCIDRs []string, getConnector types.EndpointGetter, updateCluster UpdateCluster) manager.Runnable {
+	log := klogr.New().WithName("exportEndpoints")
+
+	fn := func(ctx context.Context) {
+		cluster := apis.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterName,
+			},
+			Spec: apis.ClusterSpec{
+				CIDRs: clusterCIDRs,
+				EndPoints: []apis.Endpoint{
+					getConnector(),
+				},
+			},
+		}
+
+		if err := updateCluster(cluster); err != nil {
+			log.Error(err, "failed to export cluster to host cluster")
+		}
+	}
+
+	return Periodic(interval, fn)
+}
 
 func ExportEndpoints(interval time.Duration, getConnector types.EndpointGetter, updateEndpoints UpdateEndpointsFunc) manager.Runnable {
 	log := klogr.New().WithName("exportEndpoints")

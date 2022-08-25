@@ -1,7 +1,6 @@
 package routines
 
 import (
-	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"path/filepath"
 	"testing"
 
@@ -12,7 +11,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
+	"github.com/fabedge/fabedge/third_party/calicoapi"
 )
 
 var cfg *rest.Config
@@ -33,11 +34,15 @@ var _ = BeforeSuite(func(done Done) {
 	By("starting test environment")
 	var err error
 	testEnv, cfg, k8sClient, err = testutil.StartTestEnvWithCRD(
-		[]string{filepath.Join("..", "..", "..", "deploy", "crds")},
+		[]string{
+			filepath.Join("..", "..", "..", "deploy", "crds"),
+			filepath.Join("..", "..", "..", "third_party", "calicoapi", "crd"),
+		},
 	)
 	Expect(err).ToNot(HaveOccurred())
 
 	Expect(apis.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(calicoapi.AddToScheme(scheme.Scheme)).Should(Succeed())
 
 	close(done)
 }, 60)

@@ -20,6 +20,7 @@ const (
 	KeyFabEdgeName         = "fabedge.io/name"
 	KeyCreatedBy           = "fabedge.io/created-by"
 	KeyNode                = "fabedge.io/node"
+	KeyCluster             = "fabedge.io/cluster"
 	KeyNodePublicAddresses = "fabedge.io/node-public-addresses"
 	KeyPodHash             = "fabedge.io/pod-spec-hash"
 	AppAgent               = "fabedge-agent"

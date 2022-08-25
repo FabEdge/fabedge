@@ -19,6 +19,7 @@ import (
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
+	"github.com/fabedge/fabedge/pkg/operator/types"
 )
 
 const (
@@ -42,6 +43,7 @@ type Config struct {
 	PrivateKey    *rsa.PrivateKey
 	Store         storepkg.Interface
 	Manager       manager.Manager
+	CIDRMap       *types.ClusterCIDRsMap
 }
 
 func AddToManager(config Config) error {
@@ -70,25 +72,29 @@ func AddToManager(config Config) error {
 
 func (ctl *controller) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	log := ctl.log.WithValues("request", request)
-	if request.Name == ctl.Cluster {
-		log.V(5).Info("This cluster is local cluster, skip it")
-		return reconcile.Result{}, nil
-	}
 
 	var cluster apis.Cluster
 	if err := ctl.client.Get(ctx, request.NamespacedName, &cluster); err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("cluster is deleted, clearing its endpoints from store")
 			ctl.pruneEndpoints(request.Name)
+			ctl.CIDRMap.Delete(request.Name)
 			return reconcile.Result{}, nil
 		}
 
 		log.Error(err, "failed to get cluster")
 		return reconcile.Result{}, err
 	}
+	ctl.syncClusterCIDRs(cluster)
+
+	if cluster.Name == ctl.Cluster {
+		log.V(5).Info("This cluster is local cluster, skip it")
+		return reconcile.Result{}, nil
+	}
 
 	if cluster.DeletionTimestamp != nil {
 		ctl.pruneEndpoints(request.Name)
+		ctl.CIDRMap.Delete(request.Name)
 		return reconcile.Result{}, nil
 	}
 
@@ -161,4 +167,12 @@ func (ctl *controller) pruneEndpoints(clusterName string) {
 		ctl.Store.DeleteEndpoint(epName)
 	}
 	delete(ctl.clusterCache, clusterName)
+}
+
+func (ctl *controller) syncClusterCIDRs(cluster apis.Cluster) {
+	if len(cluster.Spec.CIDRs) > 0 {
+		ctl.CIDRMap.Set(cluster.Name, cluster.Spec.CIDRs)
+	} else {
+		ctl.CIDRMap.Delete(cluster.Name)
+	}
 }

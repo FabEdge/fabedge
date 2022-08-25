@@ -18,6 +18,7 @@ import (
 // controller is running
 type LocalClusterReporter struct {
 	Cluster      string
+	ClusterCIDRs []string
 	GetConnector types.EndpointGetter
 	SyncInterval time.Duration
 	Client       client.Client
@@ -55,6 +56,7 @@ func (ctl *LocalClusterReporter) report(ctx context.Context) {
 			},
 			Spec: apis.ClusterSpec{
 				Token: "",
+				CIDRs: ctl.ClusterCIDRs,
 				EndPoints: []apis.Endpoint{
 					connector,
 				},
@@ -71,11 +73,12 @@ func (ctl *LocalClusterReporter) report(ctx context.Context) {
 		connector,
 	}
 
-	if reflect.DeepEqual(endpoints, cluster.Spec.EndPoints) {
+	if reflect.DeepEqual(endpoints, cluster.Spec.EndPoints) && reflect.DeepEqual(ctl.ClusterCIDRs, cluster.Spec.CIDRs) {
 		return
 	}
 
 	cluster.Spec.EndPoints = endpoints
+	cluster.Spec.CIDRs = ctl.ClusterCIDRs
 	if err = ctl.Client.Update(ctx, &cluster); err != nil {
 		ctl.Log.Error(err, "failed to update cluster")
 	}
