@@ -27,13 +27,17 @@ type Endpoint struct {
 type ClusterSpec struct {
 	// Token is used by child cluster to access root cluster's apiserver
 	Token string `json:"token,omitempty"`
+	// CIDRs is supposed to contain cluster-cidr and cluster-service-ip-range of a cluster,
+	// these are mainly used to create ippools to avoid SNAT in calico environment
+	CIDRs []string `json:"cidrs,omitempty"`
 	// Endpoints of connector and exported edge nodes of a cluster
-	EndPoints []Endpoint `json:"endPoints,omitempty"`
+	EndPoints []Endpoint `json:"endpoints,omitempty"`
 }
 
 // Cluster is used to represent a cluster's endpoints of connector and edge nodes
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
+// +kubebuilder:printcolumn:name="CIDRs",type="string",JSONPath=".spec.cidrs",description="pod and service cidr list of cluster"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="How long a community is created"
 type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`

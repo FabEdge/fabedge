@@ -24,6 +24,7 @@ var _ = Describe("LocalClusterReporter", func() {
 
 		reporter := &LocalClusterReporter{
 			Cluster:      "test",
+			ClusterCIDRs: []string{"10.100.0.0/16"},
 			Client:       k8sClient,
 			SyncInterval: time.Second,
 			Log:          klogr.New(),
@@ -40,14 +41,26 @@ var _ = Describe("LocalClusterReporter", func() {
 		err := k8sClient.Get(context.Background(), client.ObjectKey{Name: reporter.Cluster}, &cluster)
 		Expect(err).Should(BeNil())
 		Expect(cluster.Spec.EndPoints[0]).Should(Equal(connector))
+		Expect(cluster.Spec.CIDRs).Should(Equal(reporter.ClusterCIDRs))
 
 		By("update connector and report again")
 		connector.PublicAddresses = []string{"10.10.1.1"}
 		reporter.report(context.Background())
 
-		By("check if cluster is updated")
+		By("check if cluster's endpoints is updated")
 		err = k8sClient.Get(context.Background(), client.ObjectKey{Name: reporter.Cluster}, &cluster)
 		Expect(err).Should(BeNil())
 		Expect(cluster.Spec.EndPoints[0]).Should(Equal(connector))
+		Expect(cluster.Spec.CIDRs).Should(Equal(reporter.ClusterCIDRs))
+
+		By("update cluster cidrs and report again")
+		reporter.ClusterCIDRs = []string{"10.100.0.0/18"}
+		reporter.report(context.Background())
+
+		By("check if cluster's CIDRs is updated")
+		err = k8sClient.Get(context.Background(), client.ObjectKey{Name: reporter.Cluster}, &cluster)
+		Expect(err).Should(BeNil())
+		Expect(cluster.Spec.EndPoints[0]).Should(Equal(connector))
+		Expect(cluster.Spec.CIDRs).Should(Equal(reporter.ClusterCIDRs))
 	})
 })

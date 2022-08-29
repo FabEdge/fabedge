@@ -10,6 +10,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/apiserver"
@@ -109,6 +110,51 @@ func TestClient_SignCert(t *testing.T) {
 	g.Expect(requestContent).Should(Equal(csrPEM))
 }
 
+func TestClient_UpdateCluster(t *testing.T) {
+	g := NewGomegaWithT(t)
+	mux, url, teardown := newServer()
+	defer teardown()
+
+	var receivedCluster apis.Cluster
+	var req *http.Request
+	mux.HandleFunc(apiserver.URLUpdateCluster, func(w http.ResponseWriter, r *http.Request) {
+		req = r
+		content, _ := ioutil.ReadAll(r.Body)
+		_ = json.Unmarshal(content, &receivedCluster)
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	cli, err := NewClient(url, clusterName, nil)
+	g.Expect(err).Should(BeNil())
+
+	cluster := apis.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: clusterName,
+			Labels: map[string]string{
+				"something": "for-nothing",
+			},
+		},
+		Spec: apis.ClusterSpec{
+			CIDRs: []string{"192.168.0.0/16"},
+			EndPoints: []apis.Endpoint{
+				{
+					Name:            "connector",
+					PublicAddresses: []string{"connector"},
+					Subnets:         []string{"2.2.0.0/24"},
+					NodeSubnets:     []string{"10.10.10.1/32"},
+				},
+			},
+		},
+	}
+	g.Expect(cli.UpdateCluster(cluster)).Should(Succeed())
+	g.Expect(req.Method).Should(Equal(http.MethodPut))
+	g.Expect(req.Header.Get(apiserver.HeaderClusterName)).Should(Equal(clusterName))
+	g.Expect(receivedCluster.Name).Should(Equal(cluster.Name))
+	g.Expect(receivedCluster.Spec.CIDRs).Should(Equal(cluster.Spec.CIDRs))
+	g.Expect(receivedCluster.Spec.EndPoints).Should(Equal(cluster.Spec.EndPoints))
+}
+
 func TestClient_UpdateEndpoints(t *testing.T) {
 	g := NewGomegaWithT(t)
 	mux, url, teardown := newServer()
@@ -186,6 +232,33 @@ func TestClient_GetEndpointsAndCommunities(t *testing.T) {
 	ea, err := cli.GetEndpointsAndCommunities()
 	g.Expect(err).Should(BeNil())
 	g.Expect(ea).Should(Equal(expectedEA))
+	g.Expect(req.Method).Should(Equal(http.MethodGet))
+	g.Expect(req.Header.Get(apiserver.HeaderClusterName)).Should(Equal(clusterName))
+}
+
+func TestClient_GetClusterCIDRs(t *testing.T) {
+	g := NewGomegaWithT(t)
+	mux, url, teardown := newServer()
+	defer teardown()
+
+	expectedCIDRMap := map[string][]string{
+		"beijing":  {"192.168.0.0/18"},
+		"shanghai": {"192.168.0.64/18"},
+	}
+	var req *http.Request
+	mux.HandleFunc(apiserver.URLGetCIDRs, func(w http.ResponseWriter, r *http.Request) {
+		req = r
+		data, _ := json.Marshal(expectedCIDRMap)
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	})
+
+	cli, err := NewClient(url, clusterName, nil)
+	g.Expect(err).Should(BeNil())
+
+	cidrMap, err := cli.GetClusterCIDRs()
+	g.Expect(err).Should(BeNil())
+	g.Expect(cidrMap).Should(Equal(expectedCIDRMap))
 	g.Expect(req.Method).Should(Equal(http.MethodGet))
 	g.Expect(req.Header.Get(apiserver.HeaderClusterName)).Should(Equal(clusterName))
 }

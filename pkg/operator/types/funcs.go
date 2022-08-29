@@ -29,6 +29,7 @@ type GetNameFunc func(nodeName string) string
 type NewEndpointFunc func(node corev1.Node) apis.Endpoint
 type PodCIDRsGetter func(node corev1.Node) []string
 type EndpointGetter func() apis.Endpoint
+type GetClusterCIDRInfo func() (map[string][]string, error)
 
 func NewEndpointFuncs(namePrefix, idFormat string, getPodCIDRs PodCIDRsGetter) (GetNameFunc, GetIDFunc, NewEndpointFunc) {
 	getName := func(name string) string {

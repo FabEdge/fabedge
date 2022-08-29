@@ -14,14 +14,17 @@ import (
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/apiserver"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const defaultTimeout = 5 * time.Second
 
 type Interface interface {
 	GetEndpointsAndCommunities() (apiserver.EndpointsAndCommunity, error)
+	UpdateCluster(cluster apis.Cluster) error
 	UpdateEndpoints(endpoints []apis.Endpoint) error
 	SignCert(csr []byte) (Certificate, error)
+	GetClusterCIDRs() (map[string][]string, error)
 }
 
 type client struct {
@@ -68,6 +71,40 @@ func (c *client) SignCert(csr []byte) (cert Certificate, err error) {
 	return readCertFromResponse(resp)
 }
 
+func (c *client) UpdateCluster(cluster apis.Cluster) error {
+	// clean useless fields
+	cluster = apis.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cluster.Name,
+		},
+		Spec: apis.ClusterSpec{
+			CIDRs:     cluster.Spec.CIDRs,
+			EndPoints: cluster.Spec.EndPoints,
+		},
+	}
+
+	data, err := json.Marshal(cluster)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, join(c.baseURL, apiserver.URLUpdateCluster), bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(apiserver.HeaderClusterName, c.clusterName)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	_, err = handleResponse(resp)
+	return err
+}
+
+// UpdateEndpoints is deprecated, updateCluster is preferred
 func (c *client) UpdateEndpoints(endpoints []apis.Endpoint) error {
 	data, err := json.Marshal(endpoints)
 	if err != nil {
@@ -106,6 +143,24 @@ func (c *client) GetEndpointsAndCommunities() (ea apiserver.EndpointsAndCommunit
 
 	err = json.Unmarshal(data, &ea)
 	return ea, err
+}
+
+func (c *client) GetClusterCIDRs() (cidrMap map[string][]string, err error) {
+	req, err := http.NewRequest(http.MethodGet, join(c.baseURL, apiserver.URLGetCIDRs), nil)
+	if err != nil {
+		return cidrMap, err
+	}
+	req.Header.Set(apiserver.HeaderClusterName, c.clusterName)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return cidrMap, err
+	}
+
+	data, err := handleResponse(resp)
+
+	err = json.Unmarshal(data, &cidrMap)
+	return cidrMap, err
 }
 
 func GetCertificate(apiServerAddr string) (cert Certificate, err error) {
