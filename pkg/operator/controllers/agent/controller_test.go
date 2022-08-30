@@ -22,10 +22,15 @@ import (
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
@@ -215,6 +220,66 @@ var _ = Describe("AgentController", func() {
 				})
 			})
 		})
+	})
+})
+
+var _ = Describe("newCommunityEventHandler", func() {
+	var (
+		handler handler.EventHandler
+		queue   workqueue.RateLimitingInterface
+	)
+
+	BeforeEach(func() {
+		handler = newCommunityEventHandler("fabedge", klogr.New())
+		queue = workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "test")
+	})
+
+	AfterEach(func() {
+		queue.ShutDown()
+	})
+
+	It("can trigger nodes events from community event", func() {
+		community := apis.Community{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test",
+			},
+			Spec: apis.CommunitySpec{
+				Members: []string{"fabedge.edge1", "fabedge.edge2"},
+			},
+		}
+		handler.Generic(event.GenericEvent{Object: &community}, queue)
+
+		data, _ := queue.Get()
+		req, ok := data.(reconcile.Request)
+		Expect(ok).Should(BeTrue())
+		Expect(req.Name).To(Equal("edge1"))
+
+		data, _ = queue.Get()
+		req, ok = data.(reconcile.Request)
+		Expect(ok).Should(BeTrue())
+		Expect(req.Name).To(Equal("edge2"))
+	})
+
+	It("will ignore community members which doesn't match clusterName argument", func() {
+		community := apis.Community{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test",
+			},
+			Spec: apis.CommunitySpec{
+				Members: []string{"beijing.edge1", "fabedge.edge2"},
+			},
+		}
+		handler.Generic(event.GenericEvent{Object: &community}, queue)
+
+		data, _ := queue.Get()
+		req, ok := data.(reconcile.Request)
+		Expect(ok).Should(BeTrue())
+		Expect(req.Name).To(Equal("edge2"))
+	})
+
+	It("will ignore non-community events", func() {
+		handler.Generic(event.GenericEvent{Object: &corev1.Node{}}, queue)
+		Expect(queue.Len()).To(Equal(0))
 	})
 })
 

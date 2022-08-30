@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -34,14 +35,16 @@ import (
 
 var _ = Describe("Controller", func() {
 	var (
-		requests chan reconcile.Request
-		store    storepkg.Interface
-		ctx      context.Context
-		cancel   context.CancelFunc
+		requests      chan reconcile.Request
+		communityChan chan event.GenericEvent
+		store         storepkg.Interface
+		ctx           context.Context
+		cancel        context.CancelFunc
 	)
 
 	BeforeEach(func() {
 		store = storepkg.NewStore()
+		communityChan = make(chan event.GenericEvent, 100)
 		ctx, cancel = context.WithCancel(context.Background())
 
 		mgr, err := manager.New(cfg, manager.Options{
@@ -51,9 +54,10 @@ var _ = Describe("Controller", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		reconciler := reconcile.Reconciler(&communityController{
-			client: mgr.GetClient(),
-			store:  store,
-			log:    mgr.GetLogger().WithName(controllerName),
+			client:        mgr.GetClient(),
+			communityChan: communityChan,
+			store:         store,
+			log:           mgr.GetLogger().WithName(controllerName),
 		})
 		reconciler, requests = testutil.WrapReconcile(reconciler)
 		c, err := controller.New(
@@ -166,4 +170,52 @@ var _ = Describe("Controller", func() {
 		_, ok := store.GetCommunity(community.Name)
 		Expect(ok).Should(BeFalse())
 	})
+
+	It("should send community event no matter whether what happened to a community", func() {
+		var community apis.Community
+		community = apis.Community{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test",
+			},
+			Spec: apis.CommunitySpec{
+				Members: []string{
+					"edge1",
+					"edge2",
+					"edge3",
+				},
+			},
+		}
+
+		By("create community")
+		Expect(k8sClient.Create(context.Background(), &community)).To(Succeed())
+		expectCommunityEvent(community, communityChan, 5*time.Second)
+
+		By("delete community")
+		Expect(k8sClient.Delete(context.Background(), &community)).To(Succeed())
+		Eventually(requests, 5*time.Second).Should(Receive(Equal(reconcile.Request{
+			NamespacedName: ObjectKey{Name: community.Name},
+		})))
+		expectCommunityEvent(community, communityChan, 5*time.Second)
+	})
 })
+
+func drainCommunityChan(ch chan event.GenericEvent, timeout time.Duration) *event.GenericEvent {
+	for {
+		select {
+		case evt := <-ch:
+			return &evt
+		case <-time.After(timeout):
+			return nil
+		}
+	}
+}
+
+func expectCommunityEvent(expectedCommunity apis.Community, ch chan event.GenericEvent, timeout time.Duration) {
+	evt := drainCommunityChan(ch, timeout)
+	ExpectWithOffset(1, evt).NotTo(BeNil())
+
+	community, ok := evt.Object.(*apis.Community)
+	ExpectWithOffset(1, ok).Should(BeTrue())
+	ExpectWithOffset(1, community.Name).To(Equal(expectedCommunity.Name))
+	ExpectWithOffset(1, community.Spec.Members).To(Equal(expectedCommunity.Spec.Members))
+}

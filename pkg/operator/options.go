@@ -34,6 +34,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -241,6 +242,7 @@ func (opts *Options) Complete() (err error) {
 	opts.Store = storepkg.NewStore()
 	opts.ClusterCIDRsMap = types.NewClusterCIDRsMap()
 
+	opts.Agent.ClusterName = opts.Cluster
 	opts.Agent.Namespace = opts.Namespace
 	opts.Agent.CertManager = certManager
 	opts.Agent.Manager = opts.Manager
@@ -583,15 +585,19 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		return err
 	}
 
+	// I don't know what size the event chan should be, so I just give it 100
+	communityEventChan := make(chan event.GenericEvent, 100)
 	opts.Agent.GetConnectorEndpoint = getConnectorEndpoint
+	opts.Agent.CommunityChan = communityEventChan
 	if err = agentctl.AddToManager(opts.Agent); err != nil {
 		log.Error(err, "failed to add agent controller to manager")
 		return err
 	}
 
 	if err = cmmctl.AddToManager(cmmctl.Config{
-		Manager: opts.Manager,
-		Store:   opts.Store,
+		Manager:       opts.Manager,
+		Store:         opts.Store,
+		CommunityChan: communityEventChan,
 	}); err != nil {
 		log.Error(err, "failed to add communities controller to manager")
 		return err
