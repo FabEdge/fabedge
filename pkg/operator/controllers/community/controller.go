@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctlpkg "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -45,9 +46,10 @@ func AddToManager(config Config) error {
 		mgr,
 		ctlpkg.Options{
 			Reconciler: &communityController{
-				store:  config.Store,
-				client: mgr.GetClient(),
-				log:    mgr.GetLogger().WithName(controllerName),
+				store:         config.Store,
+				client:        mgr.GetClient(),
+				communityChan: config.CommunityChan,
+				log:           mgr.GetLogger().WithName(controllerName),
 			},
 		},
 	)
@@ -62,20 +64,32 @@ func AddToManager(config Config) error {
 }
 
 type Config struct {
-	Manager manager.Manager
-	Store   storepkg.Interface
+	Manager       manager.Manager
+	Store         storepkg.Interface
+	CommunityChan chan<- event.GenericEvent
 }
 
 type communityController struct {
-	client client.Client
-	log    logr.Logger
-	store  storepkg.Interface
+	client        client.Client
+	log           logr.Logger
+	store         storepkg.Interface
+	communityChan chan<- event.GenericEvent
 }
 
 func (ctl *communityController) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	var community apis.Community
 	if err := ctl.client.Get(ctx, request.NamespacedName, &community); err != nil {
 		if errors.IsNotFound(err) {
+			// since community cannot be found, we have to get old members from store
+			// to trigger related node events
+			if cm, found := ctl.store.GetCommunity(request.Name); found {
+				community.Name = request.Name
+				community.Spec.Members = cm.Members.List()
+				ctl.communityChan <- event.GenericEvent{
+					Object: &community,
+				}
+			}
+
 			ctl.store.DeleteCommunity(request.Name)
 			return reconcile.Result{}, nil
 		}
@@ -91,5 +105,12 @@ func (ctl *communityController) Reconcile(ctx context.Context, request reconcile
 		Name:    community.Name,
 		Members: sets.NewString(community.Spec.Members...),
 	})
+
+	// must send event after save community to store, otherwise
+	// when agentController might get incorrect data
+	ctl.communityChan <- event.GenericEvent{
+		Object: &community,
+	}
+
 	return reconcile.Result{}, nil
 }

@@ -17,15 +17,21 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/workqueue"
 	ctrlpkg "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/operator/allocator"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -63,9 +69,10 @@ type agentController struct {
 }
 
 type Config struct {
-	Allocators []allocator.Interface
-	Store      storepkg.Interface
-	Manager    manager.Manager
+	ClusterName string
+	Allocators  []allocator.Interface
+	Store       storepkg.Interface
+	Manager     manager.Manager
 
 	Namespace         string
 	AgentImage        string
@@ -76,6 +83,7 @@ type Config struct {
 	GetConnectorEndpoint types.EndpointGetter
 	NewEndpoint          types.NewEndpointFunc
 	GetEndpointName      types.GetNameFunc
+	CommunityChan        <-chan event.GenericEvent
 
 	CertManager      certutil.Manager
 	CertOrganization string
@@ -99,6 +107,7 @@ func AddToManager(cnf Config) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
 		Owns(&corev1.Pod{}).
+		Watches(&source.Channel{Source: cnf.CommunityChan}, newCommunityEventHandler(cnf.ClusterName, mgr.GetLogger())).
 		Named(controllerName).
 		Complete(reconciler)
 }
@@ -213,4 +222,33 @@ func (ctl *agentController) clearAllocatedResourcesForEdgeNode(ctx context.Conte
 
 	ctl.edgeNameSet.Delete(nodeName)
 	return nil
+}
+
+func newCommunityEventHandler(clusterName string, log logr.Logger) handler.EventHandler {
+	prefix := fmt.Sprintf("%s.", clusterName)
+	return handler.Funcs{
+		GenericFunc: func(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+			if evt.Object == nil {
+				log.Error(nil, "GenericEvent received with no metadata", "event", evt)
+				return
+			}
+			community, ok := evt.Object.(*apis.Community)
+			if !ok {
+				log.Error(nil, "GenericEvent's object is not community", "event", evt)
+				return
+			}
+
+			for _, name := range community.Spec.Members {
+				if strings.HasPrefix(name, prefix) {
+					name = strings.TrimPrefix(name, prefix)
+				} else {
+					continue
+				}
+
+				q.Add(reconcile.Request{NamespacedName: ObjectKey{
+					Name: name,
+				}})
+			}
+		},
+	}
 }
