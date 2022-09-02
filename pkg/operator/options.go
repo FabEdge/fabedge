@@ -610,10 +610,14 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 		}
 	}
 
+	// the Connector.ProvidedSubnets is basically service-cluster-ip-range parameter of cluster
+	// it's better to put service-cluster-ip-range in clusterCIDRs to avoid SNAT when cloud pods
+	// visit service of external clusters by cluster-ip
+	clusterCIDRs := append(opts.ClusterCIDRs, opts.Connector.ProvidedSubnets...)
 	if opts.ClusterRole == RoleHost {
 		reporter := &routines.LocalClusterReporter{
 			Cluster:      opts.Cluster,
-			ClusterCIDRs: opts.ClusterCIDRs,
+			ClusterCIDRs: clusterCIDRs,
 			GetConnector: getConnectorEndpoint,
 			SyncInterval: 10 * time.Second,
 			Client:       opts.Manager.GetClient(),
@@ -646,14 +650,10 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 			return err
 		}
 
-		// the Connector.ProvidedSubnets is basically service-cluster-ip-range parameter of cluster
-		// it's better to put service-cluster-ip-range in clusterCIDRs to avoid SNAT when cloud pods
-		// visit service of external clusters by cluster-ip
-		clusterCIDRS := append(opts.ClusterCIDRs, opts.Connector.ProvidedSubnets...)
 		err = opts.Manager.Add(routines.ExportCluster(
 			timeutil.Seconds(10),
 			opts.Cluster,
-			clusterCIDRS,
+			clusterCIDRs,
 			getConnectorEndpoint,
 			opts.APIClient.UpdateCluster,
 		))
