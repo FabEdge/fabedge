@@ -108,12 +108,18 @@ func (e *execer) ListEntries(setName string) (sets.String, error) {
 }
 
 func newEntry(set *ipset.IPSet, addr string) (entry *ipset.Entry, err error) {
-	entry = &ipset.Entry{
-		IP:      addr,
-		SetType: set.SetType,
-	}
+	entry = &ipset.Entry{}
 
-	if set.SetType == HashIPPortIP {
+	entryType := determineEntryType(addr)
+	switch entryType {
+	case HashNet:
+		entry.Net = addr
+		entry.SetType = HashNet
+	case HashIP:
+		entry.IP = addr
+		entry.SetType = HashIP
+	case HashIPPortIP:
+		entry.SetType = HashIPPortIP
 		parts := strings.SplitN(addr, ",", 3)
 		if len(parts) != 3 {
 			return nil, fmt.Errorf("%s not an valid hash:ip,port,ip entry", addr)
@@ -141,4 +147,16 @@ func newEntry(set *ipset.IPSet, addr string) (entry *ipset.Entry, err error) {
 	}
 
 	return entry, nil
+}
+
+func determineEntryType(addr string) ipset.Type {
+	switch {
+	// ip,port,ip
+	case strings.IndexByte(addr, ',') > -1:
+		return HashIPPortIP
+	case strings.IndexByte(addr, '/') > 1:
+		return HashNet
+	default:
+		return HashIP
+	}
 }
