@@ -15,9 +15,11 @@
 package strongswan
 
 import (
+	"bytes"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -422,7 +424,17 @@ func areSubnetIdentical(cidrs1, cidrs2 []string) bool {
 		cidr1 := normalizeCIDR(cidrs1[i])
 		cidr2 := normalizeCIDR(cidrs2[i])
 
-		if cidr1 != cidr2 {
+		_, ipNet1, err := net.ParseCIDR(cidr1)
+		if err != nil {
+			return false
+		}
+
+		_, ipNet2, err := net.ParseCIDR(cidr2)
+		if err != nil {
+			return false
+		}
+
+		if !ipNet1.IP.Equal(ipNet2.IP) || !bytes.Equal(ipNet1.Mask, ipNet2.Mask) {
 			return false
 		}
 	}
@@ -437,7 +449,7 @@ func normalizeCIDR(value string) string {
 
 	maskLen := 32
 	if strings.IndexByte(value, ':') > -1 {
-		maskLen = 64
+		maskLen = 128
 	}
 
 	return fmt.Sprintf("%s/%d", value, maskLen)
