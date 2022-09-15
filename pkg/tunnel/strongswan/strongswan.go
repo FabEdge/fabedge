@@ -437,7 +437,7 @@ func normalizeCIDR(value string) string {
 
 	maskLen := 32
 	if strings.IndexByte(value, ':') > -1 {
-		maskLen = 64
+		maskLen = 128
 	}
 
 	return fmt.Sprintf("%s/%d", value, maskLen)

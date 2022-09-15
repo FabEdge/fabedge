@@ -155,6 +155,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 }
 
 func (opts *Options) Complete() (err error) {
+	opts.normalizeCIDRs()
 	opts.CNIType = strings.TrimSpace(opts.CNIType)
 
 	nodeutil.SetEdgeNodeLabels(opts.EdgeLabels)
@@ -293,6 +294,26 @@ func (opts *Options) Complete() (err error) {
 	}
 
 	return nil
+}
+
+// normalizeCIDRs will normalize cluster cidrs and connector's subnets because
+// sometimes user may provide values that are correct but not abbreviated enough(mainly IPv6).
+// Example: fd96:ee88:0:1::0/116 and fd96:ee88:0:1::/116 are equal as CIDRs but are not equal as strings.
+// Connector and agent might do CIDR equality check by string comparison which might fail because
+// one CIDR is not abbreviated enough.
+// This method should be called after only in Complete
+func (opts *Options) normalizeCIDRs() {
+	normalizedCIDRs := func(cidrs ...string) []string {
+		var results []string
+		for _, cidr := range cidrs {
+			_, ipNet, _ := net.ParseCIDR(cidr)
+			results = append(results, ipNet.String())
+		}
+		return results
+	}
+
+	opts.ClusterCIDRs = normalizedCIDRs(opts.ClusterCIDRs...)
+	opts.Connector.ProvidedSubnets = normalizedCIDRs(opts.Connector.ProvidedSubnets...)
 }
 
 func (opts *Options) createAllocators() ([]allocator.Interface, error) {
