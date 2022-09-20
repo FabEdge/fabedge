@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -41,6 +42,7 @@ import (
 
 // errRestartAgent is used to signal controller put restartAgent in context
 var errRestartAgent = fmt.Errorf("restart agent")
+var errRequeueRequest = fmt.Errorf("requeue this request")
 
 const (
 	controllerName              = "agent-controller"
@@ -163,6 +165,7 @@ func initHandlers(cnf Config, cli client.Client, log logr.Logger) []Handler {
 		strongswanImage: cnf.StrongswanImage,
 		argMap:          cnf.AgentPodArguments,
 		args:            cnf.AgentPodArguments.ArgumentArray(),
+		agentNameSet:    types.NewSafeStringSet(),
 	})
 
 	return handlers
@@ -196,6 +199,8 @@ func (ctl *agentController) Reconcile(ctx context.Context, request reconcile.Req
 			if err == errRestartAgent {
 				ctx = context.WithValue(ctx, keyRestartAgent, err)
 				continue
+			} else if err == errRequeueRequest {
+				return reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}, nil
 			}
 			return reconcile.Result{}, err
 		}

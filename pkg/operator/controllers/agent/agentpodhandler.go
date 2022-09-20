@@ -51,19 +51,24 @@ type agentPodHandler struct {
 	imagePullPolicy corev1.PullPolicy
 	argMap          types.AgentArgumentMap
 	args            []string
+	agentNameSet    *types.SafeStringSet
 
 	client client.Client
 	log    logr.Logger
 }
 
 func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error {
-	agentName := getAgentPodName(node.Name)
+	agentName := getAgentName(node.Name)
 
 	log := handler.log.WithValues("nodeName", node.Name, "agentName", agentName, "namespace", handler.namespace)
 
 	oldPod, err := handler.getAgentPod(ctx, agentName)
 	switch {
 	case err == nil:
+		if oldPod.DeletionTimestamp != nil {
+			return errRequeueRequest
+		}
+
 		needRestart := ctx.Value(keyRestartAgent) == errRestartAgent
 		if !needRestart {
 			newPod := handler.buildAgentPod(handler.namespace, agentName, node)
@@ -77,12 +82,29 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 		// we will not create agent pod now because pod termination may last for a long time,
 		// during that time, create pod may get collision error
 		log.V(3).Info("need to restart pod, delete it now")
-		err = handler.client.Delete(context.TODO(), &oldPod)
-		if err != nil {
+		if err = handler.client.Delete(context.TODO(), &oldPod); err != nil {
 			log.Error(err, "failed to delete agent pod")
+			return err
 		}
-		return err
+
+		handler.agentNameSet.Delete(agentName)
+		return nil
 	case errors.IsNotFound(err):
+		// sometimes agentController might receive successive events for the same node in short time,
+		// this might cause agentPodHandler to create redundant agent pods for the same node, because
+		// the pods in cache might be different from real pods in apiserver. So here agentPodHandler will
+		// check if an agent has already been created for a node, if agentNameSet contains the agentName,
+		// we requeue this request to avoid cache problem.
+		if handler.agentNameSet.Has(agentName) {
+			log.Error(nil, "agent for this node has already created, this might caused by cache problem", "node", node.Name)
+
+			// Sometimes pods are deleted by other tools, if that happens agentNameSet might contain agentName while
+			// agent pod doesn't exist. So here we delete agentName from agentNameSet no matter what happened. Anyway
+			// when delayed request arrives again, the cache should catch up the data from api-server
+			handler.agentNameSet.Delete(agentName)
+			return errRequeueRequest
+		}
+
 		log.V(5).Info("Agent pod is not found, create it now")
 		newPod := handler.buildAgentPod(handler.namespace, agentName, node)
 
@@ -91,11 +113,13 @@ func (handler *agentPodHandler) Do(ctx context.Context, node corev1.Node) error 
 			return err
 		}
 
-		err = handler.client.Create(ctx, newPod)
-		if err != nil {
+		if err = handler.client.Create(ctx, newPod); err != nil {
 			log.Error(err, "failed to create agent pod")
+			return err
 		}
-		return err
+
+		handler.agentNameSet.Insert(agentName)
+		return nil
 	default:
 		log.Error(err, "failed to get agent pod")
 		return err
@@ -372,26 +396,29 @@ func (handler *agentPodHandler) buildAgentArgs(node corev1.Node) []string {
 }
 
 func (handler *agentPodHandler) Undo(ctx context.Context, nodeName string) error {
-	podName := getAgentPodName(nodeName)
-	pod, err := handler.getAgentPod(ctx, podName)
+	agentName := getAgentName(nodeName)
+	pod, err := handler.getAgentPod(ctx, agentName)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			handler.agentNameSet.Delete(agentName)
 			return nil
 		}
 
-		handler.log.Error(err, "failed to get pod", "name", podName, "namespace", handler.namespace)
+		handler.log.Error(err, "failed to get pod", "name", agentName, "namespace", handler.namespace)
 		return err
 	}
 
 	err = handler.client.Delete(ctx, &pod)
 	if err != nil {
 		handler.log.Error(err, "failed to delete pod", "name", pod.Name, "namespace", pod.Namespace)
+		return err
 	}
 
-	return err
+	handler.agentNameSet.Delete(agentName)
+	return nil
 }
 
-func getAgentPodName(nodeName string) string {
+func getAgentName(nodeName string) string {
 	return fmt.Sprintf("fabedge-agent-%s", nodeName)
 }
 

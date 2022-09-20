@@ -17,6 +17,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -170,6 +171,25 @@ var _ = Describe("AgentController", func() {
 					},
 				})
 				Expect(err).To(Equal(firstHandler.ErrorForDo))
+
+				Expect(lastHandler.DoContext).To(BeNil())
+				Expect(controller.edgeNameSet.Has(nodeName)).To(BeTrue())
+			})
+
+			It("return a requeue reconcile.Result if any handler return errRequeueRequest", func() {
+				firstHandler = &FuncHandler{ErrorForDo: errRequeueRequest}
+				lastHandler = &FuncHandler{}
+				controller.edgeNameSet = types.NewSafeStringSet()
+				controller.handlers = []Handler{firstHandler, lastHandler}
+
+				req, err := controller.Reconcile(context.Background(), reconcile.Request{
+					NamespacedName: ObjectKey{
+						Name: nodeName,
+					},
+				})
+				Expect(err).To(BeNil())
+				Expect(req.Requeue).To(BeTrue())
+				Expect(req.RequeueAfter).To(Equal(5 * time.Second))
 
 				Expect(lastHandler.DoContext).To(BeNil())
 				Expect(controller.edgeNameSet.Has(nodeName)).To(BeTrue())
