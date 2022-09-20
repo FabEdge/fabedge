@@ -26,12 +26,13 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
+	testutil "github.com/fabedge/fabedge/pkg/util/test"
 )
 
 var _ = Describe("AgentPodHandler", func() {
 	var (
-		agentPodName string
-		node         corev1.Node
+		agentName string
+		node      corev1.Node
 
 		namespace       = "default"
 		agentImage      = "fabedge/agent:latest"
@@ -59,20 +60,26 @@ var _ = Describe("AgentPodHandler", func() {
 			imagePullPolicy: corev1.PullIfNotPresent,
 			args:            argMap.ArgumentArray(),
 			argMap:          argMap,
+			agentNameSet:    types.NewSafeStringSet(),
 			client:          k8sClient,
 			log:             klogr.New().WithName("agentPodHandler"),
 		}
 
 		nodeName := getNodeName()
-		agentPodName = getAgentPodName(nodeName)
+		agentName = getAgentName(nodeName)
 		node = newNode(nodeName, "10.40.20.181", "2.2.2.2/26")
 		node.UID = "123456"
 
 		Expect(handler.Do(context.TODO(), node)).To(Succeed())
 	})
 
+	AfterEach(func() {
+		Expect(testutil.PurgeAllPods(k8sClient)).To(Succeed())
+	})
+
 	It("should create a agent pod if it's not exists", func() {
-		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		Expect(handler.agentNameSet.Has(agentName)).To(BeTrue())
+		pod, err := handler.getAgentPod(context.Background(), agentName)
 		Expect(err).Should(BeNil())
 
 		expectOwnerReference(&pod, node)
@@ -285,7 +292,7 @@ var _ = Describe("AgentPodHandler", func() {
 
 	It("should use arguments from node's annotation and default arguments to build agent pod", func() {
 		nodeName := getNodeName()
-		agentPodName = getAgentPodName(nodeName)
+		agentName = getAgentName(nodeName)
 		node = newNode(nodeName, "10.40.20.182", "2.2.2.3/26")
 		node.UID = "234567"
 		node.Annotations = map[string]string{
@@ -295,7 +302,7 @@ var _ = Describe("AgentPodHandler", func() {
 
 		Expect(handler.Do(context.TODO(), node)).To(Succeed())
 
-		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		pod, err := handler.getAgentPod(context.Background(), agentName)
 		Expect(err).Should(BeNil())
 		Expect(pod.Spec.Containers[0].Args).To(ConsistOf(
 			"--cni-version=0.3.2",
@@ -308,30 +315,44 @@ var _ = Describe("AgentPodHandler", func() {
 		))
 	})
 
+	It("return errRequeueRequest if an agent pod is already created but agentPodHandler is not able to get it", func() {
+		nodeName := getNodeName()
+		agentName = getAgentName(nodeName)
+		node = newNode(nodeName, "10.40.20.182", "2.2.3.2/26")
+		node.UID = "2382203"
+
+		handler.agentNameSet.Insert(agentName)
+		Expect(handler.Do(context.Background(), node)).To(Equal(errRequeueRequest))
+		Expect(handler.agentNameSet.Has(agentName)).To(BeFalse())
+	})
+
 	It("should delete agent pod if errRestartAgent is passed in context", func() {
 		ctx := context.WithValue(context.Background(), keyRestartAgent, errRestartAgent)
 		Expect(handler.Do(ctx, node)).Should(Succeed())
 
-		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		pod, err := handler.getAgentPod(context.Background(), agentName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
+		Expect(handler.agentNameSet.Has(agentName)).To(BeFalse())
 	})
 
 	It("should delete agent pod if is not matched to expected pod spec", func() {
-		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		pod, err := handler.getAgentPod(context.Background(), agentName)
 
 		pod.Labels[constants.KeyPodHash] = "different-hash"
 		Expect(k8sClient.Update(context.Background(), &pod)).Should(Succeed())
 
 		Expect(handler.Do(context.Background(), node)).Should(Succeed())
 
-		pod, err = handler.getAgentPod(context.Background(), agentPodName)
+		pod, err = handler.getAgentPod(context.Background(), agentName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
+		Expect(handler.agentNameSet.Has(agentName)).To(BeFalse())
 	})
 
 	It("is able to delete agent pod for specified node", func() {
 		Expect(handler.Undo(context.TODO(), node.Name)).To(Succeed())
 
-		pod, err := handler.getAgentPod(context.Background(), agentPodName)
+		pod, err := handler.getAgentPod(context.Background(), agentName)
 		Expect(errors.IsNotFound(err) || pod.DeletionTimestamp != nil).Should(BeTrue())
+		Expect(handler.agentNameSet.Has(agentName)).To(BeFalse())
 	})
 })
