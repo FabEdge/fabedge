@@ -17,26 +17,17 @@
 ## 前提条件
 
 - Kubernetes (v1.18.8，1.22.7)
-
-- Flannel (v0.14.0 ) 或者 Calico (v3.16.5)
-
+- Flannel (v0.14.0) 或者 Calico (v3.16.5)
 - KubeEdge （v1.5）或者 SuperEdge（v0.5.0）或者 OpenYurt（ v0.4.1）
-
-  *注1： Flannel目前仅支持Vxlan模式，支持双栈环境。*
-
-  *注2： Calico目前仅支持IPIP模式，kube backend存储(默认)，不支持双栈环境。*
 
 ## 环境准备
 
 1. 确保防火墙或安全组允许以下协议和端口 
    - ESP(50)，UDP/500，UDP/4500
-   
-2.  如果机器上有firewalld，也最好关闭
-   
-3. 获取集群配置信息，供后面使用  
+2. 获取集群配置信息，供后面使用  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.7.0/get_cluster_info.sh | bash -
+	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
@@ -45,14 +36,13 @@
 	service-cluster-ip-range : 10.233.0.0/18
 	```
 
-​	
 
 ## 在主集群部署FabEdge
 
 1. 安装FabEdge   
 
    ```shell
-   $ curl 116.62.127.76/installer/v0.7.0/quickstart.sh | bash -s -- \
+   $ curl 116.62.127.76/installer/v0.6.0/quickstart.sh | bash -s -- \
    	--cluster-name beijing  \
    	--cluster-role host \
    	--cluster-zone beijing  \
@@ -61,15 +51,13 @@
    	--edges edge1,edge2 \
    	--edge-pod-cidr 10.233.0.0/16 \
    	--connector-public-addresses 10.22.46.47 \
-   	--chart http://116.62.127.76/fabedge-0.7.0.tgz
+   	--chart http://116.62.127.76/fabedge-0.6.0.tgz
    ```
    > 说明：   
    > **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签  
    > **--edges:** 边缘节点名称，指定的节点会被打上node-role.kubernetes.io/edge标签  
    > **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠  
    > **--connector-public-addresses**: connector所在节点的公网IP地址，从边缘节点必须网络可达  
-   
-   *注：`quickstart.sh`脚本有很多参数，以上实例仅以最常用的参数举例，执行`quickstart.sh --help`查询。*
    
 3.  确认部署正常  
 	
@@ -125,9 +113,8 @@
 	$ kubectl apply -f node-community.yaml
 	```
 
-4. 根据使用的[边缘计算框架](#边缘计算框架相关的配置)修改相关配置 
-
-5.  根据使用的[CNI](#CNI相关的配置)修改相关配置 
+5.  根据使用的[边缘计算框架](#%E5%92%8C%E8%BE%B9%E7%BC%98%E8%AE%A1%E7%AE%97%E6%A1%86%E6%9E%B6%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE)修改相关配置 
+5.  根据使用的[CNI](#%E5%92%8CCNI%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE)修改相关配置 
 
 ## 在成员集群部署FabEdge
 如果有成员集群，先在主集群注册所有的成员集群，然后在每个成员集群部署FabEdge
@@ -151,7 +138,7 @@
 3. 在**成员集群**安装FabEdage  
 	
 	```shell
-	curl 116.62.127.76/installer/v0.7.0/quickstart.sh | bash -s -- \
+	curl 116.62.127.76/installer/v0.6.0/quickstart.sh | bash -s -- \
 		--cluster-name shanghai \
 		--cluster-role member \
 		--cluster-zone shanghai  \
@@ -160,7 +147,7 @@
 		--edges edge1,edge2 \
 		--edge-pod-cidr 10.233.0.0/16 \
 		--connector-public-addresses 10.22.46.26 \
-		--chart http://116.62.127.76/fabedge-0.7.0.tgz \
+		--chart http://116.62.127.76/fabedge-0.6.0.tgz \
 		--service-hub-api-server https://10.22.46.47:30304 \
 		--operator-api-server https://10.22.46.47:30303 \
 		--init-token ey...Jh
@@ -271,7 +258,7 @@
 4. 重启coredns、edge-coredns和nodelocaldns使配置生效
 
 
-## 边缘计算框架相关的配置
+## 与边缘计算框架相关的配置
 ### 如果使用KubeEdge
 
 1.  确认nodelocaldns在**边缘节点**正常运行  
@@ -341,13 +328,9 @@
 
 2.  SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent，导致不能和master节点上的Pod通讯。如果需要，可以修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。 
 
-## CNI相关的配置
+## 与CNI相关的配置
 ### 如果使用Calico
-
-fabedge-v0.7.0提供了自动维护calico ippools功能，使用`quickstart.sh`安装fabedge时，会自动启动这个功能。如果您希望自己管理calico ippools，可以在安装时使用`--auto-keep-ippools false`配置项关闭这个功能。在启用自动维护calico ippools的情况下，以下内容可以跳过。
-
-不论是什么集群角色, 只要集群使用Calico，就要将本集群的EdgePodCIDR其它所有集群的Pod和Service的网段加入当前集群的Calico配置,  防止Calico做源地址转换，导致不能通讯。
-
+不论是什么集群角色, 只要集群使用Calico，就要将其它所有集群的Pod和Service的网段加入当前集群的Calico配置,  防止Calico做源地址转换，导致不能通讯。
 例如: host (Calico)  + member1 (Calico) + member2 (Flannel)
 
 - 在host (Calico) 集群的master节点操作，将member1 (Calico)，member2 (Flannel)地址配置到host集群的Calico中。
@@ -385,12 +368,8 @@ fabedge-v0.7.0提供了自动维护calico ippools功能，使用`quickstart.sh`�
 	
 	$ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 	```
+	> **cidr**: 被添加集群的get_cluster_info.sh输出的cluster-cidr和service-cluster-ip-range
 
-> **cidr**参数是以下系统参数之一：
->
-> * 本集群的edge-pod-cidr
-> * 其他集群cluster-cidr
-> * 其他集群的service-cluster-ip-range
 
 ## 常见问题
 

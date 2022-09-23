@@ -4,15 +4,15 @@
 
 ## Terminology
 
-- **Cloud Cluster**:a standard k8s cluster, located at the cloud side, providing the cloud computing capability.
+- **Cloud Cluster**：a standard k8s cluster, located at the cloud side, providing the cloud computing capability.
 - **Edge Cluster**: a standard k8s cluster, located at the edge side, providing the edge computing capability.
-- **Connector Node**: a k8s node, located at the cloud side,  connector is responsible for communication between the cloud side and edge side. Since a connector node will have a large traffic burden, it's better not to run other programs on them.
+- **Connector Node**: a k8s node, located at the cloud side,  connector is responsible for communication between cloud side and edge side. Since connector node will have large traffic burden, it's better not to run other programs on them.
 - **Edge Node**:  a k8s node, located at the edge side, joining the cloud cluster using the framework, such as KubeEdge.
-- **Host Cluster**:  a selective cloud cluster, used to manage cross-cluster communication. The 1st cluster deployed by FabEdge must be the host cluster.
-- **Member Cluster**: an edge cluster, registered into the host cluster,  reports the network information to the host cluster. 
-- **Community**: an K8S CRD defined by FabEdge， there are two types:
-   - **Node Type**: to define the communication between nodes within the same cluster
-   - **Cluster Type**: to define the cross-cluster communication
+- **Host Cluster**:  a selective cloud cluster, used to manage the cross-cluster communication. The 1st cluster deployed by FabEdge must be host cluster.
+- **Member Cluster**: an edge cluster, registered into the host cluster,  reports the network information to host cluster. 
+- **Community**：K8S CRD defined by FabEdge，there are two types： 
+   - **Node Type**： to define the communication between nodes within the same cluster
+   - **Cluster Type**：to define the cross-cluster communication
 
 ## Prerequisite
 
@@ -20,21 +20,14 @@
 - Flannel (v0.14.0) or Calico (v3.16.5)
 - KubeEdge （v1.5）or SuperEdge（v0.5.0）or OpenYurt（ v0.4.1）
 
-*PS1: For flannel, only Vxlan mode is supported. Support dual-stack environment.*
-
-*PS2: For calico, only IPIP mode is supported. Support IPv4 environment only.*  
-
 ## Preparation
 
-1. Make sure the following ports are allowed by the firewall or security group. 
+1. Make sure the following ports are allowed by firewall or security group. 
    - ESP(50)，UDP/500，UDP/4500
-
-2. Turn off firewalld if your machine has it.
-   
-3. Collect the configuration of the current cluster
+2. Collect the configuration of the current cluster
 
    ```shell
-	$ curl -s http://116.62.127.76/installer/v0.7.0/get_cluster_info.sh | bash -
+	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 	
 	clusterDNS               : 169.254.25.10
@@ -48,7 +41,7 @@
 1. Deploy FabEdge   
 
    ```shell
-   $ curl 116.62.127.76/installer/v0.7.0/quickstart.sh | bash -s -- \
+   $ curl 116.62.127.76/installer/v0.6.0/quickstart.sh | bash -s -- \
    	--cluster-name beijing  \
    	--cluster-role host \
    	--cluster-zone beijing  \
@@ -57,15 +50,13 @@
    	--edges edge1,edge2 \
    	--edge-pod-cidr 10.233.0.0/16 \
    	--connector-public-addresses 10.22.46.47 \
-   	--chart http://116.62.127.76/fabedge-0.7.0.tgz
+   	--chart http://116.62.127.76/fabedge-0.6.0.tgz
    ```
-   > Note:     
-   > **--connectors**: The names of k8s nodes in which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
-   > **--edges:** The names of edge nodes， those nodes will be labeled as node-role.kubernetes.io/edge  
-   > **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, it is required if you use Calico. Please make sure the value is not overlapped with cluster CIDR of your cluster.  
-   > **--connector-public-addresses**:  IP addresses of k8s nodes which connectors are located  
-
-   *PS: The `quickstart.sh` script has more parameters， the example above only uses the necessary parameters, execute `quickstart.sh --help` to check all of them.*
+   > Note：     
+   > **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
+   > **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge  
+   > **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.  
+   > **--connector-public-addresses**:  ip addresses of k8s nodes which connectors are located  
 
 2. Verify the deployment  
 
@@ -104,7 +95,7 @@
    service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
    ```
 
-3. Create a community for edges that need to communicate with each other
+3. Create community for edges which need to communicate with each other
 
    ```shell
    $ cat > node-community.yaml << EOF
@@ -114,22 +105,21 @@
      name: beijing-edge-nodes  # community name
    spec:
      members:
-       - beijing.edge1    # format:{cluster name}.{edge node name}
+       - beijing.edge1    # format：{cluster name}.{edge node name}
        - beijing.edge2  
    EOF
    
    $ kubectl apply -f node-community.yaml
    ```
 
-4. Update the [edge computing framework](#edge-computing-framework-dependent-configuration) dependent configuration
-
-5. Update the [CNI](#cni-dependent-configurations) dependent configuration
+4. Update the [edge computing framework](#%E5%92%8C%E8%BE%B9%E7%BC%98%E8%AE%A1%E7%AE%97%E6%A1%86%E6%9E%B6%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE) dependent configuration
+5. Update the [CNI](#%E5%92%8CCNI%E7%9B%B8%E5%85%B3%E7%9A%84%E9%85%8D%E7%BD%AE) dependent configuration
 
 ## Deploy FabEdge in the member cluster
 
 If any member cluster,  register it in the host cluster first, then deploy FabEdge in it.
 
-1.  in the **host cluster**， create an edge cluster named "shanghai". Get the token for registration.  
+1.  in the **host cluster**，create an edge cluster named "shanghai". Get the token for registration.  
 	
 	```shell
 	# Run in the host cluster
@@ -158,14 +148,14 @@ If any member cluster,  register it in the host cluster first, then deploy FabEd
 		--edges edge1,edge2 \
 		--edge-pod-cidr 10.233.0.0/16 \
 		--connector-public-addresses 10.22.46.26 \
-		--chart http://116.62.127.76/fabedge-0.7.0.tgz \
+		--chart http://116.62.127.76/fabedge-0.6.0.tgz \
 		--service-hub-api-server https://10.22.46.47:30304 \
 		--operator-api-server https://10.22.46.47:30303 \
 		--init-token ey...Jh
 	```
 	> Note:  
-	> **--connectors**: The names of k8s nodes in which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
-	> **--edges:** The names of edge nodes， those nodes will be labeled as node-role.kubernetes.io/edge  
+	> **--connectors**: The names of k8s nodes which connectors are located, those nodes will be labeled as node-role.kubernetes.io/connector  
+	> **--edges:** The names of edge nodes，those nodes will be labeled as node-role.kubernetes.io/edge  
 	> **--edge-pod-cidr**: The range of IPv4 addresses for the edge pod, if you use Calico, this is required. Please make sure the value is not overlapped with cluster CIDR of your cluster.  
 	> **--connector-public-addresses**: ip address of k8s nodes on which connectors are located in the member cluster  
 	> **--init-token**: token when the member cluster is added in the host cluster  
@@ -211,7 +201,7 @@ If any member cluster,  register it in the host cluster first, then deploy FabEd
 	
 ## Enable multi-cluster communication
 
-1.  in the **host cluster**， create a community for all clusters which need to communicate with each other  
+1.  in the **host cluster**，create a community for all clusters which need to communicate with each other  
 
 	```shell
 	$ cat > community.yaml << EOF
@@ -232,7 +222,7 @@ If any member cluster,  register it in the host cluster first, then deploy FabEd
 ## Enable multi-cluster service discovery
 the DNS components need to be modified
 
-- if `nodelocaldns` is used， modify `nodelocaldns` only,  
+- if `nodelocaldns` is used，modify `nodelocaldns` only,  
 - if SuperEdge `edge-coredns` is used，modify `coredns` and `edge-coredns`,  
 - modify `coredns` for others  
 
@@ -270,7 +260,7 @@ the DNS components need to be modified
 4. Reboot coredns，edge-coredns or nodelocaldns to take effect
 
 
-## Edge computing framework dependent configuration
+## Edge computing framework depend configuration
 ### for KubeEdge
 
 1.  Make sure `nodelocaldns` is running on all edge nodes  
@@ -301,7 +291,7 @@ the DNS components need to be modified
 	    clusterDNS: 169.254.25.10        # clusterDNS of get_cluster_info script output
 	    clusterDomain: "root-cluster"    # clusterDomain of get_cluster_info script output
 	```
-	> **clusterDNS**:if no nodelocaldns，coredns service can be used.
+	> **clusterDNS**：if no nodelocaldns，coredns service can be used.
 
 3.  Reboot `edgecore` on all edge nodes  
 
@@ -311,7 +301,7 @@ the DNS components need to be modified
 
 ### for SuperEdge
 
-1.  Verify the service， if not ready， to rebuild the Pod 
+1.  Verify the service，if not ready，to rebuild the Pod 
 
 	```shell
 	$ kubectl get po -n edge-system
@@ -337,21 +327,19 @@ the DNS components need to be modified
 	pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
 	```
 
-2.  By default the master node has the taint of `node-role.kubernetes.io/master:NoSchedule`， which prevents fabedge-cloud-agent to start. It caused pods on the master node cannot communicate with the other Pods on the other nodes. If needed,  to modify the DamonSet of fabedge-cloud-agent to tolerate this taint。 
+2.  By default the master node has the taint of `node-role.kubernetes.io/master:NoSchedule`，which prevents fabedge-cloud-agent to start. It caused pods on the master node cannot communicate with the other Pods on the other nodes. If needed,  to modify the DamonSet of fabedge-cloud-agent to tolerant this taint。 
 
-## CNI dependent Configurations
+## CNI-dependent Configurations
 
 ### for Calico
 
-fabedge-v0.7.0 can configure calico ippools of CIDRS from other clusters, the function is enabled when you use quickstart.sh to install fabedge. If you prefer to configure ippools by yourself, provide `--auto-keep-ippools false` when you install fabedge. If you choose to let fabedge configure ippools, the following content can be skipped.
-
-Regardless of the cluster role, add all Pod and Service network segments of all other clusters to the cluster with Calico, which prevents Calico from doing source address translation.  
+Regardless the cluster role, add all Pod and Service network segments of all other clusters to the cluster with Calico, which prevents Calico from doing source address translation.  
 
 one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (Flannel)
 
-* on the host (Calico) cluster, add the addresses of the member (Calico) cluster and the member(Flannel) cluster
-* on the member1 (Calico) cluster, add the addresses of the host (Calico) cluster and the member(Flannel) cluster
-* on the member2 (Flannel) cluster, there is no configuration required. 
+* on the host (Calico) cluster, to add the addresses of the member (Calico) cluster and the member(Flannel) cluster
+* on the member1 (Calico) cluster, to add the addresses of the host (Calico) cluster and the member(Flannel) cluster
+* on the member2 (Flannel) cluster, there is NO any configuration required. 
 
 	```shell
 	$ cat > cluster-cidr-pool.yaml << EOF
@@ -385,11 +373,7 @@ one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (
 	$ calicoctl.sh create -f service-cluster-ip-range-pool.yaml
 	```
 
-> **cidr** should be one the of following values：
->
-> * edge-pod-cidr of current cluster
-> * cluster-cidr parameter of another cluster
-> * service-cluster-ip-range of another cluster
+
 
 ## FAQ
 
@@ -403,7 +387,7 @@ one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (
    net.ipv4.conf.all.rp_filter=0
    ```
 
-1. If Error with “Error: cannot re-use a name that is still in use”. Uninstall fabedge and try again.
+1. If Error with：“Error: cannot re-use a name that is still in use”.   to uninstall fabedge and try again.
    
    ```shell
    $ helm uninstall -n fabedge fabedge
