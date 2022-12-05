@@ -22,9 +22,9 @@ FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
 * **Kubernetes Native**: Compatible with Kubernetes, transparent to applications.  
 
 * **Automatic Configuration Management**: the addresses, certificates, endpoints, tunnels, etc. are automatically managed.
- 
+
 * **Cloud-Edge/Edge-Edge Collaboration**: Secure tunnels between cloud-edge, edge-edge nodes for synergy.
- 
+
 * **Topology-aware Service Discovery**: reduces service access latency, by using the nearest available service endpoint.
 
 
@@ -79,6 +79,15 @@ Any question, feel free to reach us in the following ways:
 · Scan the QR code to join WeChat Group
 
 <img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
+
+
+
+## Contributing
+
+If you're interested in being a contributor and want to get involved in developing the FabEdge code, please see [CONTRIBUTING](./CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
+
+Please make sure to read and observe our [Code of Conduct](https://github.com/FabEdge/fabedge/blob/main/CODE_OF_CONDUCT.md).
+
 
 ## License
 FabEdge is under the Apache 2.0 license. See the [LICENSE](https://github.com/FabEdge/fabedge/blob/main/LICENSE) file for details. 
