@@ -65,5 +65,12 @@ FabEdge和现有的CNI，比如Calico，Flannel，互为补充，解决不同的
 
 <img src="docs/images/wechat-group-qr-code.jpg" alt="wechat-group" style="width: 20%"/>
 
+## 贡献
+
+如果您有兴趣成功一个贡献者，也有兴趣加入FabEdge的开发，请查看[CONTRIBUTING](./CONTRIBUTING.md)获取更多关于如何提交 Patch 和贡献的流程
+
+请务必阅读并遵守我们的[行为准则](./CODE_OF_CONDUCT.md)
+
 ## 软件许可
+
 FabEdge遵循Apache 2.0 许可。
