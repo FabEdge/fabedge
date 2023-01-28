@@ -14,15 +14,33 @@
 - Support Edge Cluster
 - Support topology-aware service discovery
 
-## H1 2022
+## v0.6.0
 
 - Support IPV6
-- cli tool to facilitate fabedge configuation
- 
-## others
+- Implement a flexiable way to configure fabedge-agent
+- Support auto networking of edge nodes in LAN
 
-- Support auto-discovery of edge tunnel endpoints
-- Add monitoring capability 
-- Connector HA solution
-- Support more tunnel methods 
-- Suport Canal/Weave/Cillium/etc.
+## v0.7.0
+
+- Change the naming strategy of fabedge-agent pods
+- Add commonName validation for fabedge-agent certificates
+- Implement node-specific configuration of fabedge-agent arguments
+- Let fabedge-agent configure sysctl parameters needed
+- Let fabedge-operator manage calico ippools for CIDRs
+
+## v0.8.0
+
+  * Support settings strongswan's port
+  * Support strongswan hole punching
+  * Release fabctl which is a CLI to help diagnosing networking problems;
+  * Integerate fabedge-agent with coredns and kube-proxy
+
+## v0.9.0
+
+ * Implement connector high  availability
+
+ * Improve dual stack implementation
+
+ * Improve iptables rule configuring (ensure the order of rules)
+
+   
