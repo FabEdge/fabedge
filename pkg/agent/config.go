@@ -49,6 +49,13 @@ type Config struct {
 		BridgeName  string
 	}
 
+	DNS struct {
+		Enabled       bool
+		BindIP        string
+		ClusterDomain string
+		Debug         bool
+	}
+
 	EnableProxy bool
 
 	EnableAutoNetworking bool
@@ -78,7 +85,11 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&cfg.MASQOutgoing, "masq-outgoing", true, "Configure faberge networking to perform outbound NAT for connections from pods to outside of the cluster")
 	fs.BoolVar(&cfg.EnableProxy, "enable-proxy", true, "Enable the proxy feature")
 
-	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "the name of dummy interface")
+	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "The name of dummy interface")
+	fs.BoolVar(&cfg.DNS.Enabled, "enable-dns", false, "Enable DNS component")
+	fs.BoolVar(&cfg.DNS.Debug, "dns-debug", false, "Enable debug plugin of DNS component")
+	fs.StringVar(&cfg.DNS.BindIP, "dns-bind-ip", "169.254.25.10", "The IP for DNS component to bind")
+	fs.StringVar(&cfg.DNS.ClusterDomain, "dns-cluster-domain", "cluster.local", "The kubernetes cluster's domain name")
 
 	fs.BoolVar(&cfg.EnableAutoNetworking, "auto-networking", false, "Enable auto-networking which will find endpoints in the same LAN")
 	fs.StringVar(&cfg.Workdir, "workdir", "/var/lib/fabedge", "The working directory for fabedge")
@@ -110,6 +121,12 @@ func (cfg *Config) Validate() error {
 
 		if cfg.EndpointTTL < cfg.MulticastInterval {
 			cfg.EndpointTTL = 2 * cfg.MulticastInterval
+		}
+	}
+
+	if cfg.DNS.Enabled {
+		if net.ParseIP(cfg.DNS.BindIP) == nil {
+			return fmt.Errorf("invalid DNS bind IP address")
 		}
 	}
 
