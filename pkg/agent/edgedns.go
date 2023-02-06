@@ -15,7 +15,6 @@ import (
 	_ "github.com/coredns/coredns/plugin/forward"
 	_ "github.com/coredns/coredns/plugin/health"
 	_ "github.com/coredns/coredns/plugin/hosts"
-	_ "github.com/coredns/coredns/plugin/kubernetes"
 	_ "github.com/coredns/coredns/plugin/loadbalance"
 	_ "github.com/coredns/coredns/plugin/log"
 	_ "github.com/coredns/coredns/plugin/loop"
@@ -27,6 +26,9 @@ import (
 	_ "github.com/coredns/coredns/plugin/template"
 	_ "github.com/coredns/coredns/plugin/trace"
 	_ "github.com/coredns/coredns/plugin/whoami"
+	// use custom kubernetes plugin to cope with kubeedge issue
+	// https://github.com/kubeedge/kubeedge/issues/4582
+	_ "github.com/fabedge/fabedge/coredns/plugin/kubernetes"
 )
 
 const (
