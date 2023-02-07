@@ -37,6 +37,28 @@ var _ = Describe("AgentArgumentMap", func() {
 		Expect(argMap.IsProxyEnabled()).To(BeTrue())
 	})
 
+	It("IsDNSEnabled return true only if 'enable-dns' exists and has value 'true'", func() {
+		argMap := types.NewAgentArgumentMap()
+
+		key := "enable-dns"
+		argMap.Set(key, "")
+		Expect(argMap.IsDNSEnabled()).To(BeFalse())
+
+		argMap.Set(key, "true")
+		Expect(argMap.IsDNSEnabled()).To(BeTrue())
+	})
+
+	It("IsDNSProbeEnabled return true only if 'dns-probe' exists and has value 'true'", func() {
+		argMap := types.NewAgentArgumentMap()
+
+		key := "dns-probe"
+		argMap.Set(key, "")
+		Expect(argMap.IsDNSProbeEnabled()).To(BeFalse())
+
+		argMap.Set(key, "true")
+		Expect(argMap.IsDNSProbeEnabled()).To(BeTrue())
+	})
+
 	It("ArgumentArray will generate an argument array sorted by argument name", func() {
 		argMap := types.NewAgentArgumentMap()
 

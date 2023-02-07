@@ -54,6 +54,7 @@ type Config struct {
 		BindIP        string
 		ClusterDomain string
 		Debug         bool
+		Probe         bool
 	}
 
 	EnableProxy bool
@@ -88,6 +89,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "The name of dummy interface")
 	fs.BoolVar(&cfg.DNS.Enabled, "enable-dns", false, "Enable DNS component")
 	fs.BoolVar(&cfg.DNS.Debug, "dns-debug", false, "Enable debug plugin of DNS component")
+	fs.BoolVar(&cfg.DNS.Probe, "dns-probe", false, "Enable ready and health plugins of DNS component")
 	fs.StringVar(&cfg.DNS.BindIP, "dns-bind-ip", "169.254.25.10", "The IP for DNS component to bind")
 	fs.StringVar(&cfg.DNS.ClusterDomain, "dns-cluster-domain", "cluster.local", "The kubernetes cluster's domain name")
 

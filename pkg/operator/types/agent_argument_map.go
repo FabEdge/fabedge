@@ -70,6 +70,14 @@ func (argMap AgentArgumentMap) IsProxyEnabled() bool {
 	return argMap.isTrue("enable-proxy")
 }
 
+func (argMap AgentArgumentMap) IsDNSEnabled() bool {
+	return argMap.isTrue("enable-dns")
+}
+
+func (argMap AgentArgumentMap) IsDNSProbeEnabled() bool {
+	return argMap.isTrue("dns-probe")
+}
+
 func (argMap AgentArgumentMap) isTrue(name string) bool {
 	return argMap[name] == "true"
 }

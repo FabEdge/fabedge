@@ -47,6 +47,12 @@ const (
     forward . /etc/resolv.conf {
       prefer_udp
     }
+	{{ if .Probe -}}
+    health {
+        lameduck 5s
+    }
+    ready
+    {{ end -}}
     cache 30
     loop
     reload
