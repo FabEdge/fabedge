@@ -27,7 +27,7 @@ import (
 
 var sysctl = sysctlutil.New()
 
-// retryForever retry fn until it success
+// retryForever retry fn until it succeed
 func retryForever(ctx context.Context, retryableFunc retry.RetryableFunc, onRetryFunc retry.OnRetryFunc) {
 	_ = retry.Do(
 		retryableFunc,

@@ -44,9 +44,7 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
-	IPSetFabEdgeLoopBack    = "FABEDGE-LOOP-BACK"
 	IPSetFabEdgePeerCIDR6   = "FABEDGE-PEER-CIDR6"
-	IPSetFabEdgeLoopBack6   = "FABEDGE-LOOP-BACK6"
 )
 
 type Manager struct {
@@ -83,12 +81,12 @@ func (m *Manager) start() {
 	}
 
 	if m.DNS.Enabled {
+		_ = m.ensureDummyDevice()
 		go m.runCoreDNS()
 	}
 
-	needDummyInterface := m.DNS.Enabled || m.EnableProxy
-	if needDummyInterface {
-		_ = m.ensureDummyDevice()
+	if m.Proxy.Enabled {
+		go m.runKubeProxy()
 	}
 
 	var lastCancel context.CancelFunc = func() {}
@@ -112,15 +110,9 @@ func (m *Manager) start() {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
 		})
 
-		if needDummyInterface {
+		if m.DNS.Enabled {
 			go retryForever(ctx, m.ensureDummyDevice, func(n uint, err error) {
 				m.log.Error(err, "failed to maintain dummy interface", "retryNum", n)
-			})
-		}
-
-		if m.EnableProxy {
-			go retryForever(ctx, m.syncLoadBalanceRules, func(n uint, err error) {
-				m.log.Error(err, "failed to sync load balance rules", "retryNum", n)
 			})
 		}
 	}
@@ -143,16 +135,6 @@ func (m *Manager) sync() {
 func (m *Manager) ensureSysctlParameters() {
 	if err := ensureSysctl("net/ipv4/ip_forward", 1); err != nil {
 		m.log.Error(err, "failed to set net/ipv4/ip_forward to 1")
-	}
-
-	if m.EnableProxy {
-		if err := ensureSysctl("net/bridge/bridge-nf-call-iptables", 1); err != nil {
-			m.log.Error(err, "failed to set net/bridge/bridge-nf-call-iptables to 1, this may cause some issues for proxy")
-		}
-
-		if err := ensureSysctl("net/ipv4/vs/conntrack", 1); err != nil {
-			m.log.Error(err, "failed to set net/ipv4/vs/conntrack to 1, this may cause some issues for proxy")
-		}
 	}
 }
 

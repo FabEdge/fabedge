@@ -370,6 +370,24 @@ func (handler *agentPodHandler) buildAgentPod(namespace, podName string, node co
 		},
 	}
 
+	if handler.argMap.IsProxyEnabled() {
+		xtablesHostType := corev1.HostPathFileOrCreate
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+			Name: "xtables-lock",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Type: &xtablesHostType,
+					Path: "/run/xtables.lock",
+				},
+			},
+		})
+
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "xtables-lock",
+			MountPath: "/run/xtables.lock",
+		})
+	}
+
 	if handler.argMap.IsDNSProbeEnabled() && handler.argMap.IsDNSProbeEnabled() {
 		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 			Handler: corev1.Handler{

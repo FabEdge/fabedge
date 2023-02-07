@@ -15,6 +15,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/coredns/coredns/coremain"
@@ -33,14 +34,18 @@ func Execute() error {
 	fs := flag.CommandLine
 	cfg := &Config{}
 
-	about.AddFlags(fs)
 	logutil.AddFlags(fs)
 	cfg.AddFlags(fs)
 
 	flag.Parse()
 
+	// the version flag is added by importing kube-proxy packages,
+	// but I don't know how that happened
 	if flag.Lookup("version").Value.String() == "true" {
 		about.DisplayVersion()
+		fmt.Println("----------------")
+		fmt.Println("kube-proxy: 1.22.5")
+		fmt.Println("----------------")
 		coremain.Run()
 	}
 
@@ -68,7 +73,7 @@ func Execute() error {
 
 	go manager.start()
 
-	err = watchFiles(cfg.TunnelsConfPath, cfg.ServicesConfPath, func(event fsnotify.Event) {
+	err = watchTunnelConfigFile(cfg.TunnelsConfPath, func(event fsnotify.Event) {
 		log.V(5).Info("tunnels or services config may change", "file", event.Name, "event", event.Op.String())
 		manager.notify()
 	})
@@ -80,7 +85,7 @@ func Execute() error {
 	return nil
 }
 
-func watchFiles(tunnelsConfpath, servicesConfPath string, handleFn func(event fsnotify.Event)) error {
+func watchTunnelConfigFile(tunnelsConfpath string, handleFn func(event fsnotify.Event)) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -88,10 +93,6 @@ func watchFiles(tunnelsConfpath, servicesConfPath string, handleFn func(event fs
 	defer watcher.Close()
 
 	if err = watcher.Add(tunnelsConfpath); err != nil {
-		return err
-	}
-
-	if err = watcher.Add(servicesConfPath); err != nil {
 		return err
 	}
 

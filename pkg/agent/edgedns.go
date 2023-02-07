@@ -61,6 +61,21 @@ const (
 `
 )
 
+func (m *Manager) ensureDummyDevice() error {
+	m.log.V(3).Info("ensure that the dummy interface exists")
+	if _, err := m.netLink.EnsureDummyDevice(m.DummyInterfaceName); err != nil {
+		m.log.Error(err, "failed to check or create dummy interface", "dummyInterface", m.DummyInterfaceName)
+		return err
+	}
+
+	if _, err := m.netLink.EnsureAddressBind(m.DNS.BindIP, m.DummyInterfaceName); err != nil {
+		m.log.Error(err, "failed to bind address", "address", m.DNS.BindIP)
+		return err
+	}
+
+	return nil
+}
+
 func (m *Manager) runCoreDNS() {
 	tpl, err := template.New("corefile").Parse(corefileTemplate)
 	if err != nil {
