@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
@@ -228,6 +229,8 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(agentContainer.Name).To(Equal("agent"))
 		Expect(agentContainer.Image).To(Equal(agentImage))
 		Expect(agentContainer.ImagePullPolicy).To(Equal(handler.imagePullPolicy))
+		Expect(agentContainer.ReadinessProbe).To(BeNil())
+		Expect(agentContainer.LivenessProbe).To(BeNil())
 		Expect(*agentContainer.SecurityContext.Privileged).To(BeTrue())
 		Expect(agentContainer.Args).To(ConsistOf(
 			"--enable-hairpinmode=true",
@@ -287,6 +290,59 @@ var _ = Describe("AgentPodHandler", func() {
 				SubPath:   "ipsec.secrets",
 				ReadOnly:  true,
 			},
+		}))
+	})
+
+	It("should create readinessProbe and livenessProbe on agent container if both enable-dns and dns-probe are true", func() {
+		handler.argMap.Set("enable-dns", "true")
+		handler.argMap.Set("dns-probe", "true")
+		handler.args = handler.argMap.ArgumentArray()
+
+		nodeName := getNodeName()
+		agentName := getAgentName(nodeName)
+		node = newNode(nodeName, "10.40.20.182", "2.2.2.3/26")
+		node.UID = "234567"
+
+		Expect(handler.Do(context.TODO(), node)).To(Succeed())
+
+		pod, err := handler.getAgentPod(context.Background(), agentName)
+		Expect(err).Should(BeNil())
+		agentContainer := pod.Spec.Containers[0]
+		Expect(agentContainer.Args).To(ConsistOf(
+			"--dns-probe=true",
+			"--enable-dns=true",
+			"--enable-hairpinmode=true",
+			"--enable-proxy=false",
+			"--masq-outgoing=false",
+			"--network-plugin-mtu=1400",
+			"--use-xfrm=false",
+			"--v=3",
+		))
+		Expect(*agentContainer.LivenessProbe).To(Equal(corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/health",
+					Port:   intstr.FromInt(8080),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			FailureThreshold: 3,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			TimeoutSeconds:   1,
+		}))
+		Expect(*agentContainer.ReadinessProbe).To(Equal(corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.FromInt(8181),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			FailureThreshold: 3,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			TimeoutSeconds:   1,
 		}))
 	})
 

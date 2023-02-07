@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -367,6 +368,36 @@ func (handler *agentPodHandler) buildAgentPod(namespace, podName string, node co
 				},
 			},
 		},
+	}
+
+	if handler.argMap.IsDNSProbeEnabled() && handler.argMap.IsDNSProbeEnabled() {
+		pod.Spec.Containers[0].LivenessProbe = &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/health",
+					Port:   intstr.FromInt(8080),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			FailureThreshold: 3,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			TimeoutSeconds:   1,
+		}
+
+		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
+			Handler: corev1.Handler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   "/ready",
+					Port:   intstr.FromInt(8181),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			FailureThreshold: 3,
+			PeriodSeconds:    10,
+			SuccessThreshold: 1,
+			TimeoutSeconds:   1,
+		}
 	}
 
 	pod.Labels[constants.KeyPodHash] = computePodHash(pod.Spec)

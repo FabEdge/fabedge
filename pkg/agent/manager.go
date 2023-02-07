@@ -82,6 +82,15 @@ func (m *Manager) start() {
 		go m.backupLoop()
 	}
 
+	if m.DNS.Enabled {
+		go m.runCoreDNS()
+	}
+
+	needDummyInterface := m.DNS.Enabled || m.EnableProxy
+	if needDummyInterface {
+		_ = m.ensureDummyDevice()
+	}
+
 	var lastCancel context.CancelFunc = func() {}
 	defer func() {
 		lastCancel()
@@ -102,6 +111,12 @@ func (m *Manager) start() {
 		go retryForever(ctx, m.mainNetwork, func(n uint, err error) {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
 		})
+
+		if needDummyInterface {
+			go retryForever(ctx, m.ensureDummyDevice, func(n uint, err error) {
+				m.log.Error(err, "failed to maintain dummy interface", "retryNum", n)
+			})
+		}
 
 		if m.EnableProxy {
 			go retryForever(ctx, m.syncLoadBalanceRules, func(n uint, err error) {

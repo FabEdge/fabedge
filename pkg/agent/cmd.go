@@ -17,6 +17,7 @@ package agent
 import (
 	"os"
 
+	"github.com/coredns/coredns/coremain"
 	"github.com/fsnotify/fsnotify"
 	flag "github.com/spf13/pflag"
 	"k8s.io/klog/v2"
@@ -38,7 +39,10 @@ func Execute() error {
 
 	flag.Parse()
 
-	about.DisplayAndExitIfRequested()
+	if flag.Lookup("version").Value.String() == "true" {
+		about.DisplayVersion()
+		coremain.Run()
+	}
 
 	log := klogr.New().WithName("manager")
 	if err := cfg.Validate(); err != nil {
