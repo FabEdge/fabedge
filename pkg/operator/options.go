@@ -48,7 +48,6 @@ import (
 	cmmctl "github.com/fabedge/fabedge/pkg/operator/controllers/community"
 	connectorctl "github.com/fabedge/fabedge/pkg/operator/controllers/connector"
 	"github.com/fabedge/fabedge/pkg/operator/controllers/ipamblockmonitor"
-	proxyctl "github.com/fabedge/fabedge/pkg/operator/controllers/proxy"
 	"github.com/fabedge/fabedge/pkg/operator/routines"
 	storepkg "github.com/fabedge/fabedge/pkg/operator/store"
 	"github.com/fabedge/fabedge/pkg/operator/types"
@@ -90,7 +89,6 @@ type Options struct {
 	CertOrganization string
 	Agent            agentctl.Config
 	Connector        connectorctl.Config
-	Proxy            proxyctl.Config
 
 	ManagerOpts manager.Options
 
@@ -137,8 +135,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.CASecretName, "ca-secret", "fabedge-ca", "The name of secret which contains CA's cert and key")
 	flag.StringVar(&opts.CertOrganization, "cert-organization", certutil.DefaultOrganization, "The organization name for agent's cert")
 	flag.Int64Var(&opts.CertValidPeriod, "cert-validity-period", 3650, "The validity period for agent's cert")
-
-	flag.StringVar(&opts.Proxy.IPVSScheduler, "ipvs-scheduler", "rr", "The ipvs scheduler for each service")
 
 	flag.BoolVar(&opts.ManagerOpts.LeaderElection, "leader-election", false, "Determines whether or not to use leader election")
 	flag.StringVar(&opts.ManagerOpts.LeaderElectionID, "leader-election-id", "fabedge-operator-leader", "The name of the resource that leader election will use for holding the leader lock")
@@ -251,6 +247,9 @@ func (opts *Options) Complete() (err error) {
 	opts.Agent.NewEndpoint = opts.NewEndpoint
 	opts.Agent.GetEndpointName = getEndpointName
 	opts.Agent.CertOrganization = opts.CertOrganization
+	if opts.Agent.AgentPodArguments.IsProxyEnabled() {
+		opts.Agent.AgentPodArguments.Set("proxy-cluster-cidr", strings.Join(opts.ClusterCIDRs, ","))
+	}
 
 	opts.Connector.Namespace = opts.Namespace
 	opts.Connector.CertOrganization = opts.CertOrganization
@@ -260,10 +259,6 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.GetPodCIDRs = getCloudPodCIDRs
 	opts.Connector.Endpoint.Name = getEndpointName("connector")
 	opts.Connector.Endpoint.ID = getEndpointID("connector")
-
-	opts.Proxy.AgentNamespace = opts.Namespace
-	opts.Proxy.Manager = opts.Manager
-	opts.Proxy.CheckInterval = 5 * time.Second
 
 	if opts.ClusterRole == RoleHost {
 		opts.APIServer, err = apiserver.New(apiserver.Config{
@@ -622,13 +617,6 @@ func (opts Options) initializeControllers(ctx context.Context) error {
 	}); err != nil {
 		log.Error(err, "failed to add communities controller to manager")
 		return err
-	}
-
-	if opts.Agent.AgentPodArguments.IsProxyEnabled() {
-		if err = proxyctl.AddToManager(opts.Proxy); err != nil {
-			log.Error(err, "failed to add proxy controller to manager")
-			return err
-		}
 	}
 
 	// the Connector.ProvidedSubnets is basically service-cluster-ip-range parameter of cluster

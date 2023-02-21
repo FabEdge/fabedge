@@ -17,6 +17,7 @@ package agent
 import (
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	debpkg "github.com/bep/debounce"
@@ -35,7 +36,6 @@ type Config struct {
 	SyncPeriod       time.Duration
 	DebounceDuration time.Duration
 	TunnelsConfPath  string
-	ServicesConfPath string
 	MASQOutgoing     bool
 
 	DummyInterfaceName string
@@ -57,7 +57,15 @@ type Config struct {
 		Probe         bool
 	}
 
-	EnableProxy bool
+	Proxy struct {
+		Enabled bool
+		//
+		Mode string
+		// clusterCIDR is the CIDR range of the pods in the cluster,
+		// this is a CIDR list seperated by comma, like "10.234.64.0/18,10.235.64.0/18".
+		// I use clusterCIDR as name because kube-proxy use this name
+		ClusterCIDR string
+	}
 
 	EnableAutoNetworking bool
 	MulticastAddress     string
@@ -70,7 +78,6 @@ type Config struct {
 
 func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.TunnelsConfPath, "tunnels-conf", "/etc/fabedge/tunnels.yaml", "The path to tunnels configuration file")
-	fs.StringVar(&cfg.ServicesConfPath, "services-conf", "/etc/fabedge/services.yaml", "The file that records information about services and endpointslices")
 
 	fs.StringSliceVar(&cfg.LocalCerts, "local-cert", []string{"edgecert.pem"}, "The path to cert files, comma separated. If it's a relative path, the cert file should be put under /etc/ipsec.d/certs")
 	fs.DurationVar(&cfg.DebounceDuration, "debounce", time.Second, "The debounce delay to avoid too much network reconfiguring")
@@ -84,14 +91,17 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.CNI.BridgeName, "cni-bridge-name", "br-fabedge", "the name of bridge")
 
 	fs.BoolVar(&cfg.MASQOutgoing, "masq-outgoing", true, "Configure faberge networking to perform outbound NAT for connections from pods to outside of the cluster")
-	fs.BoolVar(&cfg.EnableProxy, "enable-proxy", true, "Enable the proxy feature")
 
-	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-ipvs0", "The name of dummy interface")
+	fs.StringVar(&cfg.DummyInterfaceName, "dummy-interface-name", "fabedge-dummy0", "The name of dummy interface")
 	fs.BoolVar(&cfg.DNS.Enabled, "enable-dns", false, "Enable DNS component")
 	fs.BoolVar(&cfg.DNS.Debug, "dns-debug", false, "Enable debug plugin of DNS component")
 	fs.BoolVar(&cfg.DNS.Probe, "dns-probe", false, "Enable ready and health plugins of DNS component")
 	fs.StringVar(&cfg.DNS.BindIP, "dns-bind-ip", "169.254.25.10", "The IP for DNS component to bind")
 	fs.StringVar(&cfg.DNS.ClusterDomain, "dns-cluster-domain", "cluster.local", "The kubernetes cluster's domain name")
+
+	fs.BoolVar(&cfg.Proxy.Enabled, "enable-proxy", false, "Enable the proxy feature")
+	fs.StringVar(&cfg.Proxy.Mode, "proxy-mode", "ipvs", "Which proxy mode to use: 'userspace' (older) or 'iptables' (faster) or 'ipvs'.")
+	fs.StringVar(&cfg.Proxy.ClusterCIDR, "proxy-cluster-cidr", "", "The CIDR range of pods in the cluster.")
 
 	fs.BoolVar(&cfg.EnableAutoNetworking, "auto-networking", false, "Enable auto-networking which will find endpoints in the same LAN")
 	fs.StringVar(&cfg.Workdir, "workdir", "/var/lib/fabedge", "The working directory for fabedge")
@@ -132,17 +142,24 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
+	if cfg.Proxy.Enabled {
+		clusterCIDRs := strings.Split(cfg.Proxy.ClusterCIDR, ",")
+		for _, cidr := range clusterCIDRs {
+			if _, _, err := net.ParseCIDR(cidr); err != nil {
+				return fmt.Errorf("invalid cluser CIDR %s", cidr)
+			}
+
+			mode := cfg.Proxy.Mode
+			if mode != "ipvs" && mode != "iptables" && mode != "userspace" {
+				return fmt.Errorf("unsupported kube-proxy mode: %s", mode)
+			}
+		}
+	}
+
 	return nil
 }
 
 func (cfg Config) Manager() (*Manager, error) {
-	kernelHandler := ipvs.NewLinuxKernelHandler()
-	if cfg.EnableProxy {
-		if _, err := ipvs.CanUseIPVSProxier(kernelHandler); err != nil {
-			return nil, err
-		}
-	}
-
 	tm, err := strongswan.New(
 		strongswan.StartAction("clear"),
 		strongswan.DpdDelay("10s"),

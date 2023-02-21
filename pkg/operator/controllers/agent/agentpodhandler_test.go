@@ -346,14 +346,57 @@ var _ = Describe("AgentPodHandler", func() {
 		}))
 	})
 
+	It("should mount /run/xtables.lock file agent container if enable-proxy is true", func() {
+		handler.argMap.Set("enable-proxy", "true")
+		handler.argMap.Set("proxy-cluster-cidr", "2.2.0.0/16")
+		handler.args = handler.argMap.ArgumentArray()
+
+		nodeName := getNodeName()
+		agentName := getAgentName(nodeName)
+		node = newNode(nodeName, "10.40.20.182", "2.2.2.3/26")
+		node.UID = "234567"
+
+		Expect(handler.Do(context.TODO(), node)).To(Succeed())
+
+		pod, err := handler.getAgentPod(context.Background(), agentName)
+		Expect(err).Should(BeNil())
+
+		xtableLockVolume := pod.Spec.Volumes[len(pod.Spec.Volumes)-1]
+		xtablesHostType := corev1.HostPathFileOrCreate
+		Expect(xtableLockVolume).To(Equal(corev1.Volume{
+			Name: "xtables-lock",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Type: &xtablesHostType,
+					Path: "/run/xtables.lock",
+				},
+			},
+		}))
+
+		agentContainer := pod.Spec.Containers[0]
+		xtableLockVolumeMount := agentContainer.VolumeMounts[len(agentContainer.VolumeMounts)-1]
+		Expect(agentContainer.Args).To(ConsistOf(
+			"--enable-hairpinmode=true",
+			"--enable-proxy=true",
+			"--masq-outgoing=false",
+			"--network-plugin-mtu=1400",
+			"--proxy-cluster-cidr=2.2.0.0/16",
+			"--use-xfrm=false",
+			"--v=3",
+		))
+		Expect(xtableLockVolumeMount).To(Equal(corev1.VolumeMount{
+			Name:      "xtables-lock",
+			MountPath: "/run/xtables.lock",
+		}))
+	})
+
 	It("should use arguments from node's annotation and default arguments to build agent pod", func() {
 		nodeName := getNodeName()
 		agentName = getAgentName(nodeName)
 		node = newNode(nodeName, "10.40.20.182", "2.2.2.3/26")
 		node.UID = "234567"
 		node.Annotations = map[string]string{
-			"argument.fabedge.io/enable-proxy": "true",
-			"argument.fabedge.io/cni-version":  "0.3.2",
+			"argument.fabedge.io/cni-version": "0.3.2",
 		}
 
 		Expect(handler.Do(context.TODO(), node)).To(Succeed())
@@ -363,7 +406,7 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(pod.Spec.Containers[0].Args).To(ConsistOf(
 			"--cni-version=0.3.2",
 			"--enable-hairpinmode=true",
-			"--enable-proxy=true",
+			"--enable-proxy=false",
 			"--masq-outgoing=false",
 			"--network-plugin-mtu=1400",
 			"--use-xfrm=false",
