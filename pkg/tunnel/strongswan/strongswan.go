@@ -22,14 +22,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/strongswan/govici/vici"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/tunnel"
 )
-
-var errConnectionNotFound = fmt.Errorf("no connection found")
 
 var _ tunnel.Manager = &StrongSwanManager{}
 
@@ -45,11 +44,16 @@ type StrongSwanManager struct {
 	dpdAction   string
 	dpdDelay    string
 	interfaceID *uint
+
+	connectionByName map[string]tunnel.ConnConfig
+	mu               *sync.RWMutex
 }
 
 type connection struct {
 	LocalAddrs  []string               `vici:"local_addrs"`
+	LocalPort   *uint                  `vici:"local_port"`
 	RemoteAddrs []string               `vici:"remote_addrs,omitempty"`
+	RemotePort  *uint                  `vici:"remote_port"`
 	LocalAuth   authConf               `vici:"local"`
 	RemoteAuth  authConf               `vici:"remote"`
 	Children    map[string]childSAConf `vici:"children"`
@@ -73,25 +77,13 @@ type childSAConf struct {
 	ESPProposals []string `vici:"esp_proposals,omitempty"`
 }
 
-// loadedConnection is used to take data from list-conns direct.
-// This struct will not take all fields of connection but only
-// addresses returned by list-conns
-type loadedConnection struct {
-	LocalAddrs  []string                     `vici:"local_addrs"`
-	RemoteAddrs []string                     `vici:"remote_addrs,omitempty"`
-	Children    map[string]loadedChildSAConf `vici:"children"`
-}
-
-type loadedChildSAConf struct {
-	LocalTS  []string `vici:"local-ts"`
-	RemoteTS []string `vici:"remote-ts"`
-}
-
 func New(opts ...option) (*StrongSwanManager, error) {
 	manager := &StrongSwanManager{
-		socketPath:  "/var/run/charon.vici",
-		certsPath:   filepath.Join("/etc/ipsec.d", "certs"),
-		startAction: "none",
+		socketPath:       "/var/run/charon.vici",
+		certsPath:        filepath.Join("/etc/ipsec.d", "certs"),
+		startAction:      "none",
+		connectionByName: make(map[string]tunnel.ConnConfig),
+		mu:               &sync.RWMutex{},
 	}
 
 	for _, opt := range opts {
@@ -243,22 +235,32 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 		},
 	}
 
-	loadedConn, err := m.getConn(cnf.Name)
-	switch {
-	case err == nil:
-		if areConnectionsIdentical(conn, loadedConn) {
+	if cnf.RemotePort != nil && *cnf.RemotePort != 500 {
+		// https://docs.strongswan.org/docs/5.9/features/natTraversal.html
+		// By default local_port is 500, but when remote_port is
+		// not 500, local_port also should use non-500, it can be 4500 or other number,
+		// here, I choose 4500 which is default nat-t port.
+		localPort := uint(4500)
+		conn.RemotePort = cnf.RemotePort
+		conn.LocalPort = &localPort
+	}
+
+	oldConn, found := m.getCurrentConn(cnf.Name)
+	if found {
+		if reflect.DeepEqual(conn, oldConn) {
 			return nil
 		}
+
 		// we call UnloadConn to remove old Connection in strongswan, but if it failed, we ignore it
 		// because the failure won't cause trouble for loadConn
 		_ = m.UnloadConn(cnf.Name)
-
-		return m.loadConn(cnf.Name, conn)
-	case err == errConnectionNotFound:
-		return m.loadConn(cnf.Name, conn)
-	default:
-		return err
 	}
+
+	err = m.loadConn(cnf.Name, conn)
+	if err == nil {
+		m.rememberConn(cnf)
+	}
+	return err
 }
 
 func (m StrongSwanManager) loadConn(name string, conn connection) error {
@@ -276,45 +278,6 @@ func (m StrongSwanManager) loadConn(name string, conn connection) error {
 	})
 }
 
-func (m StrongSwanManager) getConn(name string) (conn loadedConnection, err error) {
-	err = m.do(func(session *vici.Session) error {
-		msg := vici.NewMessage()
-		_ = msg.Set("ike", name)
-
-		streamMsg, err := session.StreamedCommandRequest("list-conns", "list-conn", msg)
-		if err != nil {
-			return err
-		}
-
-		msgs := streamMsg.Messages()
-		if len(msgs) == 0 {
-			return errConnectionNotFound
-		}
-		connMsg := msgs[0]
-		if connMsg.Get(name) == nil {
-			return errConnectionNotFound
-		}
-
-		connMsg = connMsg.Get(name).(*vici.Message)
-		return vici.UnmarshalMessage(connMsg, &conn)
-	})
-
-	if err != nil {
-		return conn, err
-	}
-
-	// if LocalAddrs or RemoteAddrs is ["%any"], then we take it as nil
-	if len(conn.LocalAddrs) == 1 && conn.LocalAddrs[0] == "%any" {
-		conn.LocalAddrs = nil
-	}
-
-	if len(conn.RemoteAddrs) == 1 && conn.RemoteAddrs[0] == "%any" {
-		conn.RemoteAddrs = nil
-	}
-
-	return conn, err
-}
-
 func (m StrongSwanManager) terminateSA(name string) error {
 	return m.do(func(session *vici.Session) error {
 		msg := vici.NewMessage()
@@ -326,6 +289,8 @@ func (m StrongSwanManager) terminateSA(name string) error {
 }
 
 func (m StrongSwanManager) UnloadConn(name string) error {
+	m.forgetConn(name)
+
 	err := m.do(func(session *vici.Session) error {
 		msg := vici.NewMessage()
 		_ = msg.Set("name", name)
@@ -380,65 +345,24 @@ func (m StrongSwanManager) getCert(filename string) (string, error) {
 	return string(pemBytes), nil
 }
 
-// we take connection as identical to a loadedConnection if their LocalAddrs and RemoteAddrs are the same
-//  and there children's LocalTS and RemoteTS are the same
-func areConnectionsIdentical(c1 connection, c2 loadedConnection) bool {
-	if !reflect.DeepEqual(c1.LocalAddrs, c2.LocalAddrs) {
-		return false
-	}
+func (m StrongSwanManager) rememberConn(conn tunnel.ConnConfig) {
+	m.mu.Lock()
+	m.mu.Unlock()
 
-	if !reflect.DeepEqual(c1.RemoteAddrs, c2.RemoteAddrs) {
-		return false
-	}
-
-	if len(c1.Children) != len(c2.Children) {
-		return false
-	}
-
-	for name, sc1 := range c1.Children {
-		sc2, ok := c2.Children[name]
-		if !ok {
-			return false
-		}
-
-		if !areSubnetIdentical(sc1.LocalTS, sc2.LocalTS) {
-			return false
-		}
-
-		if !areSubnetIdentical(sc1.RemoteTS, sc1.RemoteTS) {
-			return false
-		}
-	}
-
-	return true
+	m.connectionByName[conn.Name] = conn
 }
 
-func areSubnetIdentical(cidrs1, cidrs2 []string) bool {
-	if len(cidrs1) != len(cidrs2) {
-		return false
-	}
+func (m StrongSwanManager) forgetConn(name string) {
+	m.mu.Lock()
+	m.mu.Unlock()
 
-	for i := range cidrs1 {
-		cidr1 := normalizeCIDR(cidrs1[i])
-		cidr2 := normalizeCIDR(cidrs2[i])
-
-		if cidr1 != cidr2 {
-			return false
-		}
-	}
-
-	return true
+	delete(m.connectionByName, name)
 }
 
-func normalizeCIDR(value string) string {
-	if strings.IndexByte(value, '/') > -1 {
-		return value
-	}
+func (m StrongSwanManager) getCurrentConn(name string) (tunnel.ConnConfig, bool) {
+	m.mu.RLock()
+	m.mu.RUnlock()
 
-	maskLen := 32
-	if strings.IndexByte(value, ':') > -1 {
-		maskLen = 128
-	}
-
-	return fmt.Sprintf("%s/%d", value, maskLen)
+	conn, found := m.connectionByName[name]
+	return conn, found
 }
