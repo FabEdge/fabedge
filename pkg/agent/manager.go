@@ -226,6 +226,7 @@ func (m *Manager) ensureConnection(current, peer Endpoint, gw, gw6 net.IP) {
 		RemoteSubnets:     peer.Subnets,
 		RemoteNodeSubnets: peer.NodeSubnets,
 		RemoteType:        peer.Type,
+		RemotePort:        peer.Port,
 	}
 
 	m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)

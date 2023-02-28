@@ -49,6 +49,7 @@ func (m *Manager) readCfgFromFile() error {
 			RemoteSubnets:     peer.Subnets,
 			RemoteNodeSubnets: peer.NodeSubnets,
 			RemoteType:        peer.Type,
+			RemotePort:        peer.Port,
 		}
 		connections = append(connections, conn)
 	}

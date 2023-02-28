@@ -84,11 +84,12 @@ type Options struct {
 	CNIType                 string
 	AutoKeepIPPools         bool
 
-	CASecretName     string
-	CertValidPeriod  int64
-	CertOrganization string
-	Agent            agentctl.Config
-	Connector        connectorctl.Config
+	CASecretName        string
+	CertValidPeriod     int64
+	CertOrganization    string
+	Agent               agentctl.Config
+	Connector           connectorctl.Config
+	ConnectorPublicPort uint
 
 	ManagerOpts manager.Options
 
@@ -125,6 +126,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.StringToStringVar(&opts.Connector.ConnectorLabels, "connector-labels", map[string]string{"app": "fabedge-connector"}, "The labels used to find connector pods, e.g. key2=,key3=value3")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
+	flag.UintVar(&opts.ConnectorPublicPort, "connector-public-port", 500, "Public UDP port for IKE communication of connector")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
 
@@ -259,6 +261,9 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.GetPodCIDRs = getCloudPodCIDRs
 	opts.Connector.Endpoint.Name = getEndpointName("connector")
 	opts.Connector.Endpoint.ID = getEndpointID("connector")
+	if opts.ConnectorPublicPort != 500 {
+		opts.Connector.Endpoint.Port = &opts.ConnectorPublicPort
+	}
 
 	if opts.ClusterRole == RoleHost {
 		opts.APIServer, err = apiserver.New(apiserver.Config{
@@ -373,6 +378,10 @@ func (opts Options) Validate() (err error) {
 
 	if len(opts.Connector.Endpoint.PublicAddresses) == 0 {
 		return fmt.Errorf("connector public addresses is needed")
+	}
+
+	if opts.ConnectorPublicPort < 1 || opts.ConnectorPublicPort > 65535 {
+		return fmt.Errorf("connector public port is invalid")
 	}
 
 	if len(opts.ClusterCIDRs) == 0 {

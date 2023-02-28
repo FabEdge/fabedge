@@ -22,6 +22,8 @@ type Endpoint struct {
 	NodeSubnets []string `yaml:"nodeSubnets,omitempty" json:"nodeSubnets,omitempty"`
 	// Type of endpoints: Connector or EdgeNode
 	Type EndpointType `yaml:"type,omitempty" json:"type,omitempty"`
+	// public UDP port for IKE communication, only used to configure remote_port. Default: 500
+	Port *uint `yaml:"port,omitempty" json:"port,omitempty"`
 }
 
 type ClusterSpec struct {

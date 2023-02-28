@@ -65,6 +65,10 @@ spec:
                       items:
                         type: string
                       type: array
+                    port:
+                      description: 'public UDP port for IKE communication, only used
+                        to configure remote_port. Default: 500'
+                      type: integer
                     publicAddresses:
                       description: public addresses can be IP, DNS
                       items:

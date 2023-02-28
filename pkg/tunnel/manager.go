@@ -41,4 +41,5 @@ type ConnConfig struct {
 	RemoteSubnets     []string
 	RemoteNodeSubnets []string
 	RemoteType        apis.EndpointType
+	RemotePort        *uint
 }
