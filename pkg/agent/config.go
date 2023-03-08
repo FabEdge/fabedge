@@ -74,6 +74,8 @@ type Config struct {
 	EndpointTTL          time.Duration
 	BackupInterval       time.Duration
 	Workdir              string
+
+	TunnelInitTimeout uint
 }
 
 func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
@@ -110,6 +112,8 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.MulticastInterval, "multicast-interval", 5*time.Second, "The interval between endpoint multicasting")
 	fs.DurationVar(&cfg.BackupInterval, "backup-interval", 10*time.Second, "The interval between local endpoints backing up")
 	fs.DurationVar(&cfg.EndpointTTL, "endpoint-ttl", 20*time.Second, "The time to live for endpoint received from multicasting")
+
+	fs.UintVar(&cfg.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Uint: second")
 }
 
 func (cfg *Config) Validate() error {
@@ -163,6 +167,7 @@ func (cfg Config) Manager() (*Manager, error) {
 	tm, err := strongswan.New(
 		strongswan.StartAction("clear"),
 		strongswan.DpdDelay("10s"),
+		strongswan.InitTimeout(cfg.TunnelInitTimeout),
 	)
 	if err != nil {
 		return nil, err

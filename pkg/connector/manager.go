@@ -49,13 +49,14 @@ type Manager struct {
 }
 
 type Config struct {
-	SyncPeriod       time.Duration //sync interval
-	DebounceDuration time.Duration
-	TunnelConfigFile string
-	CertFile         string
-	ViciSocket       string
-	CNIType          string
-	initMembers      []string
+	SyncPeriod        time.Duration //sync interval
+	DebounceDuration  time.Duration
+	TunnelConfigFile  string
+	CertFile          string
+	ViciSocket        string
+	CNIType           string
+	InitMembers       []string
+	TunnelInitTimeout uint
 }
 
 func msgHandler(b []byte)         {}
@@ -68,7 +69,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.CNIType, "cni-type", "flannel", "CNI type used in cloud")
 	fs.DurationVar(&c.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
 	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
-	fs.StringSliceVar(&c.initMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
+	fs.StringSliceVar(&c.InitMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
+	fs.UintVar(&c.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Unit: second")
 }
 
 func (c Config) Manager() (*Manager, error) {
@@ -85,7 +87,7 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
-	mc, err := memberlist.New(c.initMembers, msgHandler, nodeLeveHandler)
+	mc, err := memberlist.New(c.InitMembers, msgHandler, nodeLeveHandler)
 	if err != nil {
 		return nil, err
 	}

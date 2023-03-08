@@ -90,6 +90,7 @@ type Options struct {
 	Agent               agentctl.Config
 	Connector           connectorctl.Config
 	ConnectorPublicPort uint
+	ConnectorAsMediator bool
 
 	ManagerOpts manager.Options
 
@@ -127,6 +128,7 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringToStringVar(&opts.Connector.ConnectorLabels, "connector-labels", map[string]string{"app": "fabedge-connector"}, "The labels used to find connector pods, e.g. key2=,key3=value3")
 	flag.StringSliceVar(&opts.Connector.Endpoint.PublicAddresses, "connector-public-addresses", nil, "The connector's public addresses which should be accessible for every edge node, comma separated. Takes single IPv4 addresses, DNS names")
 	flag.UintVar(&opts.ConnectorPublicPort, "connector-public-port", 500, "Public UDP port for IKE communication of connector")
+	flag.BoolVar(&opts.ConnectorAsMediator, "connector-as-mediator", false, "Use connector as mediator for hole punching")
 	flag.StringSliceVar(&opts.Connector.ProvidedSubnets, "connector-subnets", nil, "The subnets of connector, mostly the CIDRs to assign pod IP and service ClusterIP")
 	flag.DurationVar(&opts.Connector.SyncInterval, "connector-config-sync-interval", 5*time.Second, "The interval to synchronize connector configmap")
 
@@ -263,6 +265,18 @@ func (opts *Options) Complete() (err error) {
 	opts.Connector.Endpoint.ID = getEndpointID("connector")
 	if opts.ConnectorPublicPort != 500 {
 		opts.Connector.Endpoint.Port = &opts.ConnectorPublicPort
+	}
+	if opts.ConnectorAsMediator {
+		mediator := opts.Connector.Endpoint
+		mediator.Name = constants.DefaultMediatorName
+
+		if opts.ConnectorPublicPort != 500 {
+			mediator.Port = opts.Connector.Endpoint.Port
+		}
+
+		mediator.Subnets = nil
+		mediator.NodeSubnets = nil
+		opts.Store.SaveEndpoint(mediator)
 	}
 
 	if opts.ClusterRole == RoleHost {

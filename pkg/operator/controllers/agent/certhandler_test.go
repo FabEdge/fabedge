@@ -16,6 +16,8 @@ package agent
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"time"
 
@@ -26,6 +28,7 @@ import (
 	"k8s.io/klog/v2/klogr"
 
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 	timeutil "github.com/fabedge/fabedge/pkg/util/time"
 )
@@ -76,6 +79,18 @@ var _ = Describe("CertHandler", func() {
 		caCertPEM, certPEM := secretutil.GetCACert(secret), secretutil.GetCert(secret)
 		Expect(certManager.VerifyCertInPEM(certPEM, certutil.ExtKeyUsagesServerAndClient)).Should(Succeed())
 		Expect(caCertPEM).Should(Equal(certManager.GetCACertPEM()))
+		block, _ := pem.Decode(certPEM)
+
+		cert, err := x509.ParseCertificate(block.Bytes)
+		Expect(err).To(BeNil())
+		endpointName := getEndpointName(node.Name)
+		Expect(cert.Subject.CommonName).To(Equal(endpointName))
+		Expect(cert.Subject.Organization).To(ConsistOf(handler.certOrganization))
+		Expect(cert.DNSNames).To(ConsistOf(endpointName))
+		ips := nodeutil.GetInternalIPs(node)
+		for i := range cert.IPAddresses {
+			Expect(cert.IPAddresses[i].String()).To(Equal(ips[i]))
+		}
 
 		By("Changing TLS secret with expired cert")
 		certDER, keyDER, _ := certManager.NewCertKey(certutil.Config{

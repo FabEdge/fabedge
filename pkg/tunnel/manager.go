@@ -42,4 +42,14 @@ type ConnConfig struct {
 	RemoteNodeSubnets []string
 	RemoteType        apis.EndpointType
 	RemotePort        *uint
+
+	// Whether this connection is used for mediation
+	Mediation bool
+
+	// whether is connection need mediation
+	NeedMediation bool
+	// check https://docs.strongswan.org/docs/5.9/swanctl/swanctlConf.html
+	// for detailed explanation for MediatedBy and MediationPeer
+	MediatedBy    string
+	MediationPeer string
 }

@@ -16,6 +16,7 @@ package agent
 
 import (
 	"context"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -156,6 +157,37 @@ var _ = Describe("ConfigHandler", func() {
 		}
 		Expect(conf).Should(Equal(expectedConf))
 		Expect(conf.Peers[1].PublicAddresses).Should(Equal(edge2PublicAddresses))
+	})
+
+	It("Do should put mediator in agent configmap if mediator endpoint exists", func() {
+		mediator := connectorEndpoint
+		mediator.Name = constants.DefaultMediatorName
+		mediator.Subnets = nil
+		mediator.NodeSubnets = nil
+		store.SaveEndpoint(mediator)
+
+		By("re-executing Do method")
+		Expect(handler.Do(context.TODO(), node)).To(Succeed())
+
+		var cm corev1.ConfigMap
+		err := k8sClient.Get(context.Background(), ObjectKey{Name: agentConfigName, Namespace: namespace}, &cm)
+		Expect(err).ShouldNot(HaveOccurred())
+
+		configData, ok := cm.Data[agentConfigTunnelFileName]
+		Expect(ok).Should(BeTrue())
+
+		var conf netconf.NetworkConf
+		Expect(yaml.Unmarshal([]byte(configData), &conf)).ShouldNot(HaveOccurred())
+
+		expectedConf := netconf.NetworkConf{
+			Endpoint: newEndpoint(node),
+			Peers: []apis.Endpoint{
+				connectorEndpoint,
+				edge2Endpoint,
+			},
+			Mediator: &mediator,
+		}
+		Expect(conf).Should(Equal(expectedConf))
 	})
 
 	It("Undo should delete configmap created by Do method", func() {
