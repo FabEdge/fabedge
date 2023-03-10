@@ -247,7 +247,7 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 
 	oldConn, found := m.getCurrentConn(cnf.Name)
 	if found {
-		if reflect.DeepEqual(conn, oldConn) {
+		if reflect.DeepEqual(cnf, oldConn) {
 			return nil
 		}
 
