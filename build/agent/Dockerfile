@@ -1,4 +1,4 @@
-FROM golang:1.16.4 as builder
+FROM golang:1.17.13 as builder
 ARG pluginVersion=v0.9.1
 COPY . /fabedge
 RUN cd /tmp && git clone https://gitee.com/fabedge/plugins.git && \

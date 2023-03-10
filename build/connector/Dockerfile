@@ -1,4 +1,4 @@
-FROM golang:1.16.4 as builder
+FROM golang:1.17.13 as builder
 COPY . /fabedge
 RUN cd /fabedge && make connector QUICK=1 CGO_ENABLED=0 GOPROXY=https://goproxy.cn,direct
 
