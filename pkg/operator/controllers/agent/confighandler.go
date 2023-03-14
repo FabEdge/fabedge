@@ -82,8 +82,6 @@ func (handler *configHandler) Do(ctx context.Context, node corev1.Node) error {
 			},
 			Data: map[string]string{
 				agentConfigTunnelFileName: configData,
-				// agent controller just create configmap, the load balance rules is kept by proxy controller
-				agentConfigServicesFileName: "",
 			},
 		}
 

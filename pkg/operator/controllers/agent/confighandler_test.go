@@ -96,11 +96,7 @@ var _ = Describe("ConfigHandler", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		expectOwnerReference(&cm, node)
 
-		configData, ok := cm.Data[agentConfigServicesFileName]
-		Expect(ok).Should(BeTrue())
-		Expect(configData).Should(Equal(""))
-
-		configData, ok = cm.Data[agentConfigTunnelFileName]
+		configData, ok := cm.Data[agentConfigTunnelFileName]
 		Expect(ok).Should(BeTrue())
 
 		var conf netconf.NetworkConf

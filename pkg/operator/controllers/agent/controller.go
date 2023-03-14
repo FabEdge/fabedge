@@ -45,11 +45,8 @@ var errRestartAgent = fmt.Errorf("restart agent")
 var errRequeueRequest = fmt.Errorf("requeue this request")
 
 const (
-	controllerName              = "agent-controller"
-	agentConfigTunnelFileName   = "tunnels.yaml"
-	agentConfigServicesFileName = "services.yaml"
-	agentConfigTunnelsFilepath  = "/etc/fabedge/tunnels.yaml"
-	agentConfigServicesFilepath = "/etc/fabedge/services.yaml"
+	controllerName            = "agent-controller"
+	agentConfigTunnelFileName = "tunnels.yaml"
 
 	keyRestartAgent = "restartAgent"
 )
