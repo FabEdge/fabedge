@@ -19,6 +19,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -31,6 +32,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/operator/types"
 	certutil "github.com/fabedge/fabedge/pkg/util/cert"
+	nodeutil "github.com/fabedge/fabedge/pkg/util/node"
 	secretutil "github.com/fabedge/fabedge/pkg/util/secret"
 )
 
@@ -123,9 +125,18 @@ func (handler *certHandler) verifyCert(secret corev1.Secret, node corev1.Node) e
 }
 
 func (handler *certHandler) buildCertAndKeySecret(secretName string, node corev1.Node) (corev1.Secret, error) {
+	var ips []net.IP
+	for _, ip := range nodeutil.GetInternalIPs(node) {
+		ips = append(ips, net.ParseIP(ip))
+	}
+
+	name := handler.getEndpointName(node.Name)
 	keyDER, csr, err := certutil.NewCertRequest(certutil.Request{
-		CommonName:   handler.getEndpointName(node.Name),
+		CommonName:   name,
 		Organization: []string{handler.certOrganization},
+		// use DNS and IP as alias for mediation
+		DNSNames: []string{name},
+		IPs:      ips,
 	})
 	if err != nil {
 		return corev1.Secret{}, err

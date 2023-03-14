@@ -163,6 +163,10 @@ func (ctl *controller) updateConfigMapIfNeeded() {
 		Endpoint: connectorEndpoint,
 		Peers:    ctl.getPeers(),
 	}
+	mediator, found := ctl.Store.GetEndpoint(constants.DefaultMediatorName)
+	if found {
+		conf.Mediator = &mediator
+	}
 
 	confBytes, err := yaml.Marshal(conf)
 	if err != nil {

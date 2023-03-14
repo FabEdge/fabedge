@@ -130,6 +130,11 @@ func (handler *configHandler) buildNetworkConf(nodeName string) netconf.NetworkC
 		conf.Peers = append(conf.Peers, ep)
 	}
 
+	mediator, found := store.GetEndpoint(constants.DefaultMediatorName)
+	if found {
+		conf.Mediator = &mediator
+	}
+
 	return conf
 }
 

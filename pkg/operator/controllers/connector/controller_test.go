@@ -231,6 +231,21 @@ var _ = Describe("Controller", func() {
 		conf = getNetworkConf()
 		Expect(conf.Endpoint).To(Equal(getConnectorEndpoint()))
 		Expect(conf.Peers).To(ConsistOf(alienConnector, localEdge1))
+
+		By("Add mediator endpoint")
+		store.SaveEndpoint(apis.Endpoint{
+			Name:            constants.DefaultMediatorName,
+			ID:              config.Endpoint.ID,
+			PublicAddresses: config.Endpoint.PublicAddresses,
+		})
+
+		time.Sleep(2 * interval)
+
+		cm = corev1.ConfigMap{}
+		Expect(k8sClient.Get(context.Background(), key, &cm)).ShouldNot(HaveOccurred())
+
+		conf = getNetworkConf()
+		Expect(conf.Mediator).NotTo(BeNil())
 	})
 
 	It("should create a tls secret for connector", func() {

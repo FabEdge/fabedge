@@ -38,4 +38,6 @@ const (
 
 const (
 	TableStrongswan = 220
+
+	DefaultMediatorName = "mediator"
 )

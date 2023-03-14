@@ -45,21 +45,27 @@ type StrongSwanManager struct {
 	dpdDelay    string
 	interfaceID *uint
 
+	// the time to wait for SA or child SA initiation finish
+	initTimeout uint
+
 	connectionByName map[string]tunnel.ConnConfig
 	mu               *sync.RWMutex
 }
 
 type connection struct {
-	LocalAddrs  []string               `vici:"local_addrs"`
-	LocalPort   *uint                  `vici:"local_port"`
-	RemoteAddrs []string               `vici:"remote_addrs,omitempty"`
-	RemotePort  *uint                  `vici:"remote_port"`
-	LocalAuth   authConf               `vici:"local"`
-	RemoteAuth  authConf               `vici:"remote"`
-	Children    map[string]childSAConf `vici:"children"`
-	IF_ID_IN    *uint                  `vici:"if_id_in"`
-	IF_ID_OUT   *uint                  `vici:"if_id_out"`
-	DpdDelay    string                 `vici:"dpd_delay,omitempty"`
+	LocalAddrs    []string               `vici:"local_addrs"`
+	LocalPort     *uint                  `vici:"local_port"`
+	RemoteAddrs   []string               `vici:"remote_addrs,omitempty"`
+	RemotePort    *uint                  `vici:"remote_port"`
+	LocalAuth     authConf               `vici:"local"`
+	RemoteAuth    authConf               `vici:"remote"`
+	Children      map[string]childSAConf `vici:"children"`
+	IF_ID_IN      *uint                  `vici:"if_id_in"`
+	IF_ID_OUT     *uint                  `vici:"if_id_out"`
+	DpdDelay      string                 `vici:"dpd_delay,omitempty"`
+	Mediation     string                 `vici:"mediation"`
+	MediatedBy    string                 `vici:"mediated_by"`
+	MediationPeer string                 `vici:"mediation_peer"`
 }
 
 type authConf struct {
@@ -109,6 +115,74 @@ func (m StrongSwanManager) ListConnNames() ([]string, error) {
 	return names, err
 }
 
+func (m StrongSwanManager) InitiateConn(name string) error {
+	conn, found := m.getConnection(name)
+	if !found {
+		return fmt.Errorf("connection %s not found", name)
+	}
+
+	// mediation connection don't have any child sa, so just initiate the SA
+	if conn.Mediation {
+		initiated, err := m.IsSAInitiated(name)
+		if err != nil {
+			return err
+		}
+		if initiated {
+			return nil
+		}
+
+		return m.initiateSA(name)
+	}
+
+	childSANames, err := m.listSANames(name)
+	if err != nil {
+		return err
+	}
+
+	childNames := []string{
+		fmt.Sprintf("%s-p2p", name),
+		fmt.Sprintf("%s-p2n", name),
+		fmt.Sprintf("%s-n2p", name),
+	}
+
+	for _, child := range childNames {
+		if childSANames.Has(child) {
+			continue
+		}
+		if err = m.initiateChildSA(child); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m StrongSwanManager) IsSAInitiated(ike string) (bool, error) {
+	request := vici.NewMessage()
+	_ = request.Set("ike", ike)
+
+	initiated := false
+	err := m.do(func(session *vici.Session) error {
+		ms, err := session.StreamedCommandRequest("list-sas", "list-sa", request)
+		if err != nil {
+			return err
+		}
+
+		for _, msg := range ms.Messages() {
+			if err = msg.Err(); err != nil {
+				return err
+			} else {
+				initiated = len(msg.Keys()) > 0
+			}
+			break
+		}
+
+		return nil
+	})
+
+	return initiated, err
+}
+
 func (m StrongSwanManager) listSANames(ike string) (sets.String, error) {
 	names := sets.NewString()
 
@@ -138,34 +212,28 @@ func (m StrongSwanManager) listSANames(ike string) (sets.String, error) {
 	return names, err
 }
 
-func (m StrongSwanManager) InitiateConn(name string) error {
-	childSANames, err := m.listSANames(name)
-	if err != nil {
-		return err
-	}
-
-	childNames := []string{
-		fmt.Sprintf("%s-p2p", name),
-		fmt.Sprintf("%s-p2n", name),
-		fmt.Sprintf("%s-n2p", name),
-	}
-
-	for _, child := range childNames {
-		if childSANames.Has(child) {
-			continue
-		}
-		if err = m.initiateChildSA(child); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (m StrongSwanManager) initiateChildSA(child string) error {
 	return m.do(func(session *vici.Session) error {
 		msg := vici.NewMessage()
 		_ = msg.Set("child", child)
+		if m.initTimeout != 0 {
+			_ = msg.Set("timeout", m.initTimeout)
+		}
+		if _, err := session.CommandRequest("initiate", msg); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (m StrongSwanManager) initiateSA(name string) error {
+	return m.do(func(session *vici.Session) error {
+		msg := vici.NewMessage()
+		_ = msg.Set("ike", name)
+
+		if m.initTimeout != 0 {
+			_ = msg.Set("timeout", m.initTimeout)
+		}
 		if _, err := session.CommandRequest("initiate", msg); err != nil {
 			return err
 		}
@@ -208,12 +276,35 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 			AuthMethod: "pubkey",
 			Certs:      certs,
 		},
-		RemoteAuth: authConf{
+
+		DpdDelay: m.dpdDelay,
+	}
+
+	if cnf.RemoteID != "" {
+		conn.RemoteAuth = authConf{
 			ID:         cnf.RemoteID,
 			AuthMethod: "pubkey",
-		},
-		DpdDelay: m.dpdDelay,
-		Children: map[string]childSAConf{
+		}
+	}
+
+	if cnf.Mediation {
+		conn.Mediation = "yes"
+		// no child and no remote auth for mediation connection
+	} else {
+		if cnf.NeedMediation {
+			conn.MediatedBy = cnf.MediatedBy
+			// although mediation_peer can be omitted, but strongswan has a bug which make
+			// mediation_peer is necessary
+			// https://github.com/strongswan/strongswan/discussions/1569
+			conn.MediationPeer = cnf.MediationPeer
+
+			// when use mediation, remote addresses are not needed, because the real remote addresses are
+			// different from the remote addresses in tunnel config
+			conn.LocalAddrs = nil
+			conn.RemoteAddrs = nil
+		}
+
+		conn.Children = map[string]childSAConf{
 			fmt.Sprintf("%s-p2p", cnf.Name): {
 				LocalTS:     cnf.LocalSubnets,
 				RemoteTS:    cnf.RemoteSubnets,
@@ -232,7 +323,7 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 				StartAction: m.startAction,
 				DpdAction:   m.dpdAction,
 			},
-		},
+		}
 	}
 
 	if cnf.RemotePort != nil && *cnf.RemotePort != 500 {
@@ -245,7 +336,7 @@ func (m StrongSwanManager) LoadConn(cnf tunnel.ConnConfig) error {
 		conn.LocalPort = &localPort
 	}
 
-	oldConn, found := m.getCurrentConn(cnf.Name)
+	oldConn, found := m.getConnection(cnf.Name)
 	if found {
 		if reflect.DeepEqual(cnf, oldConn) {
 			return nil
@@ -359,7 +450,7 @@ func (m StrongSwanManager) forgetConn(name string) {
 	delete(m.connectionByName, name)
 }
 
-func (m StrongSwanManager) getCurrentConn(name string) (tunnel.ConnConfig, bool) {
+func (m StrongSwanManager) getConnection(name string) (tunnel.ConnConfig, bool) {
 	m.mu.RLock()
 	m.mu.RUnlock()
 

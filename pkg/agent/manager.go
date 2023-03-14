@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 
+	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
 	netutil "github.com/fabedge/fabedge/pkg/util/net"
@@ -58,8 +59,9 @@ type Manager struct {
 	ipt6 *iptables.IPTables
 	log  logr.Logger
 
-	currentEndpoint Endpoint
-	peerEndpoints   map[string]Endpoint
+	currentEndpoint  Endpoint
+	mediatorEndpoint *Endpoint
+	peerEndpoints    map[string]Endpoint
 	// endpointLock is used to protect currentEndpoint and peerEndpoints
 	endpointLock sync.RWMutex
 
@@ -106,7 +108,7 @@ func (m *Manager) start() {
 		// this make `go vet` shut up
 		lastCancel = cancel
 
-		go retryForever(ctx, m.mainNetwork, func(n uint, err error) {
+		go retryForever(ctx, m.maintainNetwork, func(n uint, err error) {
 			m.log.Error(err, "failed to configure network", "retryNum", n)
 		})
 
@@ -138,7 +140,7 @@ func (m *Manager) ensureSysctlParameters() {
 	}
 }
 
-func (m *Manager) mainNetwork() error {
+func (m *Manager) maintainNetwork() error {
 	m.log.V(3).Info("load network config")
 	err := m.loadNetworkConf()
 	if err != nil {
@@ -180,6 +182,14 @@ func (m *Manager) ensureConnections() error {
 	}
 
 	newNames := sets.NewString()
+
+	mediator := m.getMediatorEndpoint()
+	if mediator != nil {
+		m.log.V(5).Info("Mediator found, try to create tunnel", "mediator", *mediator)
+		newNames.Insert(mediator.Name)
+		m.ensureMediatorConnection(current, *mediator)
+	}
+
 	for _, peer := range peers {
 		if peer.IsLocal {
 			if err := addRoutesToPeer(peer); err != nil {
@@ -187,7 +197,7 @@ func (m *Manager) ensureConnections() error {
 			}
 		} else {
 			newNames.Insert(peer.Name)
-			m.ensureConnection(current, peer, gw, gw6)
+			m.ensureConnection(current, peer, mediator, gw, gw6)
 		}
 	}
 
@@ -203,6 +213,7 @@ func (m *Manager) ensureConnections() error {
 			continue
 		}
 
+		m.log.V(5).Info("try to unload tunnel", "name", name)
 		if err := m.tm.UnloadConn(name); err != nil {
 			m.log.Error(err, "failed to unload tunnel", "name", name)
 		}
@@ -211,7 +222,41 @@ func (m *Manager) ensureConnections() error {
 	return delStaleRoutes(peers)
 }
 
-func (m *Manager) ensureConnection(current, peer Endpoint, gw, gw6 net.IP) {
+func (m *Manager) ensureMediatorConnection(current, peer Endpoint) {
+	conn := tunnel.ConnConfig{
+		Name: peer.Name,
+
+		// We need a different name to distinguish mediator connection from connector connection
+		// when use pubkey auth method, only DN or SAN is valid, endpoint name is used here because
+		// we have use it as domain name when generating cert
+		LocalID:    current.Name,
+		LocalCerts: m.LocalCerts,
+		LocalType:  current.Type,
+
+		RemoteID:      peer.ID,
+		RemoteAddress: peer.PublicAddresses,
+		RemoteType:    peer.Type,
+		RemotePort:    peer.Port,
+
+		Mediation: true,
+	}
+
+	m.log.V(5).Info("try to add mediation tunnel", "name", peer.Name, "peer", peer, "tunnel", conn)
+	if err := m.tm.LoadConn(conn); err != nil {
+		m.log.Error(err, "failed to load tunnel", "tunnel", conn)
+		return
+	}
+
+	m.log.V(5).Info("try to initiate tunnel", "name", peer.Name)
+	// this may lead to duplicate child sa in strongswan since sometimes two agents try to initiate
+	// the same connection on each side at the same time
+	if err := m.tm.InitiateConn(peer.Name); err != nil {
+		m.log.Error(err, "failed to initiate tunnel", "tunnel", conn)
+		return
+	}
+}
+
+func (m *Manager) ensureConnection(current, peer Endpoint, mediator *Endpoint, gw, gw6 net.IP) {
 	conn := tunnel.ConnConfig{
 		Name: peer.Name,
 
@@ -228,8 +273,13 @@ func (m *Manager) ensureConnection(current, peer Endpoint, gw, gw6 net.IP) {
 		RemoteType:        peer.Type,
 		RemotePort:        peer.Port,
 	}
+	if mediator != nil && peer.Type == apis.EdgeNode {
+		conn.NeedMediation = true
+		conn.MediatedBy = mediator.Name
+		conn.MediationPeer = peer.Name
+	}
 
-	m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer)
+	m.log.V(5).Info("try to add tunnel", "name", peer.Name, "peer", peer, "tunnel", conn)
 	if err := m.tm.LoadConn(conn); err != nil {
 		m.log.Error(err, "failed to add tunnel", "tunnel", conn)
 		return

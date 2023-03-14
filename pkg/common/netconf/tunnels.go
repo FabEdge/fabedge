@@ -25,6 +25,7 @@ import (
 type NetworkConf struct {
 	apis.Endpoint `yaml:"-,inline"`
 	Peers         []apis.Endpoint `yaml:"peers,omitempty" json:"peers,omitempty"`
+	Mediator      *apis.Endpoint  `yaml:"mediator,omitempty" json:"mediator,omitempty"`
 }
 
 func LoadNetworkConf(path string) (NetworkConf, error) {

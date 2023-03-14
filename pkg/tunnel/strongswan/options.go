@@ -52,3 +52,11 @@ func InterfaceID(id *uint) option {
 		m.interfaceID = id
 	}
 }
+
+// InitTimeout set timeout for SA/child-SA initiation. 0 means blocking initiation
+// unit: second.
+func InitTimeout(timeout uint) option {
+	return func(m *StrongSwanManager) {
+		m.initTimeout = timeout * 1000
+	}
+}

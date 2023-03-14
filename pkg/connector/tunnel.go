@@ -32,7 +32,21 @@ func (m *Manager) readCfgFromFile() error {
 		return err
 	}
 
-	var connections []tunnel.ConnConfig
+	connections := make([]tunnel.ConnConfig, 0, len(nc.Peers)+1)
+	// for now, connector is the only mediator candidate,
+	// for mediator itself, there is no need to configure remote settings,
+	// and just connector's cert for mediator's local cert
+	if nc.Mediator != nil {
+		mediator := nc.Mediator
+		connections = append(connections, tunnel.ConnConfig{
+			Name: mediator.Name,
+
+			LocalID:    mediator.ID,
+			LocalCerts: []string{m.CertFile},
+			Mediation:  true,
+		})
+	}
+
 	for _, peer := range nc.Peers {
 		conn := tunnel.ConnConfig{
 			Name: peer.Name,
@@ -73,6 +87,10 @@ func (m *Manager) classifyConnectionSubnets() {
 	)
 
 	for _, conn := range m.connections {
+		if conn.Mediation {
+			continue
+		}
+
 		for _, cidr := range conn.RemoteSubnets {
 			if isIPv6(cidr) {
 				edgePodCIDRs6.Insert(cidr)
@@ -129,14 +147,18 @@ func (m *Manager) syncConnections() error {
 		nameSet.Insert(c.Name)
 
 		log := m.log.WithValues("connection", c)
-		switch c.RemoteType {
-		case v1alpha1.EdgeNode:
+		switch {
+		case c.Mediation:
+			if err = m.tm.LoadConn(c); err != nil {
+				log.Error(err, "failed to load connection")
+			}
+		case c.RemoteType == v1alpha1.EdgeNode:
 			c.LocalAddress = nil  // we do not care local ip address
 			c.RemoteAddress = nil // we just wait the connection from remote edge nodes
 			if err = m.tm.LoadConn(c); err != nil {
 				log.Error(err, "failed to load connection")
 			}
-		case v1alpha1.Connector:
+		case c.RemoteType == v1alpha1.Connector:
 			c.LocalAddress = nil // we do not care local ip address
 			if err = m.tm.LoadConn(c); err != nil {
 				log.Error(err, "failed to load connection")

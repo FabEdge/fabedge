@@ -39,6 +39,12 @@ func (m *Manager) loadNetworkConf() error {
 		Endpoint: conf.Endpoint,
 	}
 
+	if conf.Mediator != nil {
+		m.mediatorEndpoint = &Endpoint{
+			Endpoint: *conf.Mediator,
+		}
+	}
+
 	nameSet := sets.NewString()
 	for _, peer := range conf.Peers {
 		// local endpoints has higher priority than tunnel endpoint
@@ -149,6 +155,13 @@ func (m *Manager) getCurrentEndpoint() Endpoint {
 	defer m.endpointLock.RUnlock()
 
 	return m.currentEndpoint
+}
+
+func (m *Manager) getMediatorEndpoint() *Endpoint {
+	m.endpointLock.RLock()
+	defer m.endpointLock.RUnlock()
+
+	return m.mediatorEndpoint
 }
 
 func (m *Manager) getPeerEndpoints() []Endpoint {
