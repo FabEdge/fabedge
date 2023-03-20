@@ -102,7 +102,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.DNS.ClusterDomain, "dns-cluster-domain", "cluster.local", "The kubernetes cluster's domain name")
 
 	fs.BoolVar(&cfg.Proxy.Enabled, "enable-proxy", false, "Enable the proxy feature")
-	fs.StringVar(&cfg.Proxy.Mode, "proxy-mode", "ipvs", "Which proxy mode to use: 'userspace' (older) or 'iptables' (faster) or 'ipvs'.")
+	fs.StringVar(&cfg.Proxy.Mode, "proxy-mode", "iptables", "Which proxy mode to use: 'userspace' (older) or 'iptables' (faster) or 'ipvs'.")
 	fs.StringVar(&cfg.Proxy.ClusterCIDR, "proxy-cluster-cidr", "", "The CIDR range of pods in the cluster.")
 
 	fs.BoolVar(&cfg.EnableAutoNetworking, "auto-networking", false, "Enable auto-networking which will find endpoints in the same LAN")
