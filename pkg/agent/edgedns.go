@@ -47,7 +47,7 @@ const (
     forward . /etc/resolv.conf {
       prefer_udp
     }
-	{{ if .Probe -}}
+    {{ if .Probe -}}
     health {
         lameduck 5s
     }
