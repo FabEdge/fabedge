@@ -19,6 +19,7 @@ import (
 )
 
 type Manager interface {
+	IsRunning() bool
 	ListConnNames() ([]string, error)
 	LoadConn(conn ConnConfig) error
 	InitiateConn(name string) error

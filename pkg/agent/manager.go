@@ -96,6 +96,15 @@ func (m *Manager) start() {
 		lastCancel()
 	}()
 
+	m.log.V(3).Info("Waiting for strongswan to start")
+	for {
+		if m.tm.IsRunning() {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
 	m.log.V(3).Info("start network synchronization")
 	go m.sync()
 
