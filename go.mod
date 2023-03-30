@@ -19,7 +19,7 @@ require (
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.13.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.11.1 // indirect
+	github.com/prometheus/client_golang v1.11.1
 	github.com/spf13/pflag v1.0.5
 	github.com/strongswan/govici v0.5.1
 	github.com/vishvananda/netlink v1.1.0
@@ -35,7 +35,9 @@ require (
 replace github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 
 require (
+	github.com/miekg/dns v1.1.34
 	k8s.io/client-go v0.22.5
+	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.22.5
 )
 
@@ -170,7 +172,6 @@ require (
 require (
 	github.com/docker/distribution v2.8.0+incompatible // indirect
 	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
-	github.com/miekg/dns v1.1.34 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 )
