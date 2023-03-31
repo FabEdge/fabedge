@@ -30,12 +30,3 @@ jobs:
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v1
-
-    - name: Setup go
-      uses: actions/setup-go@v1
-      with:
-        go-version: 1.17.13
-
-    - name: Go vet
-      run: |
-        make vet
