@@ -115,6 +115,15 @@ func (m StrongSwanManager) ListConnNames() ([]string, error) {
 	return names, err
 }
 
+func (m StrongSwanManager) IsRunning() bool {
+	err := m.do(func(session *vici.Session) error {
+		_, err := session.CommandRequest("stats", vici.NewMessage())
+		return err
+	})
+
+	return err == nil
+}
+
 func (m StrongSwanManager) InitiateConn(name string) error {
 	conn, found := m.getConnection(name)
 	if !found {
@@ -137,6 +146,16 @@ func (m StrongSwanManager) InitiateConn(name string) error {
 	childSANames, err := m.listSANames(name)
 	if err != nil {
 		return err
+	}
+
+	if conn.NeedMediation {
+		initiated, err := m.IsSAInitiated(conn.MediatedBy)
+		if err != nil {
+			return err
+		}
+		if !initiated {
+			return fmt.Errorf("mediator SA %s is not initiated", conn.MediatedBy)
+		}
 	}
 
 	childNames := []string{
