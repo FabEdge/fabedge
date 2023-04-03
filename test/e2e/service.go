@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	netutil "github.com/fabedge/fabedge/pkg/util/net"
@@ -26,9 +25,8 @@ import (
 )
 
 var _ = Describe("FabEdge", func() {
-	// 集群间通信测试
+	// testcases for multi-clusters communication
 	if framework.TestContext.IsMultiClusterTest() {
-		// 测试集群内pod访问集群间云端服务端点的情况
 		It("let cluster cloud pods can access another cluster cloud services [multi-cluster]", func() {
 			for _, c1 := range clusters {
 				clientPods, _, err := framework.ListCloudAndEdgePods(c1.client,
@@ -70,64 +68,54 @@ var _ = Describe("FabEdge", func() {
 		})
 
 	} else {
-		// 单集群测试
+		// testcases for single cluster internal communication
 		var cluster Cluster
 		BeforeEach(func() {
 			cluster = clusters[0]
 		})
 
-		// 测试边缘pod访问本地服务端点的情况
-		It("let edge pods can access local service endpoint when it exists [p2p]", func() {
-			_, clientPods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(namespaceSingle),
-				client.MatchingLabels{labelKeyInstance: instanceNetTool},
-			)
-			framework.ExpectNoError(err)
-
-			_, servicePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(namespaceSingle),
-				client.MatchingLabels{labelKeyLocation: LocationEdge, labelKeyUseHostNetwork: "false"},
-			)
-			framework.ExpectNoError(err)
-
-			hostToPod := make(map[string]string)
-			for _, pod := range servicePods {
-				hostToPod[pod.Spec.NodeName] = pod.Name
-			}
-			for _, serviceName := range cluster.edgeNginxServiceNames() {
-				for _, pod := range clientPods {
-					expectedPodName, ok := hostToPod[pod.Spec.NodeName]
-					Expect(ok).To(BeTrue())
-
-					framework.Logf("pod %s visit service %s", pod.Name, serviceName)
-					cluster.expectCurlResultContains(pod, serviceName, expectedPodName)
-				}
-			}
-		})
-
-		// 测试边缘pod访问本地服务端点的情况
-		It("let edge pods can access local host service endpoint when it exists [p2n]", func() {
+		It("let edge pods can access edge services [p2p][e2e]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
 				client.MatchingLabels{labelKeyInstance: instanceNetTool},
 			)
 			framework.ExpectNoError(err)
 
-			_, hostEdgePods, err := framework.ListCloudAndEdgePods(cluster.client,
-				client.InNamespace(namespaceSingle),
-				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
-			)
-			framework.ExpectNoError(err)
+			for _, serviceName := range cluster.edgeNginxServiceNames() {
+				servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+					client.InNamespace(namespaceSingle),
+					client.MatchingLabels{labelKeyLocation: LocationEdge, labelKeyUseHostNetwork: "false"},
+				)
+				framework.ExpectNoError(err)
 
-			serviceName := cluster.serviceHostEdgeNginx
-			edgePods = append(edgePods, hostEdgePods...)
-			for _, pod := range edgePods {
-				framework.Logf("pod %s visit service %s", pod.Name, serviceName)
-				cluster.expectCurlResultContains(pod, serviceName, pod.Spec.NodeName)
+				for _, pod := range edgePods {
+					framework.Logf("pod %s visit service %s", pod.Name, serviceName)
+					cluster.checkServiceAvailability(pod, serviceName, servicePods)
+				}
 			}
 		})
 
-		// 测试边缘pod访问云端服务端点的情况
+		It("let edge pods can access local host service [p2n][e2e]", func() {
+			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyLocation: LocationEdge, labelKeyUseHostNetwork: "true"},
+			)
+			framework.ExpectNoError(err)
+
+			// for now, only test IPv4 service
+			serviceName := cluster.serviceHostEdgeNginx
+			for _, pod := range edgePods {
+				framework.Logf("pod %s visit service %s", pod.Name, serviceName)
+				cluster.checkServiceAvailability(pod, serviceName, servicePods)
+			}
+		})
+
 		It("let edge pods can access cloud services [p2p][c2e]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
@@ -149,7 +137,6 @@ var _ = Describe("FabEdge", func() {
 			}
 		})
 
-		// 测试边缘主机网络pod访问云端服务端点的情况
 		It("let edge pods using hostNetwork can access cloud services [n2p][e2c]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
@@ -171,10 +158,7 @@ var _ = Describe("FabEdge", func() {
 			}
 		})
 
-		// 测试边缘pod访问云端服务端点的情况
 		It("let edge pods can access cloud services with host network endpoints [p2n][e2c][host-service]", func() {
-			// todo: use more flexible control flags
-			Skip("feature not supported now, because higher linux kernel is needed")
 
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),
@@ -190,11 +174,42 @@ var _ = Describe("FabEdge", func() {
 
 			serviceName := cluster.serviceHostCloudNginx
 			edgePods = append(edgePods, hostEdgePods...)
+			servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyLocation: LocationCloud, labelKeyUseHostNetwork: "true"},
+			)
+
 			for _, pod := range edgePods {
 				framework.Logf("pod %s visit service %s", pod.Name, serviceName)
 
-				_, stderr, err := cluster.execCurl(pod, serviceName)
-				Expect(err).ShouldNot(HaveOccurred(), stderr)
+				cluster.checkServiceAvailability(pod, serviceName, servicePods)
+			}
+		})
+
+		It("let cloud pods can access edge services [p2n][c22]", func() {
+			cloudPods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			_, hostCloudPods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyInstance: instanceHostNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			serviceName := cluster.serviceCloudNginx
+			servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyLocation: LocationCloud, labelKeyUseHostNetwork: "true"},
+			)
+
+			cloudPods = append(cloudPods, hostCloudPods...)
+			for _, pod := range cloudPods {
+				framework.Logf("pod %s visit service %s", pod.Name, serviceName)
+
+				cluster.checkServiceAvailability(pod, serviceName, servicePods)
 			}
 		})
 	}

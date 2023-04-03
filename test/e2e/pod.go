@@ -91,9 +91,8 @@ var _ = Describe("FabEdge", func() {
 			)
 			framework.ExpectNoError(err)
 
-			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-			for _, p1 := range edgePods {
-				for _, p2 := range cloudPods {
+			for _, p1 := range cloudPods {
+				for _, p2 := range edgePods {
 					cluster.expectPodsCanCommunicate(p1, p2, bothIPv4AndIPv6)
 				}
 			}
@@ -114,7 +113,6 @@ var _ = Describe("FabEdge", func() {
 			framework.ExpectNoError(err)
 
 			By("pods communicate with each other")
-			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
 			for _, p1 := range edgePods {
 				for _, p2 := range hostEdgePods {
 					// for now, not all edge framework support dual stack, so only IPv4 is tested
@@ -137,9 +135,8 @@ var _ = Describe("FabEdge", func() {
 			)
 			framework.ExpectNoError(err)
 
-			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-			for _, p1 := range edgePods {
-				for _, p2 := range hostCloudPods {
+			for _, p1 := range hostCloudPods {
+				for _, p2 := range edgePods {
 					// for now, not all edge framework support dual stack, so only IPv4 is tested
 					cluster.expectPodsCanCommunicate(p1, p2, onlyIPv4)
 				}
@@ -161,9 +158,8 @@ var _ = Describe("FabEdge", func() {
 			framework.ExpectNoError(err)
 
 			By("pods communicate with each other")
-			// 必须让edgePod在前面，因为云端pod不能主动打通边缘Pod的隧道
-			for _, p1 := range hostEdgePods {
-				for _, p2 := range cloudPods {
+			for _, p1 := range cloudPods {
+				for _, p2 := range hostEdgePods {
 					// for now, not all edge framework support dual stack, so only IPv4 is tested
 					cluster.expectPodsCanCommunicate(p1, p2, onlyIPv4)
 				}
