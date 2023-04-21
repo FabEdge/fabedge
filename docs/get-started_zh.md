@@ -16,11 +16,11 @@
 
 ## 前提条件
 
-- Kubernetes (v1.18.8，1.22.7)
+- Kubernetes (v1.22.5+)
 
 - Flannel (v0.14.0 ) 或者 Calico (v3.16.5)
 
-- KubeEdge （v1.5）或者 SuperEdge（v0.5.0）或者 OpenYurt（ v0.4.1）
+- KubeEdge （>= v1.9.0）或者 SuperEdge（v0.8.0）或者 OpenYurt（ >= v1.2.0）
 
   *注1： Flannel目前仅支持Vxlan模式，支持双栈环境。*
 
@@ -36,23 +36,27 @@
 3. 获取集群配置信息，供后面使用  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.7.0/get_cluster_info.sh | bash -
+	$ curl -s https://fabedge.github.io/helm-chart/scripts/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
-	clusterDomain            : root-cluster
+	clusterDomain            : cluster.local
 	cluster-cidr             : 10.233.64.0/18
 	service-cluster-ip-range : 10.233.0.0/18
 	```
 
-​	
-
 ## 在主集群部署FabEdge
 
+1. 用helm添加fabedge repo：
+
+   ```shell
+   helm repo add fabedge https://fabedge.github.io/helm-chart
+   ```
+   
 1. 安装FabEdge   
 
    ```shell
-   $ curl 116.62.127.76/installer/v0.7.0/quickstart.sh | bash -s -- \
+   $ curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
    	--cluster-name beijing  \
    	--cluster-role host \
    	--cluster-zone beijing  \
@@ -61,7 +65,7 @@
    	--edges edge1,edge2 \
    	--edge-pod-cidr 10.233.0.0/16 \
    	--connector-public-addresses 10.22.46.47 \
-   	--chart http://116.62.127.76/fabedge-0.7.0.tgz
+   	--chart fabedge/fabedge
    ```
    > 说明：   
    > **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签  
@@ -76,10 +80,10 @@
 	```shell
 	$ kubectl get no
 	NAME     STATUS   ROLES       AGE     VERSION
-	edge1    Ready    edge        5h22m   v1.18.2
-	edge2    Ready    edge        5h21m   v1.18.2
-	master   Ready    master      5h29m   v1.18.2
-	node1    Ready    connector   5h23m   v1.18.2
+	edge1    Ready    edge        5h22m   v1.22.6-kubeedge-v1.12.2
+	edge2    Ready    edge        5h21m   v1.22.6-kubeedge-v1.12.2
+	master   Ready    master      5h29m   v1.22.5
+	node1    Ready    connector   5h23m   v1.22.5
 	
 	$ kubectl get po -n kube-system
 	NAME                                      READY   STATUS    RESTARTS   AGE
@@ -94,24 +98,22 @@
 	kube-scheduler-master                     1/1     Running   0          17h
 	metrics-server-894c64767-f4bvr            2/2     Running   0          17h
 	nginx-proxy-node1                         1/1     Running   0          17h
-	nodelocaldns-fmx7f                        1/1     Running   0          17h
-	nodelocaldns-kcz6b                        1/1     Running   0          17h
-	nodelocaldns-pwpm4                        1/1     Running   0          17h
 	
 	$ kubectl get po -n fabedge
 	NAME                                READY   STATUS    RESTARTS   AGE
-	fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
-	fabedge-agent-edge1                 2/2     Running   0          8m18s
-	fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
-	fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
-	fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
-	service-hub-74d5fcc9c9-f5t8f        1/1     Running   0          9m19s
+	fabdns-7dd5ccf489-5dc29              1/1     Running   0             24h
+	fabedge-agent-bvnvj                  2/2     Running   2 (23h ago)   24h
+	fabedge-agent-c9bsx                  2/2     Running   2 (23h ago)   24h
+	fabedge-cloud-agent-lgqkw            1/1     Running   3 (24h ago)   24h
+	fabedge-connector-54c78b5444-9dkt6   2/2     Running   0             24h
+	fabedge-operator-767bc6c58b-rk7mr    1/1     Running   0             24h
+	service-hub-7fd4659b89-h522c         1/1     Running   0             24h
 	```
 	
 4.  为需要通讯的边缘节点创建Community  
 	
 	```shell
-	$ cat > node-community.yaml << EOF
+	$ cat > all-edges.yaml << EOF
 	apiVersion: fabedge.io/v1alpha1
 	kind: Community
 	metadata:
@@ -122,7 +124,7 @@
 	    - beijing.edge2  
 	EOF
 	
-	$ kubectl apply -f node-community.yaml
+	$ kubectl apply -f all-edges.yaml
 	```
 
 4. 根据使用的[边缘计算框架](#边缘计算框架相关的配置)修改相关配置 
@@ -148,10 +150,16 @@
    eyJ------省略内容-----9u0
    ```
 
+3. 用helm添加fabedge repo：
+	
+	```shell
+	helm repo add fabedge https://fabedge.github.io/helm-chart
+	```
+	
 3. 在**成员集群**安装FabEdage  
 	
 	```shell
-	curl 116.62.127.76/installer/v0.7.0/quickstart.sh | bash -s -- \
+	curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
 		--cluster-name shanghai \
 		--cluster-role member \
 		--cluster-zone shanghai  \
@@ -160,7 +168,7 @@
 		--edges edge1,edge2 \
 		--edge-pod-cidr 10.233.0.0/16 \
 		--connector-public-addresses 10.22.46.26 \
-		--chart http://116.62.127.76/fabedge-0.7.0.tgz \
+		--chart fabedge/fabedge \
 		--service-hub-api-server https://10.22.46.47:30304 \
 		--operator-api-server https://10.22.46.47:30303 \
 		--init-token ey...Jh
@@ -179,10 +187,10 @@
 	```shell
 	$ kubectl get no
 	NAME     STATUS   ROLES       AGE     VERSION
-	edge1    Ready    edge        5h22m   v1.18.2
-	edge2    Ready    edge        5h21m   v1.18.2
-	master   Ready    master      5h29m   v1.18.2
-	node1    Ready    connector   5h23m   v1.18.2
+	edge1    Ready    edge        5h22m   v1.22.6-kubeedge-v1.12.2
+	edge2    Ready    edge        5h21m   v1.22.6-kubeedge-v1.12.2
+	master   Ready    master      5h29m   v1.22.5
+	node1    Ready    connector   5h23m   v1.22.5
 	
 	$ kubectl get po -n kube-system
 	NAME                                      READY   STATUS    RESTARTS   AGE
@@ -196,15 +204,11 @@
 	kube-proxy-wj8j9                          1/1     Running   0          17h
 	kube-scheduler-master                     1/1     Running   0          17h
 	metrics-server-894c64767-f4bvr            2/2     Running   0          17h
-	nginx-proxy-node1                         1/1     Running   0          17h
-	nodelocaldns-fmx7f                        1/1     Running   0          17h
-	nodelocaldns-kcz6b                        1/1     Running   0          17h
-	nodelocaldns-pwpm4                        1/1     Running   0          17h
 	
 	$ kubectl get po -n fabedge
 	NAME                                READY   STATUS    RESTARTS   AGE
 	fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
-	fabedge-agent-edge1                 2/2     Running   0          8m18s
+	fabedge-agent-m55h5                 2/2     Running   0          8m18s
 	fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
 	fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
 	fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
@@ -217,134 +221,120 @@
 
 	```shell
 	# 在master节点操作
-	$ cat > community.yaml << EOF
+	$ cat > all-edges.yaml << EOF
 	apiVersion: fabedge.io/v1alpha1
 	kind: Community
 	metadata:
-	  name: all-clusters
+	  name: all-edges
 	spec:
 	  members:
 	    - shanghai.connector   # {集群名称}.connector
 	    - beijing.connector    # {集群名称}.connector
 	EOF
 	
-	$ kubectl apply -f community.yaml
+	$ kubectl apply -f all-edges.yaml
 	```
 
 ## 启用多集群服务发现
 
-修改的集群DNS组件：  
-1）如果使用了nodelocaldns，只需要修改nodelocaldns,  其它配置不动  
-2）如果使用SuperEdge，修改coredns和edge-coredns，其它配置不动  
-3）其它情况只需要修改coredns  
+修改集群的coredns配置：
 
-1. 配置nodelocaldns  
-	
-	```shell
-	$ kubectl -n kube-system edit cm nodelocaldns
-	global:53 {
-	    errors
-	    cache 30
-	    reload
-	    bind 169.254.25.10                 # 本地bind地址，参考其它配置段中的bind
-	    forward . 10.233.12.205            # fabdns的service IP地址
-	}
-	```
+```shell
+$ kubectl -n kube-system edit cm coredns
+# 添加该配置
+global {
+   forward . 10.109.72.43                 # fabdns的service IP地址
+}
 
-2.  配置edge-coredns  
-
-	```shell
-	$ kubectl -n edge-system edit cm edge-coredns
-	global {
-	   forward . 10.244.51.126                 # fabdns的service IP地址
-	}
-	```
-
-3.  配置coredns  
-
-	```shell
-	$ kubectl -n kube-system edit cm coredns
-	global {
-	   forward . 10.109.72.43                 # fabdns的service IP地址
-	}
-	```
-4. 重启coredns、edge-coredns和nodelocaldns使配置生效
+.:53 {
+    ...
+}
+```
 
 
 ## 边缘计算框架相关的配置
-### 如果使用KubeEdge
+### KubeEdge
 
-1.  确认nodelocaldns在**边缘节点**正常运行  
+#### cloudcore
 
-	```shell
-	$ kubectl get po -n kube-system -o wide | grep nodelocaldns
-	nodelocaldns-cz5h2                        1/1     Running   0          56m   10.22.46.47   master   <none>           <none>
-	nodelocaldns-nk26g                        1/1     Running   0          47m   10.22.46.23   edge1    <none>           <none>
-	nodelocaldns-wqpbw                        1/1     Running   0          17m   10.22.46.20   node1    <none>           <none>
-	```
+1. 启动cloudcore的dynamicController:
 
-2.  在**每个边缘节点**上修改edgecore配置   
+   ```yaml
+   dynamicController:
+       enable: true
+   ```
 
-	```shell
-	$ vi /etc/kubeedge/config/edgecore.yaml
-	
-	# 必须禁用edgeMesh
-	edgeMesh:
-	  enable: false
-	
-	edged:
-	    enable: true
-	    cniBinDir: /opt/cni/bin
-	    cniCacheDirs: /var/lib/cni/cache
-	    cniConfDir: /etc/cni/net.d
-	    networkPluginName: cni
-	    networkPluginMTU: 1500   
-	    clusterDNS: 169.254.25.10        # get_cluster_info脚本输出的clusterDNS
-	    clusterDomain: "root-cluster"    # get_cluster_info脚本输出的clusterDomain
-	```
-	> **clusterDNS**：如果没有启用nodelocaldns，请使用coredns service的地址
+   该配置项在cloudcore的配置文件cloudcore.yaml中，请根据您的环境自行寻找该文件。
 
-3.  在**每个边缘节点**上重启edgecore  
-	
-	```shell
-	$ systemctl restart edgecore
-	```
+2. 确保cloudcore有访问endpointslices资源的权限(仅限于以Pod方式运行的cloudcore):
 
-### 如果使用SuperEdge
+   ```
+   kubectl edit clusterrole cloudcore
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRole
+   metadata:
+     labels:
+       app.kubernetes.io/managed-by: Helm
+       k8s-app: kubeedge
+       kubeedge: cloudcore
+     name: cloudcore
+   rules:
+   - apiGroups:
+     - discovery.k8s.io
+     resources:
+     - endpointslices
+     verbs:
+     - get
+     - list
+     - watch
+   ```
 
-1.  检查服务状态，如果不Ready，要删除Pod重建  
+3. 重启cloudcore
 
-	```shell
-	# 在master节点执行
-	$ kubectl get po -n edge-system
-	application-grid-controller-84d64b86f9-29svc   1/1     Running   0          15h
-	application-grid-wrapper-master-pvkv8          1/1     Running   0          15h
-	application-grid-wrapper-node-dqxwv            1/1     Running   0          15h
-	application-grid-wrapper-node-njzth            1/1     Running   0          15h
-	edge-coredns-edge1-5758f9df57-r27nf            0/1     Running   8          15h
-	edge-coredns-edge2-84fd9cfd98-79hzp            0/1     Running   8          15h
-	edge-coredns-master-f8bf9975c-77nds            1/1     Running   0          15h
-	edge-health-7h29k                              1/1     Running   3          15h
-	edge-health-admission-86c5c6dd6-r65r5          1/1     Running   0          15h
-	edge-health-wcptf                              1/1     Running   3          15h
-	tunnel-cloud-6557fcdd67-v9h96                  1/1     Running   1          15h
-	tunnel-coredns-7d8b48c7ff-hhc29                1/1     Running   0          15h
-	tunnel-edge-dtb9j                              1/1     Running   0          15h
-	tunnel-edge-zxfn6                              1/1     Running   0          15h
-	
-	$ kubectl delete po -n edge-system edge-coredns-edge1-5758f9df57-r27nf
-	pod "edge-coredns-edge1-5758f9df57-r27nf" deleted
-	
-	$ kubectl delete po -n edge-system edge-coredns-edge2-84fd9cfd98-79hzp
-	pod "edge-coredns-edge2-84fd9cfd98-79hzp" deleted
-	```
+#### edgecore
 
-2.  SupeEdge的master节点上默认带有污点：node-role.kubernetes.io/master:NoSchedule， 所以不会启动fabedge-cloud-agent，导致不能和master节点上的Pod通讯。如果需要，可以修改fabedge-cloud-agent的DaemonSet配置，容忍这个污点。 
+1. 在**每个边缘节点**上修改edgecore配置 ( kubeedge < v.1.12.0)
+
+   ```shell
+   $ vi /etc/kubeedge/config/edgecore.yaml
+   edged:
+       enable: true
+       ...
+       networkPluginName: cni
+       networkPluginMTU: 1500   
+       clusterDNS: 169.254.25.10        
+       clusterDomain: "cluster.local"    # get_cluster_info脚本输出的clusterDomain
+   metaManager:
+       metaServer:
+         enable: true
+   ```
+   或者 ( kubeedge >= v.1.12.2)
+
+   ```yaml
+   $ vi /etc/kubeedge/config/edgecore.yaml
+   edged:
+       enable: true
+       ...
+       networkPluginName: cni
+       networkPluginMTU: 1500 
+       tailoredKubeletConfig:
+           clusterDNS: ["169.254.25.10"]        
+           clusterDomain: "cluster.local"    # get_cluster_info脚本输出的clusterDomain
+   metaManager:
+       metaServer:
+         enable: true
+   ```
+
+2. 在**每个边缘节点**上重启edgecore  
+
+   ```shell
+   $ systemctl restart edgecore
+   ```
 
 ## CNI相关的配置
 ### 如果使用Calico
 
-fabedge-v0.7.0提供了自动维护calico ippools功能，使用`quickstart.sh`安装fabedge时，会自动启动这个功能。如果您希望自己管理calico ippools，可以在安装时使用`--auto-keep-ippools false`配置项关闭这个功能。在启用自动维护calico ippools的情况下，以下内容可以跳过。
+自v0.7.0起，fabedge提供了自动维护calico ippools功能，使用`quickstart.sh`安装fabedge时，会自动启动这个功能。如果您希望自己管理calico ippools，可以在安装时使用`--auto-keep-ippools false`配置项关闭这个功能。在启用自动维护calico ippools的情况下，以下内容可以跳过。
 
 不论是什么集群角色, 只要集群使用Calico，就要将本集群的EdgePodCIDR其它所有集群的Pod和Service的网段加入当前集群的Calico配置,  防止Calico做源地址转换，导致不能通讯。
 
