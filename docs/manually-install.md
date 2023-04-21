@@ -6,15 +6,14 @@ This article will show you how to install FabEdge without `quickstart.sh`。The 
 
 ## Prerequisite
 
-- Kubernetes (v1.18.8，1.22.7)
+- Kubernetes (v1.22.5+)
 
 - Flannel (v0.14.0) or Calico (v3.16.5)
 
-- KubeEdge （v1.5）or SuperEdge（v0.5.0）or OpenYurt（ v0.4.1）
+- KubeEdge (>= v1.9.0) or SuperEdge(v0.8.0) or OpenYurt( >= v1.2.0)
 
 - Helm3
 
-  
 
 
 ## Deploy FabEdge
@@ -25,11 +24,11 @@ This article will show you how to install FabEdge without `quickstart.sh`。The 
 2. Collect the configuration of the current cluster  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
+	$ curl -s https://fabedge.github.io/helm-chart/scripts/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
-	clusterDomain            : root-cluster
+	clusterDomain            : cluster.local
 	cluster-cidr             : 10.233.64.0/18
 	service-cluster-ip-range : 10.233.0.0/18
 	```
@@ -55,10 +54,10 @@ This article will show you how to install FabEdge without `quickstart.sh`。The 
 	
 	$ kubectl get no
 	NAME     STATUS   ROLES      AGE   VERSION
-	edge1    Ready    edge       22h   v1.18.2
-	edge2    Ready    edge       22h   v1.18.2
-	master   Ready    master     22h   v1.18.2
-	node1    Ready    connector  22h   v1.18.2
+	edge1    Ready    edge        5h22m   v1.22.6-kubeedge-v1.12.2
+	edge2    Ready    edge        5h21m   v1.22.6-kubeedge-v1.12.2
+	master   Ready    master      5h29m   v1.22.5
+	node1    Ready    connector   5h23m   v1.22.5
 	```
 
 5. Make sure no CNI pods will run on edge nodes,  take Calico as an example: 
@@ -83,10 +82,10 @@ This article will show you how to install FabEdge without `quickstart.sh`。The 
    kubectl patch ds -n kube-system calico-node --patch-file /tmp/cni-ds.patch.yaml
    ```
 
-6. Download FabEdge chart: 
+6. Add fabedge repo using helm: 
 
    ```shell
-   wget http://116.62.127.76/fabedge-0.6.0.tgz
+   helm repo add fabedge https://fabedge.github.io/helm-chart
    ```
 
  7. Prepare your `values.yaml`
@@ -102,6 +101,13 @@ cluster:
   # edgePodCIDR is not necessary if your CNI is flannel;
   # Avoid an CIDR overlapped with cluster-cidr argument of your cluster
   edgePodCIDR: "10.234.64.0/18" 
+  # Usually connector should be accessible by fabedge-agent by port 500,
+  # if you cann't map public port 500, change this parameter.
+  connectorPublicPort: 500
+  # If your edge nodes are behind NAT networks and are hard to establish
+  # tunnels between them, set this parameter to true, this will let connector
+  # work also as a mediator to help edge nodes to establish tunnels.
+  connectorAsMediator: false
   connectorPublicAddresses:
   - 10.22.48.16
   serviceClusterIPRange:
@@ -113,9 +119,10 @@ fabDNS:
 
 agent:
   args:
-    # If your cluster uses superege or openyurt, set it to false;
-    # If your cluster uses kubeedge, set it to true if you need it.
+    # If your cluster uses superege or openyurt, set them to false;
+    # If your cluster uses kubeedge, it's better to set them to true
     ENABLE_PROXY: "true" 
+    ENABLE_DNS: "true"
 ```
 
 *PS:  The `values.yaml` in the example is not complete, you can get the complete `values.yaml` example by executing `helm show values fabedge-0.6.0.tgz`.*
@@ -132,7 +139,7 @@ If those pods following are running, you make it.
 $ kubectl get po -n fabedge
 NAME                                READY   STATUS    RESTARTS   AGE
 fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
-fabedge-agent-edge1                 2/2     Running   0          8m18s
+fabedge-agent-bvnvj                 2/2     Running   0          8m18s
 fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
 fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
 fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s

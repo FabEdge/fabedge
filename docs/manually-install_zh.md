@@ -6,15 +6,14 @@
 
 ## 前提条件
 
-- Kubernetes (v1.18.8，1.22.7)
+- Kubernetes (v1.22.5+)
 
 - Flannel (v0.14.0) 或者 Calico (v3.16.5)
 
-- KubeEdge （v1.5）或者 SuperEdge（v0.5.0）或者 OpenYurt（ v0.4.1）
+- KubeEdge （>= v1.9.0）或者 SuperEdge（v0.8.0）或者 OpenYurt（ >= v1.2.0）
 
 - Helm3
 
-  
 
 ## 安装FabEdge
 
@@ -24,11 +23,11 @@
 2. 获取集群配置信息，供后面使用  
 	
 	```shell
-	$ curl -s http://116.62.127.76/installer/v0.6.0/get_cluster_info.sh | bash -
+	$ curl -s https://fabedge.github.io/helm-chart/scripts/get_cluster_info.sh | bash -
 	This may take some time. Please wait.
 		
 	clusterDNS               : 169.254.25.10
-	clusterDomain            : root-cluster
+	clusterDomain            : cluster.local
 	cluster-cidr             : 10.233.64.0/18
 	service-cluster-ip-range : 10.233.0.0/18
 	```
@@ -44,7 +43,7 @@
 	node1    Ready    connector 22h   v1.18.2
 	```
 
-4. 为边缘节点打标签
+4. 为边缘节点打标签(新添加的节点也需要)：
 
 	```shell
 	$ kubectl label node --overwrite=true edge1 node-role.kubernetes.io/edge=
@@ -54,10 +53,10 @@
 	
 	$ kubectl get no
 	NAME     STATUS   ROLES      AGE   VERSION
-	edge1    Ready    edge       22h   v1.18.2
-	edge2    Ready    edge       22h   v1.18.2
-	master   Ready    master     22h   v1.18.2
-	node1    Ready    connector  22h   v1.18.2
+	edge1    Ready    edge        5h22m   v1.22.6-kubeedge-v1.12.2
+	edge2    Ready    edge        5h21m   v1.22.6-kubeedge-v1.12.2
+	master   Ready    master      5h29m   v1.22.5
+	node1    Ready    connector   5h23m   v1.22.5
 	```
 
 5. 确保CNI组件不运行在边缘节点，这里以Calico为例
@@ -82,10 +81,10 @@
    kubectl patch ds -n kube-system calico-node --patch-file /tmp/cni-ds.patch.yaml
    ```
 
-6. 下载FabEdge chart
+6. 用helm添加fabedge repo: 
 
    ```shell
-   wget http://116.62.127.76/fabedge-0.6.0.tgz
+   helm repo add fabedge https://fabedge.github.io/helm-chart
    ```
 
  7. 准备`values.yaml`
@@ -103,6 +102,12 @@ cluster:
   edgePodCIDR: "10.234.64.0/18" 
   connectorPublicAddresses:
   - 10.22.48.16
+  # 通常connector需要被边缘节点的fabedge-agent访问需要映射端口，
+  # 如果外部端口不能映射为500,需要修改该参数
+  connectorPublicPort: 500
+  # 是否使用connector节点作为mediator，如果边缘节点位于NAT网络后，
+  # 彼此之间不能正常建立隧道，建议开启该功能
+  connectorAsMediator: false
   serviceClusterIPRange:
   - 10.234.0.0/18
 
@@ -112,16 +117,17 @@ fabDNS:
 
 agent:
   args:
-    # 如果是superedge/openyurt，需要设置为false; kubeedge环境可以根据需要关闭
+    # 如果是superedge/openyurt环境，将以下参数设置为false; kubeedge环境下建议打开
     ENABLE_PROXY: "true" 
+    ENABLE_DNS: "true" 
 ```
 
-*注:  示例的`values.yaml`并非完整内容，完整的values文件可以通过执行`helm show values fabedge-0.6.0.tgz`的方式获取。*
+*注:  示例的`values.yaml`并非完整内容，完整的values文件可以通过执行`helm show values fabedge/fabedge`的方式获取。*
 
 8. 安装Fabedge
 
    ```shell
-   helm install fabedge fabedge-0.6.0.tgz -n fabedge --create-namespace
+   helm install fabedge fabedge/fabedge -n fabedge --create-namespace
    ```
 
 如果以下Pod运行正常，则安装成功
@@ -130,7 +136,7 @@ agent:
 $ kubectl get po -n fabedge
 NAME                                READY   STATUS    RESTARTS   AGE
 fabdns-7b768d44b7-bg5h5             1/1     Running   0          9m19s
-fabedge-agent-edge1                 2/2     Running   0          8m18s
+fabedge-agent-bvnvj                 2/2     Running   0          8m18s
 fabedge-cloud-agent-hxjtb           1/1     Running   4          9m19s
 fabedge-connector-8c949c5bc-7225c   2/2     Running   0          8m18s
 fabedge-operator-dddd999f8-2p6zn    1/1     Running   0          9m19s
