@@ -67,9 +67,8 @@ agent:
    kind: Cluster
    metadata:
      name: beijing
-    
    ```
-
+   
 2. 查看token
 
    ```shell
@@ -121,8 +120,12 @@ kubectl annotate node edge1 "fabedge.io/node-public-addresses=60.247.88.194"
 全局服务把本集群的一个普通的Service （Headless 或 ClusterIP），暴露给其它集群访问，并且提供基于拓扑的服务发现能力。  
 
 1. 创建一个k8s的服务， 比如，命名空间是default， service的名字是web   
+
 2. 为web服务添加标签：`fabedge.io/global-service: true`  
+
 3. 所有集群可以通过域名：`web.default.svc.global`,  就近访问到web的服务。  
+
+   更多内容请参考[如何创建全局服务](https://github.com/FabEdge/fab-dns/blob/main/docs/how-to-create-globalservice.md)及[示例](https://github.com/FabEdge/fab-dns/tree/main/examples)
 
 ## FabEdge Agent节点级参数配置
 
