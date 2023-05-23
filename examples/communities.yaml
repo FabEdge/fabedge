@@ -1,0 +1,22 @@
+# allow all edges of beijing cluster to communicate
+apiVersion: fabedge.io/v1alpha1
+kind: Community
+metadata:
+  name: all-edges
+spec:
+  members:
+  - beijing.edge1
+  - beijing.edge2
+
+---
+
+# allow all cloud node of clusters to communicate
+apiVersion: fabedge.io/v1alpha1
+kind: Community
+metadata:
+  name: all-clusters
+spec:
+  members:
+  - beijing.connector
+  - hangzhou.connector
+  - shenzhen.connector
