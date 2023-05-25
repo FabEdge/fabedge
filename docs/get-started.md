@@ -131,7 +131,7 @@
 
 ## Deploy FabEdge in the member cluster
 
-If any member cluster,  register it in the host cluster first, then deploy FabEdge in it.
+If you have any member cluster,  register it in the host cluster first, then deploy FabEdge in it. Before you that, you'd better to make sure none of the addresses of host network and container network of those clusters overlap.
 
 1.  In the **host cluster**，create an edge cluster named "shanghai". Get the token for registration.  
 	
@@ -386,21 +386,10 @@ one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (
 > * cluster-cidr parameter of another cluster
 > * service-cluster-ip-range of another cluster
 
-## FAQ
+## More Documents
 
-1. If asymmetric routes exist, to disable **rp_filter** on all cloud node  
+* This document introduces how to install FabEdge via a script which help you to try FabEdge soon, but we would recommend you to read [Manulally Install](./manually-install-zh.md) which might fit in production enviroment better.
 
-   ```shell
-   $ sudo for i in /proc/sys/net/ipv4/conf/*/rp_filter; do  echo 0 >$i; done 
-   # save the configuration.
-   $ sudo vi /etc/sysctl.conf
-   net.ipv4.conf.default.rp_filter=0
-   net.ipv4.conf.all.rp_filter=0
-   ```
+* FabEdge also provide other features, read [FAQ](./FAQ.md) to find out.
 
-1. If Error with “Error: cannot re-use a name that is still in use”. Uninstall fabedge and try again.
-   
-   ```shell
-   $ helm uninstall -n fabedge fabedge
-   release "fabedge" uninstalled
-   ```
+  
