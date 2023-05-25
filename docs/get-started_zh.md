@@ -384,7 +384,7 @@ global {
 
 ## 更多资料
 
-* 本文的安装方式是脚本安装，它让您能快速体验FabEdge，但建议您阅读[手动安装](./manually-install-zh.md)，这更适合在生产环境下的部署。
+* 本文的安装方式是脚本安装，它让您能快速体验FabEdge，但建议您阅读[手动安装](./manually-install_zh.md)，这更适合在生产环境下的部署。
 * FabEdge有许多特性，这些都记录在[常见问题](./FAQ_zh.md)。
 * 如果您使用了多集群通信功能，建议您阅读[创建全局服务](https://github.com/FabEdge/fab-dns/blob/main/docs/how-to-create-globalservice.md)来知晓如何跨集群访问服务。
 

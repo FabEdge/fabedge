@@ -60,6 +60,7 @@ Fabedge is not to replace the traditional Kubernetes network plugins such as Cal
 
 * [Getting started](docs/get-started.md) 
 * [User Guide](docs/user-guide.md) 
+* [FAQ](./docs/FAQ.md)
 * [Uninstall FabEdge](docs/uninstall.md)
 * [Troubleshooting](docs/troubleshooting-guide.md)
 
