@@ -5,7 +5,7 @@ on:
     tags:
       - '*'
     branches:
-      - '*'
+      - 'main'
 
 jobs:
   repo-sync:
