@@ -251,16 +251,37 @@ func getRouteTmpl(prefix string) (netlink.Route, error) {
 
 func addRouteRuleForStrongswan() error {
 	var errs []error
-	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
-		rule := netlink.NewRule()
-		rule.Family = family
-		rule.Priority = constants.TableStrongswan
-		rule.Table = constants.TableStrongswan
 
-		if err := netlink.RuleAdd(rule); err != nil && !routeutil.FileExistsError(err) {
+	for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+		if err := ensureStrongswanRouteRule(family); err != nil {
 			errs = append(errs, err)
 		}
 	}
 
 	return utilerrors.NewAggregate(errs)
+}
+
+func ensureStrongswanRouteRule(family int) error {
+	rules, err := netlink.RuleList(family)
+	if err != nil {
+		return err
+	}
+
+	for _, rule := range rules {
+		if rule.Table == constants.TableStrongswan && rule.Priority == constants.TableStrongswan {
+			return nil
+		}
+	}
+
+	rule := netlink.NewRule()
+	rule.Family = family
+	rule.Priority = constants.TableStrongswan
+	rule.Table = constants.TableStrongswan
+
+	err = netlink.RuleAdd(rule)
+	if err != nil && routeutil.FileExistsError(err) {
+		err = nil
+	}
+
+	return err
 }
