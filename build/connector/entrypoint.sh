@@ -1,18 +1,8 @@
 #!/bin/sh
-
 set -e
 
-function is_nft_loaded
-{
-  lsmod | grep table | grep nft >/dev/null
-}
-
-if is_nft_loaded; then
-   echo "entrypoint:    use iptables of nft mode"
-   ln -sf /sbin/xtables-nft-multi /sbin/iptables
-else
-   echo "entrypoint:    use iptables of legacy mode"
-fi
+echo 'select between the two modes of iptables ("legacy" and "nft")'
+/iptables-wrapper-installer.sh
 
 cmd="/usr/local/bin/connector $@"
 echo "entrypoint:    run command: $cmd"
