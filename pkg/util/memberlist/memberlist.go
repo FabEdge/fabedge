@@ -2,9 +2,10 @@ package memberlist
 
 import (
 	"fmt"
-	"github.com/hashicorp/memberlist"
 	"os"
 	"time"
+
+	"github.com/hashicorp/memberlist"
 )
 
 type msgHandlerFun func(b []byte)
@@ -105,6 +106,11 @@ func New(initMembers []string, msgHandler msgHandlerFun, leaveHandler notifyLeav
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			_ = list.Shutdown()
+		}
+	}()
 
 	if len(initMembers) < 1 {
 		return nil, fmt.Errorf("at lease one known member is needed")

@@ -76,21 +76,26 @@ func Execute() {
 		os.Exit(1)
 	}
 
-	mc, err := memberlist.New(initMembers, agent.handleMessage, agent.handleNodeLeave)
-	if err != nil {
-		logger.Error(err, "failed to create memberlist")
-		os.Exit(1)
+	var mc *memberlist.Client
+	for {
+		mc, err = memberlist.New(initMembers, agent.handleMessage, agent.handleNodeLeave)
+		if err == nil {
+			break
+		}
+
+		logger.Error(err, "failed to create memberlist client, try later")
+		time.Sleep(5 * time.Second)
 	}
 
 	for {
 		if len(mc.ListMembers()) < 2 {
-			logger.Error(errAtLeaseOneConnector, "lost connection to connectors, exit")
-			os.Exit(1)
+			logger.Error(errAtLeaseOneConnector, "lost connection to connectors")
+		} else {
+			for _, member := range mc.ListMembers() {
+				logger.V(5).Info("Got Member", "name", member.Name, "addr", member.Addr)
+			}
 		}
 
-		for _, member := range mc.ListMembers() {
-			logger.V(5).Info("Got Member", "name", member.Name, "addr", member.Addr)
-		}
 		time.Sleep(time.Minute * 5)
 	}
 }
