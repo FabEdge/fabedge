@@ -100,6 +100,8 @@ cluster:
   # 如果是flannel，可以不配置这个参数;
   # 另外这个参数需要注意不要跟当前集群的cluster-cidr参数重叠
   edgePodCIDR: "10.234.64.0/18" 
+  # 填入步骤2中的cluster-cidr
+  clusterCIDR: "10.233.64.0/18"
   connectorPublicAddresses:
   - 10.22.48.16
   # 通常connector需要被边缘节点的fabedge-agent访问需要映射端口，
@@ -108,6 +110,7 @@ cluster:
   # 是否使用connector节点作为mediator，如果边缘节点位于NAT网络后，
   # 彼此之间不能正常建立隧道，建议开启该功能
   connectorAsMediator: false
+  # 填入步骤2中的service-cluster-ip-range
   serviceClusterIPRange:
   - 10.234.0.0/18
 
@@ -127,7 +130,7 @@ agent:
 8. 安装Fabedge
 
    ```shell
-   helm install fabedge fabedge/fabedge -n fabedge --create-namespace
+   helm install fabedge fabedge/fabedge -n fabedge --create-namespace -f values.yaml
    ```
 
 如果以下Pod运行正常，则安装成功

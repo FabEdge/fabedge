@@ -101,8 +101,10 @@ cluster:
   # edgePodCIDR is not necessary if your CNI is flannel;
   # Avoid an CIDR overlapped with cluster-cidr argument of your cluster
   edgePodCIDR: "10.234.64.0/18" 
+  # It's the value of "cluster-cidr" fetched in Step 2
+  clusterCIDR: "10.233.64.0/18"
   # Usually connector should be accessible by fabedge-agent by port 500,
-  # if you cann't map public port 500, change this parameter.
+  # if you can't map public port 500, change this parameter.
   connectorPublicPort: 500
   # If your edge nodes are behind NAT networks and are hard to establish
   # tunnels between them, set this parameter to true, this will let connector
@@ -110,6 +112,7 @@ cluster:
   connectorAsMediator: false
   connectorPublicAddresses:
   - 10.22.48.16
+  # It's the value of "service-cluster-ip-range" fetched in Step 2
   serviceClusterIPRange:
   - 10.234.0.0/18
 
@@ -125,12 +128,12 @@ agent:
     ENABLE_DNS: "true"
 ```
 
-*PS:  The `values.yaml` in the example is not complete, you can get the complete `values.yaml` example by executing `helm show values fabedge-0.6.0.tgz`.*
+*PS:  The `values.yaml` in the example is not complete, you can get the complete `values.yaml` example by executing `helm show values fabedge/fabedge`.*
 
 8. Deploy Fabedge
 
    ```shell
-   helm install fabedge fabedge-0.6.0.tgz -n fabedge --create-namespace
+   helm install fabedge fabedge/fabedge -n fabedge --create-namespace -f values.yaml
    ```
 
 If those pods following are running, you make it.
