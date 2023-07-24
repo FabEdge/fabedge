@@ -33,6 +33,21 @@ func newIPPoolKeeperFunc(localClusterName string, cli client.Client, getClusterC
 			return
 		}
 
+		var allPools calicoapi.IPPoolList
+		var ipipMode calicoapi.IPIPMode
+		var vxlanMode calicoapi.VXLANMode
+		if err = cli.List(ctx, &allPools); err != nil {
+			log.Error(err, "failed to get ippool list")
+		} else {
+			for _, pool := range allPools.Items {
+				if strings.Contains(pool.Name, "default") {
+					ipipMode = pool.Spec.IPIPMode
+					vxlanMode = pool.Spec.VXLANMode
+					break
+				}
+			}
+		}
+
 		newClusterSet := sets.NewString()
 		for name, cidrs := range cidrsByCluster {
 			if name == localClusterName {
@@ -40,7 +55,7 @@ func newIPPoolKeeperFunc(localClusterName string, cli client.Client, getClusterC
 			}
 			newClusterSet.Insert(name)
 
-			keepIPPoolForCluster(ctx, name, cidrs, cli, log)
+			keepIPPoolForCluster(ctx, name, cidrs, cli, log, ipipMode, vxlanMode)
 		}
 
 		noError := true
@@ -65,8 +80,9 @@ func newIPPoolKeeperFunc(localClusterName string, cli client.Client, getClusterC
 	}
 }
 
-func keepIPPoolForCluster(ctx context.Context, clusterName string, cidrs []string, cli client.Client, log logr.Logger) {
+func keepIPPoolForCluster(ctx context.Context, clusterName string, cidrs []string, cli client.Client, log logr.Logger, ipipMode calicoapi.IPIPMode, vxlanMode calicoapi.VXLANMode) {
 	var pools calicoapi.IPPoolList
+
 	if err := cli.List(ctx, &pools, client.MatchingLabels{constants.KeyCluster: clusterName}); err != nil {
 		log.Error(err, "failed to get ippool list", "cluster", clusterName)
 		return
@@ -82,7 +98,7 @@ func keepIPPoolForCluster(ctx context.Context, clusterName string, cidrs []strin
 	}
 
 	for cidr := range newCIDRSet.Difference(oldCIDRSet) {
-		pool := NewIPPool(clusterName, cidr)
+		pool := NewIPPool(clusterName, cidr, ipipMode, vxlanMode)
 		if err := cli.Create(ctx, &pool); err != nil {
 			log.Error(err, "failed to create ippool", "cidr", cidr, "cluster", clusterName)
 		}
@@ -101,7 +117,14 @@ func keepIPPoolForCluster(ctx context.Context, clusterName string, cidrs []strin
 	}
 }
 
-func NewIPPool(clusterName, cidr string) calicoapi.IPPool {
+func NewIPPool(clusterName, cidr string, ipipMode calicoapi.IPIPMode, vxlanMode calicoapi.VXLANMode) calicoapi.IPPool {
+	if ipipMode == "" {
+		ipipMode = calicoapi.IPIPModeAlways
+	}
+	if vxlanMode == "" {
+		vxlanMode = calicoapi.VXLANModeNever
+	}
+
 	return calicoapi.IPPool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: normalizeCIDRToKubeName(clusterName, cidr),
@@ -114,8 +137,8 @@ func NewIPPool(clusterName, cidr string) calicoapi.IPPool {
 			CIDR:      cidr,
 			Disabled:  true,
 			BlockSize: 26,
-			IPIPMode:  calicoapi.IPIPModeAlways,
-			VXLANMode: calicoapi.VXLANModeNever,
+			IPIPMode:  ipipMode,
+			VXLANMode: vxlanMode,
 		},
 	}
 }

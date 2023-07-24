@@ -847,7 +847,22 @@ func (opts Options) createTLSSecretForClient(kubeClient client.Client, certPool 
 }
 
 func (opts Options) createIPPoolsForEdgePodCIDRs(ctx context.Context) {
-	pool := routines.NewIPPool(opts.Cluster, opts.EdgePodCIDRv4)
+	var allPools calicoapi.IPPoolList
+	var ipipMode calicoapi.IPIPMode
+	var vxlanMode calicoapi.VXLANMode
+	var err error
+	if err = opts.Manager.GetClient().List(ctx, &allPools); err != nil {
+		log.Error(err, "failed to get ippool list")
+	} else {
+		for _, pool := range allPools.Items {
+			if strings.Contains(pool.Name, "default") {
+				ipipMode = pool.Spec.IPIPMode
+				vxlanMode = pool.Spec.VXLANMode
+				break
+			}
+		}
+	}
+	pool := routines.NewIPPool(opts.Cluster, opts.EdgePodCIDRv4, ipipMode, vxlanMode)
 	if err := opts.Manager.GetClient().Create(ctx, &pool); err != nil {
 		if errors.IsAlreadyExists(err) {
 			return
