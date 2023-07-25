@@ -133,12 +133,18 @@ func (h IptablesHandler) syncPostRoutingRules() (err error) {
 		}
 	}
 
+	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
+	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
+	// and this would cause response packets are dropped
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
+		return err
+	}
+
 	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
-
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
