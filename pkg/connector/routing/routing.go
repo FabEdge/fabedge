@@ -123,12 +123,18 @@ func getFlannelLocalPrefixes() (lp4, lp6 []string, err error) {
 }
 
 func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
-	tunl, err := netlink.LinkByName("tunl0")
+	var device netlink.Link
+	device, err = netlink.LinkByName("vxlan.calico")
 	if err != nil {
-		return nil, nil, err
+		logger.Error(err, "failed to get device vxlan.calico, trying tunl0.")
+		device, err = netlink.LinkByName("tunl0")
+		if err != nil {
+			logger.Error(err, "failed to find calico interface.")
+			return nil, nil, err
+		}
 	}
 
-	addrs, err := netlink.AddrList(tunl, netlink.FAMILY_ALL)
+	addrs, err := netlink.AddrList(device, netlink.FAMILY_ALL)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -141,6 +147,7 @@ func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
 			lp6 = append(lp6, ipNet.String())
 		}
 	}
+	logger.Info("Calico IP address: IPv4 = " + strings.Join(lp4, ",") + ", IPv6 = " + strings.Join(lp6, ","))
 
 	return lp4, lp6, nil
 }
