@@ -57,6 +57,7 @@ func Execute() {
 	defer klog.Flush()
 
 	var initMembers []string
+
 	flag.StringSliceVar(&initMembers, "connector-node-addresses", []string{}, "internal ip address of all connector nodes")
 	logutil.AddFlags(flag.CommandLine)
 	about.AddFlags(flag.CommandLine)
@@ -87,16 +88,22 @@ func Execute() {
 		time.Sleep(5 * time.Second)
 	}
 
+	// sometimes cloud-agent may lose connection to connectors, especially when there
+	// is only one connector, cloud-agent have to rejoin to those connectors otherwise
+	// it will never receive updates from connector
 	for {
-		if len(mc.ListMembers()) < 2 {
-			logger.Error(errAtLeaseOneConnector, "lost connection to connectors")
-		} else {
-			for _, member := range mc.ListMembers() {
-				logger.V(5).Info("Got Member", "name", member.Name, "addr", member.Addr)
-			}
+		time.Sleep(time.Minute)
+
+		if !agent.isConnectorLost() {
+			continue
 		}
 
-		time.Sleep(time.Minute * 5)
+		logger.V(5).Info("Connectors are lost, try to rejoin them")
+		if err := mc.RejoinInitMembers(); err != nil {
+			logger.Error(err, "failed to rejoin to connector")
+		} else {
+			logger.V(3).Info("cloud-agent has rejoin with connectors")
+		}
 	}
 }
 
@@ -232,6 +239,15 @@ func (a *cloudAgent) deleteRoutesByHost(host string) {
 func (a *cloudAgent) handleNodeLeave(name string) {
 	logger.V(5).Info("A node has left, to delete all routes via it", "node", name)
 	go a.deleteRoutesByHost(name)
+}
+
+// if there is data in routesByHost, this cloud-agent must have lost
+// connection to connector
+func (a *cloudAgent) isConnectorLost() bool {
+	a.routesLock.RLock()
+	defer a.routesLock.RUnlock()
+
+	return len(a.routesByHost) == 0
 }
 
 func getRouteTmpl(prefix string) (netlink.Route, error) {

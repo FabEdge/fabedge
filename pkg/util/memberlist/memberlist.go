@@ -74,6 +74,8 @@ func (ed *eventDelegate) NotifyUpdate(node *memberlist.Node) {
 type Client struct {
 	list     *memberlist.Memberlist
 	delegate *delegate
+	// initMembers are used to rejoin them
+	initMembers []string
 }
 
 func getAdvertiseAddr() (string, error) {
@@ -125,8 +127,9 @@ func New(initMembers []string, msgHandler msgHandlerFun, leaveHandler notifyLeav
 	}
 
 	return &Client{
-		list:     list,
-		delegate: dg,
+		list:        list,
+		delegate:    dg,
+		initMembers: initMembers,
 	}, nil
 }
 
@@ -142,4 +145,9 @@ func (c *Client) Broadcast(b []byte) {
 	c.delegate.queue.QueueBroadcast(&broadcast{
 		msg: b,
 	})
+}
+
+func (c *Client) RejoinInitMembers() error {
+	_, err := c.list.Join(c.initMembers)
+	return err
 }
