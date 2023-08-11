@@ -484,13 +484,6 @@ func (opts Options) isOverlappedWithProvidedSubnets(ipNet *net.IPNet) bool {
 		}
 	}
 
-	for _, cidr := range opts.ClusterCIDRs {
-		ip2, subnet2, _ := net.ParseCIDR(cidr)
-		if ipNet.Contains(ip2) || subnet2.Contains(ipNet.IP) {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -854,8 +847,16 @@ func (opts Options) createIPPoolsForEdgePodCIDRs(ctx context.Context) {
 		}
 		log.Error(err, "failed to create ippool for edge pod cidr, it may cause calico do SNAT when cloud pods communicate with edge pods")
 	}
-	// for now, calico don't support IPv6 in ipip mode which is the mode fabedge supports
-	// todo: create ippool for EdgePodCIDR6
+
+	if len(opts.EdgePodCIDRv6) > 0 {
+		pool6 := routines.NewIPPool(opts.Cluster, opts.EdgePodCIDRv6)
+		if err := opts.Manager.GetClient().Create(ctx, &pool6); err != nil {
+			if errors.IsAlreadyExists(err) {
+				return
+			}
+			log.Error(err, "failed to create ippool for edge pod cidr6, it may cause calico do SNAT when cloud pods communicate with edge pods")
+		}
+	}
 }
 
 func fileExists(filename string) bool {

@@ -123,30 +123,36 @@ func getFlannelLocalPrefixes() (lp4, lp6 []string, err error) {
 }
 
 func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
-	var device netlink.Link
-	device, err = netlink.LinkByName("vxlan.calico")
-	if err != nil {
-		logger.Error(err, "failed to get device vxlan.calico, trying tunl0.")
-		device, err = netlink.LinkByName("tunl0")
-		if err != nil {
-			logger.Error(err, "failed to find calico interface.")
-			return nil, nil, err
-		}
-	}
-
-	addrs, err := netlink.AddrList(device, netlink.FAMILY_ALL)
+	links, err := netlink.LinkList()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	for _, a := range addrs {
-		ipNet := a.IPNet
-		if netutil.IsIPv4CIDR(ipNet) {
-			lp4 = append(lp4, ipNet.String())
-		} else {
-			lp6 = append(lp6, ipNet.String())
+	collectIPv4 := func(link netlink.Link) {
+		addrs, _ := netlink.AddrList(link, netlink.FAMILY_V4)
+		for _, addr := range addrs {
+			lp4 = append(lp4, addr.IPNet.String())
 		}
 	}
+
+	collectIPv6 := func(link netlink.Link) {
+		addrs, _ := netlink.AddrList(link, netlink.FAMILY_V6)
+		for _, addr := range addrs {
+			lp6 = append(lp6, addr.IPNet.String())
+		}
+	}
+
+	for _, link := range links {
+		switch link.Attrs().Name {
+		case "vxlan.calico":
+			collectIPv4(link)
+		case "vxlan-v6.calico":
+			collectIPv6(link)
+		case "tunl0":
+			collectIPv4(link)
+		}
+	}
+
 	logger.Info("Calico IP address: IPv4 = " + strings.Join(lp4, ",") + ", IPv6 = " + strings.Join(lp6, ","))
 
 	return lp4, lp6, nil
