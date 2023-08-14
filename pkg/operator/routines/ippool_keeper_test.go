@@ -19,7 +19,7 @@ var _ = Describe("IPPoolKeeper", func() {
 		clusterShanghai   = "shanghai"
 		cidrsShanghai     = []string{"10.40.0.0/16"}
 		clusterSuZhou     = "suzhou"
-		cidrsSuZhou       = []string{"172.10.0.0/16", "172.11.0.0/16"}
+		cidrsSuZhou       = []string{"172.10.0.0/16", "fd96:ee88:2::/48"}
 
 		cidrsByCluster = map[string][]string{
 			localClusterName: localClusterCIDRs,
@@ -85,7 +85,7 @@ func expectPoolsFromClusterCIDRs(clusterName string, cidrs []string) {
 		ExpectWithOffset(1, pool.Name).To(Equal(normalizeCIDRToKubeName(clusterName, pool.Spec.CIDR)))
 		ExpectWithOffset(1, pool.Spec.Disabled).To(BeTrue())
 		ExpectWithOffset(1, pool.Spec.BlockSize).To(Equal(26))
-		ExpectWithOffset(1, string(pool.Spec.IPIPMode)).To(Equal(calicoapi.IPIPModeAlways))
+		ExpectWithOffset(1, string(pool.Spec.IPIPMode)).To(Equal(string(calicoapi.IPIPModeNever)))
 		ExpectWithOffset(1, string(pool.Spec.VXLANMode)).To(Equal(string(calicoapi.VXLANModeNever)))
 	}
 

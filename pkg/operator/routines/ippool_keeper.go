@@ -111,10 +111,11 @@ func NewIPPool(clusterName, cidr string) calicoapi.IPPool {
 			},
 		},
 		Spec: calicoapi.IPPoolSpec{
-			CIDR:      cidr,
-			Disabled:  true,
+			CIDR:     cidr,
+			Disabled: true,
+			// for IPv6, it should be 122, but since this ippool id disabled, the value doesn't matter
 			BlockSize: 26,
-			IPIPMode:  calicoapi.IPIPModeAlways,
+			IPIPMode:  calicoapi.IPIPModeNever,
 			VXLANMode: calicoapi.VXLANModeNever,
 		},
 	}
@@ -122,6 +123,7 @@ func NewIPPool(clusterName, cidr string) calicoapi.IPPool {
 
 func normalizeCIDRToKubeName(cluster, cidr string) string {
 	cidr = strings.ReplaceAll(cidr, ".", "-")
+	cidr = strings.ReplaceAll(cidr, ":", "-")
 	cidr = strings.ReplaceAll(cidr, "/", "-")
 	return fmt.Sprintf("%s-%s", cluster, cidr)
 }
