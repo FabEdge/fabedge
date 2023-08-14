@@ -16,13 +16,12 @@ package routing
 
 import (
 	"fmt"
-	"net"
-	"os"
-	"strings"
-
 	"github.com/vishvananda/netlink"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
+	"net"
+	"os"
+	"strings"
 
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/tunnel"
@@ -128,28 +127,65 @@ func getCalicoLocalPrefixes() (lp4, lp6 []string, err error) {
 		return nil, nil, err
 	}
 
-	collectIPv4 := func(link netlink.Link) {
+	collectIPv4 := func(link netlink.Link, gateway net.IP) {
 		addrs, _ := netlink.AddrList(link, netlink.FAMILY_V4)
 		for _, addr := range addrs {
-			lp4 = append(lp4, addr.IPNet.String())
+			if gateway == nil || addr.Contains(gateway) {
+				lp4 = append(lp4, addr.IPNet.String())
+			}
 		}
 	}
 
-	collectIPv6 := func(link netlink.Link) {
+	collectIPv6 := func(link netlink.Link, gateway net.IP) {
 		addrs, _ := netlink.AddrList(link, netlink.FAMILY_V6)
 		for _, addr := range addrs {
-			lp6 = append(lp6, addr.IPNet.String())
+			if gateway == nil || addr.Contains(gateway) {
+				lp6 = append(lp6, addr.IPNet.String())
+			}
 		}
 	}
 
+	var found bool
 	for _, link := range links {
 		switch link.Attrs().Name {
 		case "vxlan.calico":
-			collectIPv4(link)
+			collectIPv4(link, nil)
+			found = true
 		case "vxlan-v6.calico":
-			collectIPv6(link)
+			collectIPv6(link, nil)
+			found = true
 		case "tunl0":
-			collectIPv4(link)
+			collectIPv4(link, nil)
+			found = true
+		}
+	}
+
+	// For host network, we report the IP of the default interface
+	if !found {
+		ipv4, ipv6 := true, true
+		gw, err := routeutil.GetDefaultGateway()
+		if err != nil {
+			logger.Error(err, "failed to get IPv4 default gateway")
+			ipv4 = false
+		}
+
+		gw6, err := routeutil.GetDefaultGateway6()
+		if err != nil {
+			logger.Error(err, "failed to get IPv6 default gateway")
+			ipv6 = false
+		}
+
+		logger.Info("Gateway = " + gw.String() + ", Gateway 6 = " + gw6.String())
+		for _, link := range links {
+			// Search for physical devices only
+			if link.Type() == "device" && link.Attrs().Name != "lo" {
+				if ipv4 {
+					collectIPv4(link, gw)
+				}
+				if ipv6 {
+					collectIPv6(link, gw6)
+				}
+			}
 		}
 	}
 
