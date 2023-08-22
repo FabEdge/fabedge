@@ -167,6 +167,7 @@ func (cfg Config) Manager() (*Manager, error) {
 	tm, err := strongswan.New(
 		strongswan.StartAction("clear"),
 		strongswan.DpdDelay("10s"),
+		strongswan.DpdAction("trap"),
 		strongswan.InitTimeout(cfg.TunnelInitTimeout),
 	)
 	if err != nil {

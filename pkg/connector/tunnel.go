@@ -193,6 +193,22 @@ func (m *Manager) syncConnections() error {
 	return nil
 }
 
+func (m *Manager) clearConnections() {
+	oldNames, err := m.tm.ListConnNames()
+	if err != nil {
+		m.log.Error(err, "failed to get existing connection from tunnel manager")
+		return
+	}
+
+	for _, name := range oldNames {
+		if err = m.tm.UnloadConn(name); err != nil {
+			m.log.Error(err, "failed to unload tunnel connection", "name", name)
+		} else {
+			m.log.V(5).Info("A staled tunnel connection is unloaded", "name", name)
+		}
+	}
+}
+
 // isIP6 check if ip is an IP6 address or a CIDR address
 func isIPv6(ip string) bool {
 	return strings.IndexByte(ip, ':') != -1

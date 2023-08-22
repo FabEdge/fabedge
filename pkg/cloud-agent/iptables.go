@@ -156,3 +156,11 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 
 	return h.ipset.EnsureIPSet(set, sets.NewString(remotePodCIDRs...))
 }
+
+func (h IptablesHandler) clearRules() error {
+	if err := h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+		return err
+	}
+
+	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+}

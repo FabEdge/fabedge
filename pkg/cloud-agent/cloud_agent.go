@@ -44,7 +44,7 @@ var (
 	errAtLeaseOneConnector = fmt.Errorf("at least one connector node address is needed")
 )
 
-type cloudAgent struct {
+type CloudAgent struct {
 	debounce func(f func())
 	iph      *IptablesHandler
 	iph6     *IptablesHandler
@@ -71,7 +71,7 @@ func Execute() {
 		os.Exit(1)
 	}
 
-	agent, err := newCloudAgent()
+	agent, err := NewCloudAgent()
 	if err != nil {
 		logger.Error(err, "failed to create cloud agent")
 		os.Exit(1)
@@ -79,7 +79,7 @@ func Execute() {
 
 	var mc *memberlist.Client
 	for {
-		mc, err = memberlist.New(initMembers, agent.handleMessage, agent.handleNodeLeave)
+		mc, err = memberlist.New(initMembers, agent.HandleMessage, agent.HandleNodeLeave)
 		if err == nil {
 			break
 		}
@@ -107,7 +107,7 @@ func Execute() {
 	}
 }
 
-func newCloudAgent() (*cloudAgent, error) {
+func NewCloudAgent() (*CloudAgent, error) {
 	iph, err := newIptableHandler(iptables.ProtocolIPv4)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func newCloudAgent() (*cloudAgent, error) {
 		return nil, fmt.Errorf("at lease one iptablesHandler is required")
 	}
 
-	return &cloudAgent{
+	return &CloudAgent{
 		iph:          iph,
 		iph6:         iph6,
 		debounce:     debounce.New(10 * time.Second),
@@ -130,7 +130,7 @@ func newCloudAgent() (*cloudAgent, error) {
 	}, nil
 }
 
-func (a *cloudAgent) addAndSaveRoutes(cp routing.ConnectorPrefixes) {
+func (a *CloudAgent) addAndSaveRoutes(cp routing.ConnectorPrefixes) {
 	if a.iph != nil {
 		go a.iph.maintainRules(cp.RemotePrefixes)
 	}
@@ -162,7 +162,7 @@ func (a *cloudAgent) addAndSaveRoutes(cp routing.ConnectorPrefixes) {
 	logger.V(5).Info("routes are synced", "routes", routes)
 }
 
-func (a *cloudAgent) syncRoutes(localPrefixes []string, remotePrefixes []string) []netlink.Route {
+func (a *CloudAgent) syncRoutes(localPrefixes []string, remotePrefixes []string) []netlink.Route {
 	if len(localPrefixes) == 0 || len(remotePrefixes) == 0 {
 		logger.V(5).Info("no localPrefixes or no remotePrefixes, skip synchronizing routes")
 		return nil
@@ -202,7 +202,7 @@ func (a *cloudAgent) syncRoutes(localPrefixes []string, remotePrefixes []string)
 	return routes
 }
 
-func (a *cloudAgent) handleMessage(msgBytes []byte) {
+func (a *CloudAgent) HandleMessage(msgBytes []byte) {
 	a.debounce(func() {
 		var cp routing.ConnectorPrefixes
 		if err := json.Unmarshal(msgBytes, &cp); err != nil {
@@ -216,7 +216,7 @@ func (a *cloudAgent) handleMessage(msgBytes []byte) {
 	})
 }
 
-func (a *cloudAgent) deleteRoutesByHost(host string) {
+func (a *CloudAgent) deleteRoutesByHost(host string) {
 	routes := func() []netlink.Route {
 		a.routesLock.Lock()
 		a.routesLock.Unlock()
@@ -236,14 +236,39 @@ func (a *cloudAgent) deleteRoutesByHost(host string) {
 	}
 }
 
-func (a *cloudAgent) handleNodeLeave(name string) {
+func (a *CloudAgent) HandleNodeLeave(name string) {
 	logger.V(5).Info("A node has left, to delete all routes via it", "node", name)
 	go a.deleteRoutesByHost(name)
 }
 
+func (a *CloudAgent) CleanAll() {
+	if a.iph != nil {
+		if err := a.iph.clearRules(); err != nil {
+			logger.Error(err, "failed to clear iptables rules")
+		}
+	}
+
+	if a.iph6 != nil {
+		if err := a.iph6.clearRules(); err != nil {
+			logger.Error(err, "failed to clear iptables rules")
+		}
+	}
+
+	var hosts []string
+	a.routesLock.Lock()
+	for host := range a.routesByHost {
+		hosts = append(hosts, host)
+	}
+
+	a.routesLock.Unlock()
+	for _, host := range hosts {
+		a.deleteRoutesByHost(host)
+	}
+}
+
 // if there is data in routesByHost, this cloud-agent must have lost
 // connection to connector
-func (a *cloudAgent) isConnectorLost() bool {
+func (a *CloudAgent) isConnectorLost() bool {
 	a.routesLock.RLock()
 	defer a.routesLock.RUnlock()
 
