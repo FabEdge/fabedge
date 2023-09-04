@@ -2,19 +2,19 @@
 
 ## Is FabEdge another CNI implementation?
 
-Not exactly, at least not another one general purpose CNI implementation. It's design target is to resolve network communication for edge computing. On the cloud side, it's still flannel's or calico's duty to ensure network communication. But on the edge side, it is FabEdge doing the work, maybe one day we can make flannel, calico running on the edge side.
+Not exactly, at least it is not another CNI implementation for general purpose. It's designed for resolving issues of network communication for edge computing. On the cloud side, it still relies on Flannel or Calico to ensure network communication. But on the edge side, it is FabEdge doing the work, maybe one day we can make Flannel or Calico to be running on the edge side.
 
 ## Which CNI implementations can FabEdge work together with?
 
-For now, FabEdge can only work with flannel and calico, even with those two, FabEdge can only work under flannel's vxlan mode and calico's IPIP mode. And when working with calico, you cannot use etcd as calico's storage. 
+For now, FabEdge can only work with Flannel and Calico. FabEdge can work under the vxlan mode of Flannel, as well as the vxlan or IPIP mode of Calico. Furthermore, when working with Calico, you cannot use etcd as the backend storage of Calico. 
 
 # What's the size of PodCIDR for each edge node? Can I change it? How?
 
-Well, it's up to your kubernetes settings and the CNI you use: 
+Well, it's up to your Kubernetes settings and the CNI you use: 
 
-* Flannel. Flannel don't allocate PodCIDR for work node itself, instead, it use the PodCIDR field of each node and the PodCIDR is allocated by kubernetes. In this situation, FabEdge will also use the PodCIDR of nodes. If you want to change the size, you have to dig out how to do it by yourself.
+* Flannel. Flannel doesn't allocate PodCIDR for work node itself, instead, it uses the PodCIDR field of each node and the PodCIDR is allocated by Kubernetes. In this situation, FabEdge will also use the PodCIDR of nodes. If you want to change the size, you have to set it up during the deployment of Kubernetes.
 
-* Calico. Calico will allocate PodCIDR for each node itself, but since FabEdge have no way to affect calico, so we decide to allocated PodCIDR for edge nodes ourself, that is the reason why you need to provide value for edge-pod-cidr paramter. To change the size of PodCIDR, you need to set edge-cidr-mask-size parameter: 
+* Calico. Calico will allocate PodCIDR for each node itself, but since FabEdge is unable to change the settings of Calico, we decide to allocate PodCIDR for edge nodes ourself, that is the reason why you need to provide the value for `edge-pod-cidr` parameter. To change the size of PodCIDR, you need to set `edge-cidr-mask-size` parameter: 
 
   ```shell
   curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
@@ -31,7 +31,7 @@ Well, it's up to your kubernetes settings and the CNI you use:
           --chart fabedge/fabedge
   ```
 
-If you [install FabEdge manually](https://github.com/FabEdge/fabedge/blob/main/docs/manually-install.md), take the following values.yaml as an example:
+If you choose to [install FabEdge manually](https://github.com/FabEdge/fabedge/blob/main/docs/manually-install.md), you may take the following values.yaml as an example:
 
 ```yaml
 cluster:
@@ -60,21 +60,21 @@ agent:
 
 PS: Script or manual installation will not be prompted when configuration examples are provided later. In addition, some parameters can only be configured in the manual installation mode, and no example of script installation is provided. 
 
-## Can cloud pods and edge pods communicate by default? Can I disable it?
+## Can cloud pods and edge pods communicate to each other by default? Can I disable this feature?
 
 Yes, cloud pods and edge pods can communicate by default and you can't disable it.
 
-## The traffic of cloud-edge communication is handled by the connector node. Is there a single point problem? 
+## The traffic of cloud-edge communication is handled by the connector node. Is there a Single Point Of Failure? 
 
 Yes, for now there is no HA solution for connector, we're still working on it. 
 
-## Is edge-to-edge communication enabled by default?
+## Is the edge-to-edge communication enabled by default?
 
-No, FabEdge uses VPN tunnel to make communication between different networks possible, but it would need some resources to establish VPN tunnels and not all edge nodes need to communicated, so to avoid unnecessary consumption, FabEdge provide community CRD to  manage communication between edge-to-edge communication. Check out [this](https://github.com/FabEdge/fabedge/blob/main/docs/user-guide.md#use-community) for how to use community. 
+No, FabEdge uses VPN tunnel to make communication between different available networks. However, it will use some resources to establish VPN tunnels. As not all edge nodes need to communicated, FabEdge provides community CRD to  manage communication between edge-to-edge communication to avoid unnecessary consumption. Please check out [this](https://github.com/FabEdge/fabedge/blob/main/docs/user-guide.md#use-community) and find out how to use community. 
 
 ## Is edge-to-edge communication possible across networks?
 
-Yes, but before FabEdge v0.8.0 it didn't work well. Since v0.8.0, we implemented hole-punching feature which can help edge nodes to establish VPN tunnels across different networks.  This feature is disabled by default, you can enable it like following:
+Yes, but before FabEdge v0.8.0 it didn't work well. Since v0.8.0, we implemented hole-punching feature which can help edge nodes to establish VPN tunnels across different networks.  This feature is disabled by default, you can enable it as following:
 
 ```shell
 curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
@@ -117,7 +117,7 @@ agent:
 
 ## Do edge nodes located within the same network need to establish tunnels to communicate with each other?
 
-By default, yes it is. But if these nodes use the same router, please try auto-networking feature, it works like flanne's host-gw mode. Each edge node find peers under the same router using UDP multicast and generate routes for edge pods. You can enable it like following:
+By default, yes it is. But if these nodes use the same router, please try auto-networking feature, it works like the host-gw mode of Flannel. Each edge node find peers under the same router using UDP multicast and generate routes for edge pods. You can enable it as following:
 
 ```yaml
 cluster:
@@ -159,7 +159,7 @@ FabEdge doesn't provide SSH capability.
 It depends on your edge computing framekwork：
 
 * OpenYurt/SuperEdge.  They will have their own coredns and kube-proxy pods running on edge nodes and FabEdge only provide network communication.
-* KubeEdge。Bebore v0.8.0, FabEdge didn't do mush for this, but you can deploy coredns and kube-proxy on edge nodes by yourself. Since v0.8.0, FabEdge have integrated coredns and kube-proxy into fabedge-agent.
+* KubeEdge。Before v0.8.0, FabEdge didn't do much for this, but you can deploy coredns and kube-proxy on edge nodes by yourself. Since v0.8.0, FabEdge have integrated coredns and kube-proxy into fabedge-agent.
 
 For now, the coredns integrated to fabedge-agent is 1.8.0 and kube-proxy is 1.22.5, if you want use different coredns and kube-proxy, you can turn them off: 
 
@@ -265,13 +265,11 @@ agent:
     ENABLE_DNS: "false"
 ```
 
-Don't change those parameters after you deployed FabEdge, otherwize FabEdge might work out of order.
-
-
+Don't change those parameters after you have deployed FabEdge, otherwise FabEdge might work improperly.
 
 ## I can't use 500 and 4500 as public ports for connecotr, what should I do?
 
-Don't worry, since FabEdge v0.8.0, you can configure connector's pulic port. It is worth mentioning this doesn't change the listen ports of connector's strongswan, but change the port which strongswan of edge nodes use to establish tunnels. In addition, there is no need to map the public network port for 500. When a tunnel is created using a non-500 port, only port 4500 is actually involved, so only port 4500 of the connector needs to be mapped. The configuration is as follows:
+Don't worry, since FabEdge v0.8.0, you can configure connector's public port. It is worth mentioning this doesn't change the listen ports of connector's strongswan, but change the port which strongswan of edge nodes use to establish tunnels. In addition, there is no need to map the public network port for 500. When a tunnel is created using a non-500 port, only port 4500 is actually used, so only port 4500 of the connector needs to be mapped. The configuration is as follows:
 
 ```shell
 curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
@@ -359,9 +357,9 @@ fabDNS:
   create: false
 ```
 
-## Can the network addresses of each cluster overlap in a multi-cluster  scenario?
+## Can the network addresses of each cluster overlap in a multi-cluster scenario?
 
-No, not only the network addresses of container network, but also the host network. Even you have only one cluster, make sure the network addresses of them won't overlap
+No, not only the network addresses of container network, but also the host network. Even you have only one cluster, make sure the network addresses of them won't overlap.
 
 ## I want to configure strongswan, how should I do?
 

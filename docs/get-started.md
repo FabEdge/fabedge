@@ -243,7 +243,7 @@ Change the coredns configmap:
 $ kubectl -n kube-system edit cm coredns
 # add this config
 global {
-   forward . 10.109.72.43                 # cluset-ip of fab-dns service
+   forward . 10.109.72.43                 # cluster-ip of fab-dns service
 }
 
 .:53 {
@@ -388,7 +388,7 @@ one example with the clusters of:  host (Calico)  + member1 (Calico) + member2 (
 
 ## More Documents
 
-* This document introduces how to install FabEdge via a script which help you to try FabEdge soon, but we would recommend you to read [Manulally Install](./manually-install-zh.md) which might fit in production enviroment better.
+* This document introduces how to install FabEdge via a script which help you to try FabEdge soon, but we would recommend you to read [Manually Install](./manually-install-zh.md) which might fit in production environment better.
 
 * FabEdge also provide other features, read [FAQ](./FAQ.md) to find out.
 

@@ -1,6 +1,6 @@
 # Manually Install
 
-This article will show you how to install FabEdge without `quickstart.sh`。The cluster uses KubeEdge and Calico and will be used as host cluster. Some settings may not suit your cases, you may need to change them according to your enviroment.
+This article will show you how to install FabEdge without `quickstart.sh`。The cluster uses KubeEdge and Calico and will be used as host cluster. Some settings may not suit your cases, you may need to change them according to your environment.
 
 *PS: About how to configure edge frameworks and DNS, please checkout [Get Started](./get-started.md), We won't repeat it again.*
 
@@ -122,7 +122,7 @@ fabDNS:
 
 agent:
   args:
-    # If your cluster uses superege or openyurt, set them to false;
+    # If your cluster uses superedge or openyurt, set them to false;
     # If your cluster uses kubeedge, it's better to set them to true
     ENABLE_PROXY: "true" 
     ENABLE_DNS: "true"
