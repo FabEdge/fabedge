@@ -2,19 +2,19 @@
 
 ## FabEdge是CNI实现吗？
 
-并不是，至少不是常规意义上的CNI，它的设计目标是解决边缘场景的网络通信，在云端，依然是flannel, calico这些CNI在负责，边缘侧暂时由FabEdge负责，或许有一天我们能做到在flannel，calico工作在边缘节点上。
+并不是，至少不是常规意义上的CNI，它的设计目标是解决边缘场景的网络通信，在云端，依然是Flannel, Calico这些CNI在负责，边缘侧暂时由FabEdge负责，或许有一天我们能做到让Flannel，Calico工作在边缘节点上。
 
 ## FabEdge能跟哪些CNI兼容？
 
-目前只兼容了flannel和calico，即便是这两者也只兼容了flannel的vxlan模式和calico的ipip模式，另外跟calico协作时，calico的存储后端不能是etcd。
+目前只兼容了Flannel和Calico，目前兼容Flannel的vxlan模式以及Calico的IPIP和vxlan模式，另外跟Calico协作时，Calico的存储后端不能是etcd。
 
 ## 在边缘侧分配的网段有多大？是否可以调整？如何调整？
 
-取决于你部署kubernetes时的配置及使用的CNI实现：
+取决于你部署Kubernetes时的配置及使用的CNI实现：
 
-* Flannel。flannel自身没有为节点分配PodCIDR，而是使用kubernetes分配的PodCIDR，fabedge在这种场景下，也会使用节点自身的PodCIDR值。如果要调整每个节点的PodCIDR大小，需要您在部署kubernetes去修改相应的配置。
+* Flannel。Flannel自身没有为节点分配PodCIDR，而是使用Kubernetes分配的PodCIDR，FabEdge在这种场景下，也会使用节点自身的PodCIDR值。如果要调整每个节点的PodCIDR大小，需要您在部署Kubernetes时修改相应的配置。
 
-* Calico。Calico会为节点分配PodCIDR，但因为FabEdge没有能力影响这个过程，所以选择自己管理边缘侧的PodCIDR分配，这也是您部署时需要配置edgePodCIDR参数的原因。要修改PodCIDR的大小，需要修改edge-cidr-mask-size值，如:
+* Calico。Calico会为节点分配PodCIDR，但因为FabEdge没有能力影响这个过程，所以选择自己管理边缘侧的PodCIDR分配，这也是您部署时需要配置edgePodCIDR参数的原因。要修改PodCIDR的大小，需要修改`edge-cidr-mask-size`值，如:
 
   ```shell
   curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
@@ -27,7 +27,7 @@
           --connector-public-addresses 10.22.45.16 \
           --cni-type calico \
           --edge-pod-cidr 10.234.0.0/16 \ # 提供边缘侧的PodCIDR池
-          --edge-cidr-mask-size 26 \ # 注意是掩码长度，这里参考了kubernetes相应参数的配置方式 
+          --edge-cidr-mask-size 26 \ # 注意是掩码长度，这里参考了Kubernetes相应参数的配置方式 
           --chart fabedge/fabedge
   ```
 
