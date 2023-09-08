@@ -336,9 +336,7 @@ func (ctl *controller) getPeers() []apis.Endpoint {
 	endpoints := ctl.Store.GetEndpoints(nameSet.List()...)
 
 	peers := make([]apis.Endpoint, 0, len(endpoints))
-	for _, ep := range endpoints {
-		peers = append(peers, ep)
-	}
+	peers = append(peers, endpoints...)
 
 	return peers
 }

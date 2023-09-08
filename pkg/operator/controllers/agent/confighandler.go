@@ -124,9 +124,7 @@ func (handler *configHandler) buildNetworkConf(nodeName string) netconf.NetworkC
 		Peers:    make([]apis.Endpoint, 0, len(peerEndpoints)),
 	}
 
-	for _, ep := range peerEndpoints {
-		conf.Peers = append(conf.Peers, ep)
-	}
+	conf.Peers = append(conf.Peers, peerEndpoints...)
 
 	mediator, found := store.GetEndpoint(constants.DefaultMediatorName)
 	if found {
