@@ -15,17 +15,28 @@
 package connector
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	debpkg "github.com/bep/debounce"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
+	"go.uber.org/atomic"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2/klogr"
 
+	cloud_agent "github.com/fabedge/fabedge/pkg/cloud-agent"
 	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
 	"github.com/fabedge/fabedge/pkg/tunnel"
@@ -44,6 +55,11 @@ type Manager struct {
 	mc          *memberlist.Client
 	log         logr.Logger
 
+	kubeClient *clientset.Clientset
+	isLeader   *atomic.Bool
+
+	cloudAgent *cloud_agent.CloudAgent
+
 	events   chan struct{}
 	debounce func(func())
 }
@@ -57,10 +73,15 @@ type Config struct {
 	CNIType           string
 	InitMembers       []string
 	TunnelInitTimeout uint
-}
+	ListenAddress     string
 
-func msgHandler(b []byte)         {}
-func nodeLeveHandler(name string) {}
+	LeaderElection struct {
+		LockName      string
+		LeaseDuration time.Duration
+		RenewDeadline time.Duration
+		RetryPeriod   time.Duration
+	}
+}
 
 func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.TunnelConfigFile, "tunnel-config", "/etc/fabedge/tunnels.yaml", "tunnel config file")
@@ -71,6 +92,11 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
 	fs.StringSliceVar(&c.InitMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
 	fs.UintVar(&c.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Unit: second")
+	fs.StringVar(&c.LeaderElection.LockName, "leader-lock-name", "connector", "The name of leader lock")
+	fs.DurationVar(&c.LeaderElection.LeaseDuration, "leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
+	fs.DurationVar(&c.LeaderElection.RenewDeadline, "leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
+	fs.DurationVar(&c.LeaderElection.RetryPeriod, "leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
+	fs.StringVar(&c.ListenAddress, "listen-address", "127.0.0.1:30306", "The address of http server")
 }
 
 func (c Config) Manager() (*Manager, error) {
@@ -87,11 +113,6 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
-	mc, err := memberlist.New(c.InitMembers, msgHandler, nodeLeveHandler)
-	if err != nil {
-		return nil, err
-	}
-
 	ipt, err := newIP4TablesHandler()
 	if err != nil {
 		return nil, err
@@ -102,17 +123,42 @@ func (c Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
-	return &Manager{
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	client := clientset.NewForConfigOrDie(config)
+
+	cloudAgent, err := cloud_agent.NewCloudAgent()
+	if err != nil {
+		return nil, err
+	}
+
+	manager := &Manager{
 		Config:      c,
 		tm:          tm,
 		iptHandler:  ipt,
 		ipt6Handler: ipt6,
 		router:      router,
-		mc:          mc,
-		log:         klogr.New().WithName("manager"),
-		events:      make(chan struct{}),
-		debounce:    debpkg.New(c.DebounceDuration),
-	}, nil
+
+		kubeClient: client,
+		isLeader:   atomic.NewBool(false),
+
+		cloudAgent: cloudAgent,
+
+		log: klogr.New().WithName("manager"),
+
+		events:   make(chan struct{}),
+		debounce: debpkg.New(c.DebounceDuration),
+	}
+
+	mc, err := memberlist.New(c.InitMembers, manager.handleMessage, manager.handleNodeLeave)
+	if err != nil {
+		return nil, err
+	}
+	manager.mc = mc
+
+	return manager, nil
 }
 
 func (m *Manager) startTick() {
@@ -136,6 +182,8 @@ func (m *Manager) Start() {
 
 	m.clearFabEdgeIptablesChains()
 
+	go m.runLeaderElection()
+	go m.runHTTPServer()
 	go m.workLoop()
 	go m.startTick()
 	go m.onConfigFileChange(m.TunnelConfigFile)
@@ -151,16 +199,60 @@ func (m *Manager) Start() {
 	m.log.Info("manager stopped")
 }
 
+func (m *Manager) runLeaderElection() {
+	lock := newLock(m.LeaderElection.LockName, m.kubeClient)
+	leaderID := lock.Identity()
+
+	leaderelection.RunOrDie(context.Background(), leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   m.LeaderElection.LeaseDuration,
+		RenewDeadline:   m.LeaderElection.RenewDeadline,
+		RetryPeriod:     m.LeaderElection.RetryPeriod,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(c context.Context) {
+				m.log.V(3).Info("Get leader role, clear iptables rules generated as cloud agent")
+				m.cloudAgent.CleanAll()
+				m.isLeader.Store(true)
+				m.notify()
+			},
+			OnStoppedLeading: func() {
+				m.log.V(3).Info("Lose leader role, clear iptables and routes")
+				m.clearAll()
+				m.isLeader.Store(false)
+			},
+			OnNewLeader: func(currentID string) {
+				if currentID == leaderID {
+					m.log.V(5).Info("Still be the leader!")
+				} else {
+					m.log.V(3).Info("Leader has changed", "NewLeaderID", currentID)
+				}
+			},
+		},
+	})
+}
+
 func (m *Manager) gracefulShutdown() {
 	err := m.router.CleanRoutes(m.connections)
 	if err != nil {
 		m.log.Error(err, "failed to clean routers")
 	}
 
-	m.CleanSNatIPTablesRules()
+	m.cleanSNatIPTablesRules()
 }
 
-func (m *Manager) CleanSNatIPTablesRules() {
+func (m *Manager) clearAll() {
+	err := m.router.CleanRoutes(m.connections)
+	if err != nil {
+		m.log.Error(err, "failed to clean routers")
+	}
+
+	m.cleanSNatIPTablesRules()
+	m.clearFabEdgeIptablesChains()
+	m.clearConnections()
+}
+
+func (m *Manager) cleanSNatIPTablesRules() {
 	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
 		if err := ipt.CleanSNatIPTablesRules(); err != nil {
 			m.log.Error(err, "failed to clean iptables")
@@ -176,31 +268,16 @@ func (m *Manager) clearFabEdgeIptablesChains() {
 	}
 }
 
-func (m *Manager) mainRoutes() {
-	active, err := m.tm.IsActive()
-	if err != nil {
-		m.log.Error(err, "failed to get tunnel manager status")
+func (m *Manager) maintainRoutes() {
+	m.log.V(5).Info("tunnel manager is active, try to synchronize routes in table 220")
+	if err := m.router.SyncRoutes(m.connections); err != nil {
+		m.log.Error(err, "failed to sync routes")
 		return
 	}
-
-	if active {
-		m.log.V(5).Info("tunnel manager is active, try to synchronize routes in table 220")
-		if err = m.router.SyncRoutes(m.connections); err != nil {
-			m.log.Error(err, "failed to sync routes")
-			return
-		}
-	} else {
-		m.log.V(5).Info("tunnel manager is not active, try to clean routes in route table 220")
-		if err = m.router.CleanRoutes(m.connections); err != nil {
-			m.log.Error(err, "failed to clean routes")
-			return
-		}
-	}
-
 	m.log.V(5).Info("routes are synced")
 }
 
-func (m *Manager) mainTunnels() {
+func (m *Manager) maintainTunnels() {
 	if err := m.syncConnections(); err != nil {
 		m.log.Error(err, "error when to sync tunnels")
 	} else {
@@ -228,14 +305,85 @@ func (m *Manager) broadcastConnectorPrefixes() {
 	log.V(5).Info("connector prefixes is broadcast to cloud-agents")
 }
 
+func (m *Manager) handleMessage(msgBytes []byte) {
+	if m.isLeader.Load() {
+		return
+	}
+
+	m.cloudAgent.HandleMessage(msgBytes)
+}
+
+func (m *Manager) handleNodeLeave(name string) {
+	m.cloudAgent.HandleNodeLeave(name)
+}
+
 func (m *Manager) workLoop() {
 	for range m.events {
-		m.mainTunnels()
-		m.mainRoutes()
+		if !m.isLeader.Load() {
+			continue
+		}
+
+		m.maintainTunnels()
+		m.maintainRoutes()
 		m.broadcastConnectorPrefixes()
-		m.iptHandler.maintainIPTables()
-		m.ipt6Handler.maintainIPTables()
+
 		m.iptHandler.maintainIPSet()
+		m.iptHandler.maintainIPTables()
+
 		m.ipt6Handler.maintainIPSet()
+		m.ipt6Handler.maintainIPTables()
+	}
+}
+
+func (m *Manager) runHTTPServer() {
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
+	r.Get("/is-leader", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(m.isLeader.String()))
+	})
+	server := &http.Server{
+		Addr:    m.ListenAddress,
+		Handler: r,
+	}
+
+	for {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			m.log.Error(err, "failed to start http server")
+		}
+		break
+	}
+}
+
+// getConnectorName will return a valid name as leader election ID
+func getConnectorName() string {
+	hostname, _ := os.Hostname()
+	if hostname != "" {
+		return hostname
+	}
+
+	hostname = os.Getenv("HOSTNAME")
+	if hostname != "" {
+		return hostname
+	}
+
+	podName := os.Getenv("POD_NAME")
+	return podName
+}
+
+// getNamespace return the namespace where connector pod is running
+func getNamespace() string {
+	return os.Getenv("NAMESPACE")
+}
+
+func newLock(lockName string, client *clientset.Clientset) *resourcelock.LeaseLock {
+	return &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      lockName,
+			Namespace: getNamespace(),
+		},
+		Client: client.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: getConnectorName(),
+		},
 	}
 }
