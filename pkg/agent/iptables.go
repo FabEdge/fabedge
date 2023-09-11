@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/rule"
 )
 
 type IPSet struct {
@@ -86,27 +87,27 @@ func (m *Manager) ensureIPTablesRules() error {
 }
 
 func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, subnets []string) error {
-	if err := ensureChain(ipt, TableFilter, ChainFabEdgeForward); err != nil {
-		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdgeForward)
+	if err := ensureChain(ipt, rule.TableFilter, rule.ChainFabEdgeForward); err != nil {
+		m.log.Error(err, "failed to check or create iptables chain", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward)
 		return err
 	}
 
 	ensureRule := ipt.AppendUnique
-	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
+	if err := ensureRule(rule.TableFilter, rule.ChainForward, "-j", rule.ChainFabEdgeForward); err != nil {
+		m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainForward, "rule", "-j FABEDGE")
 		return err
 	}
 
 	// subnets won't change most of the time, and is append-only, so for now we don't need
 	// to handle removing old subnet
 	for _, subnet := range subnets {
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
+		if err := ensureRule(rule.TableFilter, rule.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
 			return err
 		}
 
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
+		if err := ensureRule(rule.TableFilter, rule.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
 			return err
 		}
 	}
@@ -118,13 +119,13 @@ func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, subnets []string)
 func (m *Manager) configureOutboundRules(ipt *iptables.IPTables, peerIPSet IPSet, subnets []string, clearFabEdgeNatOutgoingChain bool) error {
 	if clearFabEdgeNatOutgoingChain {
 		m.log.V(3).Info("Subnets are changed, clear iptables chain FABEDGE-NAT-OUTGOING")
-		if err := ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
+		if err := ipt.ClearChain(rule.TableNat, rule.ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing)
 			return err
 		}
 	} else {
-		if err := ensureChain(ipt, TableNat, ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
+		if err := ensureChain(ipt, rule.TableNat, rule.ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to check or add rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing)
 			return err
 		}
 	}
@@ -138,23 +139,23 @@ func (m *Manager) configureOutboundRules(ipt *iptables.IPTables, peerIPSet IPSet
 		m.log.V(3).Info("configure outgoing NAT iptables rules")
 
 		ensureRule := ipt.AppendUnique
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", peerIPSet.IPSet.Name, "dst", "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, peerIPSet.IPSet.Name))
+		if err := ensureRule(rule.TableNat, rule.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", peerIPSet.IPSet.Name, "dst", "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, peerIPSet.IPSet.Name))
 			continue
 		}
 
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet))
+		if err := ensureRule(rule.TableNat, rule.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
+			m.log.Error(err, "failed to append rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet))
 			continue
 		}
 
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -j %s", subnet, ChainMasquerade))
+		if err := ensureRule(rule.TableNat, rule.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", rule.ChainMasquerade); err != nil {
+			m.log.Error(err, "failed to append rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -j %s", subnet, rule.ChainMasquerade))
 			continue
 		}
 
-		if err := ensureRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
+		if err := ensureRule(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgeNatOutgoing); err != nil {
+			m.log.Error(err, "failed to append rule", "table", rule.TableNat, "chain", rule.ChainPostRouting, "rule", fmt.Sprintf("-j %s", rule.ChainFabEdgeNatOutgoing))
 			continue
 		}
 	}

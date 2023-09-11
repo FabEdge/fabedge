@@ -19,18 +19,13 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/rule"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	IPSetRemotePodCIDR      = "FABEDGE-REMOTE-POD-CIDR"
-	IPSetRemotePodCIDR6     = "FABEDGE-REMOTE-POD-CIDR6"
+	IPSetRemotePodCIDR  = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetRemotePodCIDR6 = "FABEDGE-REMOTE-POD-CIDR6"
 )
 
 type IptablesHandler struct {
@@ -89,29 +84,29 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 }
 
 func (h IptablesHandler) syncForwardRules() (err error) {
-	if err = h.ipt.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
+	if err = h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward); err != nil {
 		return err
 	}
-	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+	exists, err := h.ipt.Exists(rule.TableFilter, rule.ChainForward, "-j", rule.ChainFabEdgeForward)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = h.ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
+		if err = h.ipt.Insert(rule.TableFilter, rule.ChainForward, 1, "-j", rule.ChainFabEdgeForward); err != nil {
 			return err
 		}
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
@@ -119,16 +114,16 @@ func (h IptablesHandler) syncForwardRules() (err error) {
 }
 
 func (h IptablesHandler) syncPostRoutingRules() (err error) {
-	if err = h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+	if err = h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
 		return err
 	}
-	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+		if err = h.ipt.Insert(rule.TableNat, rule.ChainPostRouting, 1, "-j", rule.ChainFabEdgePostRouting); err != nil {
 			return err
 		}
 	}
@@ -136,15 +131,15 @@ func (h IptablesHandler) syncPostRoutingRules() (err error) {
 	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
 	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
 	// and this would cause response packets are dropped
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
+	return h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
@@ -158,9 +153,9 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 }
 
 func (h IptablesHandler) clearRules() error {
-	if err := h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+	if err := h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
 		return err
 	}
 
-	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+	return h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward)
 }

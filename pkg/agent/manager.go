@@ -37,15 +37,8 @@ import (
 )
 
 const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainMasquerade         = "MASQUERADE"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
-	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
-	IPSetFabEdgePeerCIDR6   = "FABEDGE-PEER-CIDR6"
+	IPSetFabEdgePeerCIDR  = "FABEDGE-PEER-CIDR"
+	IPSetFabEdgePeerCIDR6 = "FABEDGE-PEER-CIDR6"
 )
 
 type Manager struct {

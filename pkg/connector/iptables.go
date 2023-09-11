@@ -19,21 +19,13 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/rule"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
 )
 
 const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainInput              = "INPUT"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainFabEdgeInput       = "FABEDGE-INPUT"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-
 	IPSetEdgePodCIDR    = "FABEDGE-EDGE-POD-CIDR"
 	IPSetEdgePodCIDR6   = "FABEDGE-EDGE-POD-CIDR6"
 	IPSetEdgeNodeCIDR   = "FABEDGE-EDGE-NODE-CIDR"
@@ -133,41 +125,41 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 }
 
 func (h *IPTablesHandler) CleanSNatIPTablesRules() error {
-	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+	return h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
-	err := h.ipt.ClearChain(TableFilter, ChainFabEdgeInput)
+	err := h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeInput)
 	if err != nil {
 		return err
 	}
-	err = h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+	err = h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward)
 	if err != nil {
 		return err
 	}
-	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+	return h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 	// ensure rules exist
-	if err = h.ipt.AppendUnique(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainForward, "-j", rule.ChainFabEdgeForward); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
@@ -175,60 +167,60 @@ func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 }
 
 func (h *IPTablesHandler) ensureNatIPTablesRules() (err error) {
-	if err = h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
+	if err = h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
 		return err
 	}
-	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+		if err = h.ipt.Insert(rule.TableNat, rule.ChainPostRouting, 1, "-j", rule.ChainFabEdgePostRouting); err != nil {
 			return err
 		}
 	}
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
 		return err
 	}
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "MASQUERADE")
+	return h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "MASQUERADE")
 
 }
 
 func (h *IPTablesHandler) ensureIPSpecInputRules() (err error) {
-	if err = h.ipt.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainInput, "-j", rule.ChainFabEdgeInput); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 	return nil
