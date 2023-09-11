@@ -58,6 +58,8 @@ type IPTablesHandler struct {
 
 	specs []IPSetSpec
 	lock  sync.RWMutex
+
+	helper *rule.IPTablesHelper
 }
 
 func newIP4TablesHandler() (*IPTablesHandler, error) {
@@ -77,6 +79,7 @@ func newIP4TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR,
 			CloudNodeCIDR: IPSetCloudNodeCIDR,
 		},
+		helper: rule.NewIPTablesHelper(ipt),
 	}, nil
 }
 
@@ -97,6 +100,7 @@ func newIP6TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR6,
 			CloudNodeCIDR: IPSetCloudNodeCIDR6,
 		},
+		helper: rule.NewIPTablesHelper(ipt),
 	}, nil
 }
 
@@ -124,10 +128,6 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 	}
 }
 
-func (h *IPTablesHandler) CleanSNatIPTablesRules() error {
-	return h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting)
-}
-
 func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 	err := h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeInput)
 	if err != nil {
@@ -137,7 +137,7 @@ func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 	if err != nil {
 		return err
 	}
-	return h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting)
+	return h.helper.ClearFabEdgePostRouting()
 }
 
 func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
@@ -167,7 +167,7 @@ func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 }
 
 func (h *IPTablesHandler) ensureNatIPTablesRules() (err error) {
-	if err = h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
+	if err = h.helper.ClearFabEdgePostRouting(); err != nil {
 		return err
 	}
 	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)

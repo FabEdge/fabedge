@@ -33,6 +33,7 @@ type IptablesHandler struct {
 	ipset      ipsetutil.Interface
 	ipsetName  string
 	hashFamily string
+	helper     *rule.IPTablesHelper
 }
 
 func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
@@ -60,6 +61,7 @@ func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
 		ipset:      ipsetutil.New(),
 		ipsetName:  ipsetName,
 		hashFamily: hashFamily,
+		helper:     rule.NewIPTablesHelper(ipt),
 	}, nil
 }
 
@@ -114,7 +116,7 @@ func (h IptablesHandler) syncForwardRules() (err error) {
 }
 
 func (h IptablesHandler) syncPostRoutingRules() (err error) {
-	if err = h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
+	if err = h.helper.ClearFabEdgePostRouting(); err != nil {
 		return err
 	}
 	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)
@@ -153,7 +155,7 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 }
 
 func (h IptablesHandler) clearRules() error {
-	if err := h.ipt.ClearChain(rule.TableNat, rule.ChainFabEdgePostRouting); err != nil {
+	if err := h.helper.ClearFabEdgePostRouting(); err != nil {
 		return err
 	}
 

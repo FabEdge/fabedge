@@ -14,6 +14,8 @@
 
 package rule
 
+import "github.com/coreos/go-iptables/iptables"
+
 const (
 	TableFilter  = "filter"
 	TableNat     = "nat"
@@ -29,3 +31,17 @@ const (
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
 	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 )
+
+type IPTablesHelper struct {
+	ipt *iptables.IPTables
+}
+
+func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
+	return &IPTablesHelper{
+		ipt: t,
+	}
+}
+
+func (h *IPTablesHelper) ClearFabEdgePostRouting() error {
+	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+}
