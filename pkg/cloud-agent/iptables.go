@@ -86,18 +86,8 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 }
 
 func (h IptablesHandler) syncForwardRules() (err error) {
-	if err = h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward); err != nil {
+	if err = h.helper.PrepareForwardChain(); err != nil {
 		return err
-	}
-	exists, err := h.ipt.Exists(rule.TableFilter, rule.ChainForward, "-j", rule.ChainFabEdgeForward)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(rule.TableFilter, rule.ChainForward, 1, "-j", rule.ChainFabEdgeForward); err != nil {
-			return err
-		}
 	}
 
 	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
@@ -116,18 +106,8 @@ func (h IptablesHandler) syncForwardRules() (err error) {
 }
 
 func (h IptablesHandler) syncPostRoutingRules() (err error) {
-	if err = h.helper.ClearFabEdgePostRouting(); err != nil {
+	if err = h.helper.PreparePostRoutingChain(); err != nil {
 		return err
-	}
-	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(rule.TableNat, rule.ChainPostRouting, 1, "-j", rule.ChainFabEdgePostRouting); err != nil {
-			return err
-		}
 	}
 
 	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
@@ -159,5 +139,5 @@ func (h IptablesHandler) clearRules() error {
 		return err
 	}
 
-	return h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward)
+	return h.helper.ClearFabEdgeForward()
 }

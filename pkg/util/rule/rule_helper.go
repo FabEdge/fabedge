@@ -42,6 +42,44 @@ func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
 	}
 }
 
-func (h *IPTablesHelper) ClearFabEdgePostRouting() error {
+func (h *IPTablesHelper) ClearFabEdgePostRouting() (err error) {
 	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+}
+
+func (h *IPTablesHelper) ClearFabEdgeForward() (err error) {
+	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+}
+
+func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
+	if err = h.ClearFabEdgePostRouting(); err != nil {
+		return err
+	}
+	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *IPTablesHelper) PrepareForwardChain() (err error) {
+	if err = h.ClearFabEdgeForward(); err != nil {
+		return err
+	}
+	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if err = h.ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
+			return err
+		}
+	}
+	return nil
 }

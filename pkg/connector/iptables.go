@@ -133,7 +133,7 @@ func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 	if err != nil {
 		return err
 	}
-	err = h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeForward)
+	err = h.helper.ClearFabEdgeForward()
 	if err != nil {
 		return err
 	}
@@ -167,18 +167,8 @@ func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 }
 
 func (h *IPTablesHandler) ensureNatIPTablesRules() (err error) {
-	if err = h.helper.ClearFabEdgePostRouting(); err != nil {
+	if err = h.helper.PreparePostRoutingChain(); err != nil {
 		return err
-	}
-	exists, err := h.ipt.Exists(rule.TableNat, rule.ChainPostRouting, "-j", rule.ChainFabEdgePostRouting)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(rule.TableNat, rule.ChainPostRouting, 1, "-j", rule.ChainFabEdgePostRouting); err != nil {
-			return err
-		}
 	}
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
