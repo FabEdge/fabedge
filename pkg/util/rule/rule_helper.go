@@ -68,9 +68,6 @@ func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
 }
 
 func (h *IPTablesHelper) PrepareForwardChain() (err error) {
-	if err = h.ClearFabEdgeForward(); err != nil {
-		return err
-	}
 	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 	if err != nil {
 		return err
@@ -81,5 +78,25 @@ func (h *IPTablesHelper) PrepareForwardChain() (err error) {
 			return err
 		}
 	}
+	return nil
+}
+
+func (h *IPTablesHelper) AcceptForward(ipsetName string) (err error) {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *IPTablesHelper) AddConnectionTrackRule() (err error) {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
 	return nil
 }

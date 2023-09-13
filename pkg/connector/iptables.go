@@ -142,24 +142,19 @@ func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 
 func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 	// ensure rules exist
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainForward, "-j", rule.ChainFabEdgeForward); err != nil {
+	if err = h.helper.PrepareForwardChain(); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AddConnectionTrackRule(); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AcceptForward(h.names.CloudPodCIDR); err != nil {
 		return err
 	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "src", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+
+	if err = h.helper.AcceptForward(h.names.CloudNodeCIDR); err != nil {
 		return err
 	}
 

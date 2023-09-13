@@ -86,19 +86,19 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 }
 
 func (h IptablesHandler) syncForwardRules() (err error) {
+	if err = h.helper.ClearFabEdgeForward(); err != nil {
+		return err
+	}
+	
 	if err = h.helper.PrepareForwardChain(); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AddConnectionTrackRule(); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AcceptForward(h.ipsetName); err != nil {
 		return err
 	}
 
