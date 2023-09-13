@@ -41,6 +41,7 @@ func (m *Manager) ensureIPTablesRules() error {
 		peerIPSet     IPSet
 		loopbackIPSet IPSet
 		subnets       []string
+		helper        *rule.IPTablesHelper
 	}{
 		{
 			ipt: m.ipt4,
@@ -53,6 +54,7 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet4,
 			},
 			subnets: subnetsIP4,
+			helper:  rule.NewIPTablesHelper(m.ipt4),
 		},
 		{
 			ipt: m.ipt6,
@@ -65,12 +67,13 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet6,
 			},
 			subnets: subnetsIP6,
+			helper:  rule.NewIPTablesHelper(m.ipt6),
 		},
 	}
 
 	clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
 	for _, c := range configs {
-		if err := m.ensureIPForwardRules(c.ipt, c.subnets); err != nil {
+		if err := m.ensureIPForwardRules(c.ipt, c.helper, c.subnets); err != nil {
 			return err
 		}
 
@@ -86,7 +89,7 @@ func (m *Manager) ensureIPTablesRules() error {
 	return nil
 }
 
-func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, subnets []string) error {
+func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, helper *rule.IPTablesHelper, subnets []string) error {
 	if err := ensureChain(ipt, rule.TableFilter, rule.ChainFabEdgeForward); err != nil {
 		m.log.Error(err, "failed to check or create iptables chain", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward)
 		return err
@@ -100,16 +103,9 @@ func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, subnets []string)
 
 	// subnets won't change most of the time, and is append-only, so for now we don't need
 	// to handle removing old subnet
-	for _, subnet := range subnets {
-		if err := ensureRule(rule.TableFilter, rule.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
-			return err
-		}
-
-		if err := ensureRule(rule.TableFilter, rule.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
-			return err
-		}
+	if err, errRule := helper.MaintainForwardRulesForSubnets(subnets); err != nil {
+		m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", errRule)
+		return err
 	}
 
 	return nil

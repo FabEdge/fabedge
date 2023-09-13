@@ -14,7 +14,11 @@
 
 package rule
 
-import "github.com/coreos/go-iptables/iptables"
+import (
+	"fmt"
+	"github.com/coreos/go-iptables/iptables"
+	"sync"
+)
 
 const (
 	TableFilter  = "filter"
@@ -33,7 +37,8 @@ const (
 )
 
 type IPTablesHelper struct {
-	ipt *iptables.IPTables
+	ipt   *iptables.IPTables
+	mutex sync.Mutex
 }
 
 func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
@@ -67,7 +72,7 @@ func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
 	return nil
 }
 
-func (h *IPTablesHelper) PrepareForwardChain() (err error) {
+func (h *IPTablesHelper) prepareForwardChain() (err error) {
 	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 	if err != nil {
 		return err
@@ -81,7 +86,7 @@ func (h *IPTablesHelper) PrepareForwardChain() (err error) {
 	return nil
 }
 
-func (h *IPTablesHelper) AcceptForward(ipsetName string) (err error) {
+func (h *IPTablesHelper) acceptForward(ipsetName string) (err error) {
 	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
@@ -93,10 +98,40 @@ func (h *IPTablesHelper) AcceptForward(ipsetName string) (err error) {
 	return nil
 }
 
-func (h *IPTablesHelper) AddConnectionTrackRule() (err error) {
+func (h *IPTablesHelper) addConnectionTrackRule() (err error) {
 	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (h *IPTablesHelper) MaintainForwardRules(ipsetNames []string) (err error) {
+	if err = h.prepareForwardChain(); err != nil {
+		return err
+	}
+
+	if err = h.addConnectionTrackRule(); err != nil {
+		return err
+	}
+
+	for _, ipsetName := range ipsetNames {
+		if err = h.acceptForward(ipsetName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *IPTablesHelper) MaintainForwardRulesForSubnets(subnets []string) (err error, errRule string) {
+	for _, subnet := range subnets {
+		if err := h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
+			return err, fmt.Sprintf("-s %s -j ACCEPT", subnet)
+		}
+
+		if err := h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
+			return err, fmt.Sprintf("-d %s -j ACCEPT", subnet)
+		}
+	}
+	return nil, ""
 }

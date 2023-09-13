@@ -142,19 +142,7 @@ func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 
 func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 	// ensure rules exist
-	if err = h.helper.PrepareForwardChain(); err != nil {
-		return err
-	}
-
-	if err = h.helper.AddConnectionTrackRule(); err != nil {
-		return err
-	}
-
-	if err = h.helper.AcceptForward(h.names.CloudPodCIDR); err != nil {
-		return err
-	}
-
-	if err = h.helper.AcceptForward(h.names.CloudNodeCIDR); err != nil {
+	if err = h.helper.MaintainForwardRules([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR}); err != nil {
 		return err
 	}
 

@@ -89,16 +89,8 @@ func (h IptablesHandler) syncForwardRules() (err error) {
 	if err = h.helper.ClearFabEdgeForward(); err != nil {
 		return err
 	}
-	
-	if err = h.helper.PrepareForwardChain(); err != nil {
-		return err
-	}
 
-	if err = h.helper.AddConnectionTrackRule(); err != nil {
-		return err
-	}
-
-	if err = h.helper.AcceptForward(h.ipsetName); err != nil {
+	if err = h.helper.MaintainForwardRules([]string{h.ipsetName}); err != nil {
 		return err
 	}
 
