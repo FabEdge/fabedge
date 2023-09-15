@@ -328,10 +328,16 @@ func (m *Manager) workLoop() {
 		m.broadcastConnectorPrefixes()
 
 		m.iptHandler.maintainIPSet()
+
+		m.iptHandler.helper.Mutex.Lock()
 		m.iptHandler.maintainIPTables()
+		m.iptHandler.helper.Mutex.Unlock()
 
 		m.ipt6Handler.maintainIPSet()
+
+		m.ipt6Handler.helper.Mutex.Lock()
 		m.ipt6Handler.maintainIPTables()
+		m.ipt6Handler.helper.Mutex.Unlock()
 	}
 }
 

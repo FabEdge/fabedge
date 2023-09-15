@@ -38,7 +38,7 @@ const (
 
 type IPTablesHelper struct {
 	ipt   *iptables.IPTables
-	mutex sync.Mutex
+	Mutex sync.RWMutex
 }
 
 func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
