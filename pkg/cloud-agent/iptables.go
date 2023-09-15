@@ -29,7 +29,6 @@ const (
 )
 
 type IptablesHandler struct {
-	ipt        *iptables.IPTables
 	ipset      ipsetutil.Interface
 	ipsetName  string
 	hashFamily string
@@ -57,7 +56,6 @@ func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
 	}
 
 	return &IptablesHandler{
-		ipt:        ipt,
 		ipset:      ipsetutil.New(),
 		ipsetName:  ipsetName,
 		hashFamily: hashFamily,
@@ -86,11 +84,11 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 }
 
 func (h IptablesHandler) syncForwardRules() (err error) {
-	if err = h.helper.ClearFabEdgeForward(); err != nil {
+	if err = h.helper.ClearOrCreateFabEdgeForwardChain(); err != nil {
 		return err
 	}
 
-	if err = h.helper.MaintainForwardRules([]string{h.ipsetName}); err != nil {
+	if err = h.helper.MaintainForwardRulesForIPSet([]string{h.ipsetName}); err != nil {
 		return err
 	}
 
@@ -102,18 +100,11 @@ func (h IptablesHandler) syncPostRoutingRules() (err error) {
 		return err
 	}
 
-	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
-	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
-	// and this would cause response packets are dropped
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
+	if err = h.helper.AddPostRoutingRuleForKubernetes(); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	return h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
+	return h.helper.AddPostRoutingRulesForIPSet(h.ipsetName)
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
@@ -127,9 +118,9 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 }
 
 func (h IptablesHandler) clearRules() error {
-	if err := h.helper.ClearFabEdgePostRouting(); err != nil {
+	if err := h.helper.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
 		return err
 	}
 
-	return h.helper.ClearFabEdgeForward()
+	return h.helper.ClearOrCreateFabEdgeForwardChain()
 }

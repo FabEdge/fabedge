@@ -254,7 +254,7 @@ func (m *Manager) clearAll() {
 
 func (m *Manager) cleanSNatIPTablesRules() {
 	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
-		if err := ipt.helper.ClearFabEdgePostRouting(); err != nil {
+		if err := ipt.helper.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
 			m.log.Error(err, "failed to clean iptables")
 		}
 	}

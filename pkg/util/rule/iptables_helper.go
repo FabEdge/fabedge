@@ -47,16 +47,45 @@ func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
 	}
 }
 
-func (h *IPTablesHelper) ClearFabEdgePostRouting() (err error) {
+func (h *IPTablesHelper) ClearOrCreateFabEdgePostRoutingChain() (err error) {
 	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
 }
 
-func (h *IPTablesHelper) ClearFabEdgeForward() (err error) {
+func (h *IPTablesHelper) ClearOrCreateFabEdgeInputChain() (err error) {
+	return h.ipt.ClearChain(TableFilter, ChainFabEdgeInput)
+}
+
+func (h *IPTablesHelper) ClearOrCreateFabEdgeForwardChain() (err error) {
 	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
 }
 
+func (h *IPTablesHelper) ClearOrCreateFabEdgeNatOutgoingChain() (err error) {
+	return h.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing)
+}
+
+func (h *IPTablesHelper) checkOrCreateChain(table, chain string) error {
+	exists, err := h.ipt.ChainExists(table, chain)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return nil
+	}
+
+	return h.ipt.NewChain(table, chain)
+}
+
+func (h *IPTablesHelper) CheckOrCreateFabEdgeForwardChain() (err error) {
+	return h.checkOrCreateChain(TableFilter, ChainFabEdgeForward)
+}
+
+func (h *IPTablesHelper) CheckOrCreateFabEdgeNatOutgoingChain() (err error) {
+	return h.checkOrCreateChain(TableNat, ChainFabEdgeNatOutgoing)
+}
+
 func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
-	if err = h.ClearFabEdgePostRouting(); err != nil {
+	if err = h.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
 		return err
 	}
 	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
@@ -72,7 +101,7 @@ func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
 	return nil
 }
 
-func (h *IPTablesHelper) prepareForwardChain() (err error) {
+func (h *IPTablesHelper) PrepareForwardChain() (err error) {
 	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 	if err != nil {
 		return err
@@ -106,8 +135,8 @@ func (h *IPTablesHelper) addConnectionTrackRule() (err error) {
 	return nil
 }
 
-func (h *IPTablesHelper) MaintainForwardRules(ipsetNames []string) (err error) {
-	if err = h.prepareForwardChain(); err != nil {
+func (h *IPTablesHelper) MaintainForwardRulesForIPSet(ipsetNames []string) (err error) {
+	if err = h.PrepareForwardChain(); err != nil {
 		return err
 	}
 
@@ -134,4 +163,71 @@ func (h *IPTablesHelper) MaintainForwardRulesForSubnets(subnets []string) (err e
 		}
 	}
 	return nil, ""
+}
+
+func (h *IPTablesHelper) MaintainNatOutgoingRulesForSubnets(subnets []string, ipsetName string) (err error, errRule string) {
+	for _, subnet := range subnets {
+		if err := h.ipt.AppendUnique(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN"); err != nil {
+			return err, fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, ipsetName)
+		}
+
+		if err := h.ipt.AppendUnique(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
+			return err, fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet)
+		}
+
+		if err := h.ipt.AppendUnique(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade); err != nil {
+			return err, fmt.Sprintf("-s %s -j %s", subnet, ChainMasquerade)
+		}
+
+		if err := h.ipt.AppendUnique(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
+			return err, fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing)
+		}
+	}
+	return nil, ""
+}
+
+func (h *IPTablesHelper) AddPostRoutingRuleForKubernetes() (err error) {
+	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
+	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
+	// and this would cause response packets are dropped
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *IPTablesHelper) AddPostRoutingRulesForIPSet(ipsetName string) (err error) {
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+}
+
+func (h *IPTablesHelper) AllowIPSec() (err error) {
+	if err = h.ipt.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
+		return err
+	}
+
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *IPTablesHelper) AllowPostRoutingForIPSet(src, dst string) (err error) {
+	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
+}
+
+func (h *IPTablesHelper) MasqueradePostRoutingForIPSet(src, dst string) (err error) {
+	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
 }

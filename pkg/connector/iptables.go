@@ -49,7 +49,6 @@ type IPSetNames struct {
 }
 
 type IPTablesHandler struct {
-	ipt   *iptables.IPTables
 	ipset ipset.Interface
 	log   logr.Logger
 
@@ -70,7 +69,6 @@ func newIP4TablesHandler() (*IPTablesHandler, error) {
 
 	return &IPTablesHandler{
 		log:        klogr.New().WithName("iptablesHandler"),
-		ipt:        ipt,
 		ipset:      ipset.New(),
 		hashFamily: ipset.ProtocolFamilyIPV4,
 		names: IPSetNames{
@@ -91,7 +89,6 @@ func newIP6TablesHandler() (*IPTablesHandler, error) {
 
 	return &IPTablesHandler{
 		log:        klogr.New().WithName("ip6tablesHandler"),
-		ipt:        ipt,
 		ipset:      ipset.New(),
 		hashFamily: ipset.ProtocolFamilyIPV6,
 		names: IPSetNames{
@@ -129,20 +126,20 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 }
 
 func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
-	err := h.ipt.ClearChain(rule.TableFilter, rule.ChainFabEdgeInput)
+	err := h.helper.ClearOrCreateFabEdgeInputChain()
 	if err != nil {
 		return err
 	}
-	err = h.helper.ClearFabEdgeForward()
+	err = h.helper.ClearOrCreateFabEdgeForwardChain()
 	if err != nil {
 		return err
 	}
-	return h.helper.ClearFabEdgePostRouting()
+	return h.helper.ClearOrCreateFabEdgePostRoutingChain()
 }
 
 func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
 	// ensure rules exist
-	if err = h.helper.MaintainForwardRules([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR}); err != nil {
+	if err = h.helper.MaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR}); err != nil {
 		return err
 	}
 
@@ -155,48 +152,31 @@ func (h *IPTablesHandler) ensureNatIPTablesRules() (err error) {
 	}
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR); err != nil {
 		return err
 	}
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.CloudPodCIDR, "src", "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR); err != nil {
 		return err
 	}
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	if err = h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgePodCIDR, "src", "-m", "set", "--match-set", h.names.CloudNodeCIDR, "dst", "-j", "MASQUERADE"); err != nil {
+	if err = h.helper.MasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR); err != nil {
 		return err
 	}
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	return h.ipt.AppendUnique(rule.TableNat, rule.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.names.EdgeNodeCIDR, "src", "-m", "set", "--match-set", h.names.CloudPodCIDR, "dst", "-j", "MASQUERADE")
-
+	return h.helper.MasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
 }
 
 func (h *IPTablesHandler) ensureIPSpecInputRules() (err error) {
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainInput, "-j", rule.ChainFabEdgeInput); err != nil {
-		return err
-	}
-
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	if err = h.ipt.AppendUnique(rule.TableFilter, rule.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-	return nil
+	return h.helper.AllowIPSec()
 }
 
 func (h *IPTablesHandler) maintainIPTables() {
