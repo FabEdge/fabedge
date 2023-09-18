@@ -30,27 +30,35 @@ const (
 	ChainFabEdgeForward     = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
 	IPSetRemotePodCIDR      = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetEdgeNodeCIDR       = "FABEDGE-EDGE-NODE-CIDR"
 	IPSetRemotePodCIDR6     = "FABEDGE-REMOTE-POD-CIDR6"
+	IPSetEdgeNodeCIDR6      = "FABEDGE-EDGE-NODE-CIDR6"
 )
 
 type IptablesHandler struct {
-	ipt        *iptables.IPTables
-	ipset      ipsetutil.Interface
-	ipsetName  string
-	hashFamily string
+	ipt                  *iptables.IPTables
+	ipset                ipsetutil.Interface
+	nameForRemotePodCIDR string
+	nameForEdgeNodeCIDR  string
+	hashFamily           string
 }
 
 func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
 	var (
-		ipsetName  string
-		hashFamily string
+		nameForRemotePodCIDR string
+		nameForEdgeNodeCIDR  string
+		hashFamily           string
 	)
 
 	switch version {
 	case iptables.ProtocolIPv4:
-		ipsetName, hashFamily = IPSetRemotePodCIDR, ipsetutil.ProtocolFamilyIPV4
+		nameForRemotePodCIDR = IPSetRemotePodCIDR
+		nameForEdgeNodeCIDR = IPSetEdgeNodeCIDR
+		hashFamily = ipsetutil.ProtocolFamilyIPV4
 	case iptables.ProtocolIPv6:
-		ipsetName, hashFamily = IPSetRemotePodCIDR6, ipsetutil.ProtocolFamilyIPV6
+		nameForRemotePodCIDR = IPSetRemotePodCIDR6
+		nameForEdgeNodeCIDR = IPSetEdgeNodeCIDR6
+		hashFamily = ipsetutil.ProtocolFamilyIPV6
 	default:
 		return nil, fmt.Errorf("unknown version")
 	}
@@ -61,18 +69,25 @@ func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
 	}
 
 	return &IptablesHandler{
-		ipt:        ipt,
-		ipset:      ipsetutil.New(),
-		ipsetName:  ipsetName,
-		hashFamily: hashFamily,
+		ipt:                  ipt,
+		ipset:                ipsetutil.New(),
+		nameForRemotePodCIDR: nameForRemotePodCIDR,
+		nameForEdgeNodeCIDR:  nameForEdgeNodeCIDR,
+		hashFamily:           hashFamily,
 	}, nil
 }
 
-func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
+func (h IptablesHandler) maintainRules(remotePodCIDRs, edgeNodeCIDRs []string) {
 	if err := h.syncRemotePodCIDRSet(remotePodCIDRs); err != nil {
-		logger.Error(err, "failed to sync ipset", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+		logger.Error(err, "failed to sync ipset", "setName", h.nameForRemotePodCIDR)
 	} else {
-		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+		logger.V(5).Info("ipset is synced", "setName", h.nameForRemotePodCIDR)
+	}
+
+	if err := h.syncEdgeNodeCIDRSet(edgeNodeCIDRs); err != nil {
+		logger.Error(err, "failed to sync ipset", "setName", h.nameForEdgeNodeCIDR)
+	} else {
+		logger.V(5).Info("ipset is synced", "setName", h.nameForEdgeNodeCIDR)
 	}
 
 	if err := h.syncForwardRules(); err != nil {
@@ -107,11 +122,11 @@ func (h IptablesHandler) syncForwardRules() (err error) {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "src", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
@@ -140,21 +155,36 @@ func (h IptablesHandler) syncPostRoutingRules() (err error) {
 		return err
 	}
 
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
+	// todo: set pod cidr of current node as src filter
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForEdgeNodeCIDR, "dst", "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
+	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "dst", "-j", "ACCEPT"); err != nil {
+		return err
+	}
+
+	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "src", "-j", "ACCEPT")
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 	set := &ipsetutil.IPSet{
-		Name:       h.ipsetName,
+		Name:       h.nameForRemotePodCIDR,
 		HashFamily: h.hashFamily,
 		SetType:    ipsetutil.HashNet,
 	}
 
 	return h.ipset.EnsureIPSet(set, sets.NewString(remotePodCIDRs...))
+}
+
+func (h IptablesHandler) syncEdgeNodeCIDRSet(edgeNodeCIDRs []string) error {
+	set := &ipsetutil.IPSet{
+		Name:       h.nameForEdgeNodeCIDR,
+		HashFamily: h.hashFamily,
+		SetType:    ipsetutil.HashNet,
+	}
+
+	return h.ipset.EnsureIPSet(set, sets.NewString(edgeNodeCIDRs...))
 }
 
 func (h IptablesHandler) clearRules() error {
