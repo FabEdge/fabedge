@@ -68,42 +68,19 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 	}
 
 	h.helper.Mutex.Lock()
-	if err := h.syncForwardRules(); err != nil {
-		logger.Error(err, "failed to sync iptables forward chain")
-	} else {
-		logger.V(5).Info("iptables forward chain is synced")
-	}
 
-	if err := h.syncPostRoutingRules(); err != nil {
-		logger.Error(err, "failed to sync iptables post-routing chain")
+	h.helper.CreateFabEdgeForwardChain()
+	h.helper.NewMaintainForwardRulesForIPSet([]string{h.ipsetName})
+	h.helper.NewPreparePostRoutingChain()
+	h.helper.NewAddPostRoutingRuleForKubernetes()
+	h.helper.NewAddPostRoutingRulesForIPSet(h.ipsetName)
+
+	if err := h.helper.ReplaceRules(); err != nil {
+		logger.Error(err, "failed to sync iptables rules")
 	} else {
-		logger.V(5).Info("iptables post-routing chain is synced")
+		logger.V(5).Info("iptables rules is synced")
 	}
 	h.helper.Mutex.Unlock()
-}
-
-func (h IptablesHandler) syncForwardRules() (err error) {
-	if err = h.helper.ClearOrCreateFabEdgeForwardChain(); err != nil {
-		return err
-	}
-
-	if err = h.helper.MaintainForwardRulesForIPSet([]string{h.ipsetName}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h IptablesHandler) syncPostRoutingRules() (err error) {
-	if err = h.helper.PreparePostRoutingChain(); err != nil {
-		return err
-	}
-
-	if err = h.helper.AddPostRoutingRuleForKubernetes(); err != nil {
-		return err
-	}
-
-	return h.helper.AddPostRoutingRulesForIPSet(h.ipsetName)
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
