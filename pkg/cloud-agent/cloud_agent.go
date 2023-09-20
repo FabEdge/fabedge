@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/bep/debounce"
-	"github.com/coreos/go-iptables/iptables"
 	flag "github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -108,12 +107,12 @@ func Execute() {
 }
 
 func NewCloudAgent() (*CloudAgent, error) {
-	iph, err := newIptableHandler(iptables.ProtocolIPv4)
+	iph, err := newIptableHandler()
 	if err != nil {
 		return nil, err
 	}
 
-	iph6, err := newIptableHandler(iptables.ProtocolIPv6)
+	iph6, err := newIp6tableHandler()
 	if err != nil {
 		return nil, err
 	}

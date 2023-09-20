@@ -17,9 +17,8 @@ package connector
 import (
 	"sync"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
-	"github.com/fabedge/fabedge/pkg/util/rule"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
@@ -58,11 +57,11 @@ type IPTablesHandler struct {
 	specs []IPSetSpec
 	lock  sync.RWMutex
 
-	helper *rule.IPTablesHelper
+	helper *iptables.IPTablesHelper
 }
 
 func newIP4TablesHandler() (*IPTablesHandler, error) {
-	ipt, err := iptables.New()
+	iptHelper, err := iptables.NewIPTablesHelper()
 	if err != nil {
 		return nil, err
 	}
@@ -77,12 +76,12 @@ func newIP4TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR,
 			CloudNodeCIDR: IPSetCloudNodeCIDR,
 		},
-		helper: rule.NewIPTablesHelper(ipt),
+		helper: iptHelper,
 	}, nil
 }
 
 func newIP6TablesHandler() (*IPTablesHandler, error) {
-	ipt, err := iptables.New(iptables.IPFamily(iptables.ProtocolIPv6))
+	iptHelper, err := iptables.NewIP6TablesHelper()
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +96,7 @@ func newIP6TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR6,
 			CloudNodeCIDR: IPSetCloudNodeCIDR6,
 		},
-		helper: rule.NewIPTablesHelper(ipt),
+		helper: iptHelper,
 	}, nil
 }
 

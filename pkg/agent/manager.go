@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -47,10 +46,8 @@ type Manager struct {
 	ipvs    ipvs.Interface
 	ipset   ipset.Interface
 
-	tm   tunnel.Manager
-	ipt4 *iptables.IPTables
-	ipt6 *iptables.IPTables
-	log  logr.Logger
+	tm  tunnel.Manager
+	log logr.Logger
 
 	currentEndpoint  Endpoint
 	mediatorEndpoint *Endpoint

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rule
+package iptables
 
 import (
 	"fmt"
@@ -36,15 +36,32 @@ const (
 	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 )
 
+const (
+	IPTablesRestoreCommand  = "iptables-restore"
+	IP6TablesRestoreCommand = "ip6tables-restore"
+)
+
 type IPTablesHelper struct {
 	ipt   *iptables.IPTables
 	Mutex sync.RWMutex
 }
 
-func NewIPTablesHelper(t *iptables.IPTables) *IPTablesHelper {
+func NewIPTablesHelper() (*IPTablesHelper, error) {
+	return doCreateIPTablesHelper(iptables.ProtocolIPv4)
+}
+
+func NewIP6TablesHelper() (*IPTablesHelper, error) {
+	return doCreateIPTablesHelper(iptables.ProtocolIPv6)
+}
+
+func doCreateIPTablesHelper(protocol iptables.Protocol) (*IPTablesHelper, error) {
+	t, err := iptables.NewWithProtocol(protocol)
+	if err != nil {
+		return nil, err
+	}
 	return &IPTablesHelper{
 		ipt: t,
-	}
+	}, err
 }
 
 func (h *IPTablesHelper) ClearOrCreateFabEdgePostRoutingChain() (err error) {

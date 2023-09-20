@@ -20,7 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
-	"github.com/fabedge/fabedge/pkg/util/rule"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 )
 
 type IPSet struct {
@@ -34,11 +34,21 @@ func (m *Manager) ensureIPTablesRules() error {
 	peerIPSet4, peerIPSet6 := m.getAllPeerCIDRs()
 	subnetsIP4, subnetsIP6 := classifySubnets(current.Subnets)
 
+	ipt, err := iptables.NewIPTablesHelper()
+	if err != nil {
+		return err
+	}
+
+	ipt6, err := iptables.NewIP6TablesHelper()
+	if err != nil {
+		return err
+	}
+
 	configs := []struct {
 		peerIPSet     IPSet
 		loopbackIPSet IPSet
 		subnets       []string
-		helper        *rule.IPTablesHelper
+		helper        *iptables.IPTablesHelper
 	}{
 		{
 			peerIPSet: IPSet{
@@ -50,7 +60,7 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet4,
 			},
 			subnets: subnetsIP4,
-			helper:  rule.NewIPTablesHelper(m.ipt4),
+			helper:  ipt,
 		},
 		{
 			peerIPSet: IPSet{
@@ -62,7 +72,7 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet6,
 			},
 			subnets: subnetsIP6,
-			helper:  rule.NewIPTablesHelper(m.ipt6),
+			helper:  ipt6,
 		},
 	}
 
@@ -89,21 +99,21 @@ func (m *Manager) ensureIPTablesRules() error {
 	return nil
 }
 
-func (m *Manager) ensureIPForwardRules(helper *rule.IPTablesHelper, subnets []string) error {
+func (m *Manager) ensureIPForwardRules(helper *iptables.IPTablesHelper, subnets []string) error {
 	if err := helper.CheckOrCreateFabEdgeForwardChain(); err != nil {
-		m.log.Error(err, "failed to check or create iptables chain", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward)
+		m.log.Error(err, "failed to check or create iptables chain", "table", iptables.TableFilter, "chain", iptables.ChainFabEdgeForward)
 		return err
 	}
 
 	if err := helper.PrepareForwardChain(); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainForward, "rule", "-j FABEDGE-FORWARD")
+		m.log.Error(err, "failed to check or add rule", "table", iptables.TableFilter, "chain", iptables.ChainForward, "rule", "-j FABEDGE-FORWARD")
 		return err
 	}
 
 	// subnets won't change most of the time, and is append-only, so for now we don't need
 	// to handle removing old subnet
 	if err, errRule := helper.MaintainForwardRulesForSubnets(subnets); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", rule.TableFilter, "chain", rule.ChainFabEdgeForward, "rule", errRule)
+		m.log.Error(err, "failed to check or add rule", "table", iptables.TableFilter, "chain", iptables.ChainFabEdgeForward, "rule", errRule)
 		return err
 	}
 
@@ -111,16 +121,16 @@ func (m *Manager) ensureIPForwardRules(helper *rule.IPTablesHelper, subnets []st
 }
 
 // outbound NAT from pods to outside the cluster
-func (m *Manager) configureOutboundRules(helper *rule.IPTablesHelper, peerIPSet IPSet, subnets []string, clearFabEdgeNatOutgoingChain bool) error {
+func (m *Manager) configureOutboundRules(helper *iptables.IPTablesHelper, peerIPSet IPSet, subnets []string, clearFabEdgeNatOutgoingChain bool) error {
 	if clearFabEdgeNatOutgoingChain {
 		m.log.V(3).Info("Subnets are changed, clear iptables chain FABEDGE-NAT-OUTGOING")
 		if err := helper.ClearOrCreateFabEdgeNatOutgoingChain(); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing)
+			m.log.Error(err, "failed to check or add rule", "table", iptables.TableNat, "chain", iptables.ChainFabEdgeNatOutgoing)
 			return err
 		}
 	} else {
 		if err := helper.CheckOrCreateFabEdgeNatOutgoingChain(); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing)
+			m.log.Error(err, "failed to check or add rule", "table", iptables.TableNat, "chain", iptables.ChainFabEdgeNatOutgoing)
 			return err
 		}
 	}
@@ -132,7 +142,7 @@ func (m *Manager) configureOutboundRules(helper *rule.IPTablesHelper, peerIPSet 
 
 	m.log.V(3).Info("configure outgoing NAT iptables rules")
 	if err, errRule := helper.MaintainNatOutgoingRulesForSubnets(subnets, peerIPSet.IPSet.Name); err != nil {
-		m.log.Error(err, "failed to append rule", "table", rule.TableNat, "chain", rule.ChainFabEdgeNatOutgoing, "rule", errRule)
+		m.log.Error(err, "failed to append rule", "table", iptables.TableNat, "chain", iptables.ChainFabEdgeNatOutgoing, "rule", errRule)
 		return err
 	}
 

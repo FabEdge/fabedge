@@ -15,11 +15,8 @@
 package cloud_agent
 
 import (
-	"fmt"
-
-	"github.com/coreos/go-iptables/iptables"
 	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
-	"github.com/fabedge/fabedge/pkg/util/rule"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -32,34 +29,34 @@ type IptablesHandler struct {
 	ipset      ipsetutil.Interface
 	ipsetName  string
 	hashFamily string
-	helper     *rule.IPTablesHelper
+	helper     *iptables.IPTablesHelper
 }
 
-func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
-	var (
-		ipsetName  string
-		hashFamily string
-	)
-
-	switch version {
-	case iptables.ProtocolIPv4:
-		ipsetName, hashFamily = IPSetRemotePodCIDR, ipsetutil.ProtocolFamilyIPV4
-	case iptables.ProtocolIPv6:
-		ipsetName, hashFamily = IPSetRemotePodCIDR6, ipsetutil.ProtocolFamilyIPV6
-	default:
-		return nil, fmt.Errorf("unknown version")
-	}
-
-	ipt, err := iptables.NewWithProtocol(version)
+func newIptableHandler() (*IptablesHandler, error) {
+	iptHelper, err := iptables.NewIPTablesHelper()
 	if err != nil {
 		return nil, err
 	}
 
 	return &IptablesHandler{
 		ipset:      ipsetutil.New(),
-		ipsetName:  ipsetName,
-		hashFamily: hashFamily,
-		helper:     rule.NewIPTablesHelper(ipt),
+		ipsetName:  IPSetRemotePodCIDR,
+		hashFamily: ipsetutil.ProtocolFamilyIPV4,
+		helper:     iptHelper,
+	}, nil
+}
+
+func newIp6tableHandler() (*IptablesHandler, error) {
+	iptHelper, err := iptables.NewIP6TablesHelper()
+	if err != nil {
+		return nil, err
+	}
+
+	return &IptablesHandler{
+		ipset:      ipsetutil.New(),
+		ipsetName:  IPSetRemotePodCIDR6,
+		hashFamily: ipsetutil.ProtocolFamilyIPV6,
+		helper:     iptHelper,
 	}, nil
 }
 
