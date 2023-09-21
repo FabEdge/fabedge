@@ -107,15 +107,8 @@ func Execute() {
 }
 
 func NewCloudAgent() (*CloudAgent, error) {
-	iph, err := newIptableHandler()
-	if err != nil {
-		return nil, err
-	}
-
-	iph6, err := newIp6tableHandler()
-	if err != nil {
-		return nil, err
-	}
+	iph := newIptableHandler()
+	iph6 := newIp6tableHandler()
 
 	if iph == nil && iph6 == nil {
 		return nil, fmt.Errorf("at lease one iptablesHandler is required")

@@ -61,11 +61,6 @@ type IPTablesHandler struct {
 }
 
 func newIP4TablesHandler() (*IPTablesHandler, error) {
-	iptHelper, err := iptables.NewIPTablesHelper()
-	if err != nil {
-		return nil, err
-	}
-
 	return &IPTablesHandler{
 		log:        klogr.New().WithName("iptablesHandler"),
 		ipset:      ipset.New(),
@@ -76,16 +71,11 @@ func newIP4TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR,
 			CloudNodeCIDR: IPSetCloudNodeCIDR,
 		},
-		helper: iptHelper,
+		helper: iptables.NewIPTablesHelper(),
 	}, nil
 }
 
 func newIP6TablesHandler() (*IPTablesHandler, error) {
-	iptHelper, err := iptables.NewIP6TablesHelper()
-	if err != nil {
-		return nil, err
-	}
-
 	return &IPTablesHandler{
 		log:        klogr.New().WithName("ip6tablesHandler"),
 		ipset:      ipset.New(),
@@ -96,7 +86,7 @@ func newIP6TablesHandler() (*IPTablesHandler, error) {
 			CloudPodCIDR:  IPSetCloudPodCIDR6,
 			CloudNodeCIDR: IPSetCloudNodeCIDR6,
 		},
-		helper: iptHelper,
+		helper: iptables.NewIP6TablesHelper(),
 	}, nil
 }
 
@@ -137,28 +127,28 @@ func (h *IPTablesHandler) maintainIPTables() {
 
 	// ensureForwardIPTablesRules
 	// ensure rules exist
-	h.helper.NewMaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR})
+	h.helper.MaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR})
 
 	// ensureNatIPTablesRules
-	h.helper.NewPreparePostRoutingChain()
+	h.helper.PreparePostRoutingChain()
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	h.helper.NewAllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
+	h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	h.helper.NewAllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
+	h.helper.AllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	h.helper.NewAllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
+	h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	h.helper.NewMasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
+	h.helper.MasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	h.helper.NewMasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
+	h.helper.MasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
 
 	// ensureIPSpecInputRules
-	h.helper.NewAllowIPSec()
+	h.helper.AllowIPSec()
 
 	if err := h.helper.ReplaceRules(); err != nil {
 		h.log.Error(err, "failed to sync iptables rules")

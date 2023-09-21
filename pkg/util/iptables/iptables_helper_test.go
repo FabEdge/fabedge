@@ -1,3 +1,17 @@
+// Copyright 2023 FabEdge Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package iptables
 
 import (
@@ -5,21 +19,18 @@ import (
 )
 
 func TestGenerateCloudAgentRules(t *testing.T) {
-	ipt, err := NewIPTablesHelper()
-	if err != nil {
-		t.Error(err)
-	}
+	ipt := NewIPTablesHelper()
 
 	// Sync forward
 	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
 	ipt.ClearAllRules()
 	ipt.CreateFabEdgeForwardChain()
-	ipt.NewMaintainForwardRulesForIPSet([]string{ipsetName})
+	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
 
 	// Sync PostRouting
-	ipt.NewPreparePostRoutingChain()
-	ipt.NewAddPostRoutingRuleForKubernetes()
-	ipt.NewAddPostRoutingRulesForIPSet(ipsetName)
+	ipt.PreparePostRoutingChain()
+	ipt.AddPostRoutingRuleForKubernetes()
+	ipt.AddPostRoutingRulesForIPSet(ipsetName)
 
 	str := ipt.GenerateInputFromRuleSet()
 	println(str)
@@ -31,10 +42,7 @@ func TestGenerateCloudAgentRules(t *testing.T) {
 }
 
 func TestGenerateConnectorRules(t *testing.T) {
-	ipt, err := NewIPTablesHelper()
-	if err != nil {
-		t.Error(err)
-	}
+	ipt := NewIPTablesHelper()
 
 	ipt.ClearAllRules()
 
@@ -47,28 +55,28 @@ func TestGenerateConnectorRules(t *testing.T) {
 
 	// ensureForwardIPTablesRules
 	// ensure rules exist
-	ipt.NewMaintainForwardRulesForIPSet([]string{IPSetCloudPodCIDR, IPSetCloudNodeCIDR})
+	ipt.MaintainForwardRulesForIPSet([]string{IPSetCloudPodCIDR, IPSetCloudNodeCIDR})
 
 	// ensureNatIPTablesRules
-	ipt.NewPreparePostRoutingChain()
+	ipt.PreparePostRoutingChain()
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	ipt.NewAllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgePodCIDR)
+	ipt.AllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgePodCIDR)
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	ipt.NewAllowPostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudPodCIDR)
+	ipt.AllowPostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudPodCIDR)
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	ipt.NewAllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgeNodeCIDR)
+	ipt.AllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgeNodeCIDR)
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	ipt.NewMasqueradePostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudNodeCIDR)
+	ipt.MasqueradePostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudNodeCIDR)
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	ipt.NewMasqueradePostRoutingForIPSet(IPSetEdgeNodeCIDR, IPSetCloudPodCIDR)
+	ipt.MasqueradePostRoutingForIPSet(IPSetEdgeNodeCIDR, IPSetCloudPodCIDR)
 
 	// ensureIPSpecInputRules
-	ipt.NewAllowIPSec()
+	ipt.AllowIPSec()
 
 	str := ipt.GenerateInputFromRuleSet()
 	println(str)
@@ -80,10 +88,7 @@ func TestGenerateConnectorRules(t *testing.T) {
 }
 
 func TestGenerateAgentRules(t *testing.T) {
-	ipt, err := NewIPTablesHelper()
-	if err != nil {
-		t.Error(err)
-	}
+	ipt := NewIPTablesHelper()
 
 	MASQOutgoing := true
 	clearFabEdgeNatOutgoingChain := true
@@ -94,11 +99,11 @@ func TestGenerateAgentRules(t *testing.T) {
 
 	// ensureIPForwardRules
 	ipt.CreateFabEdgeForwardChain()
-	ipt.NewPrepareForwardChain()
+	ipt.PrepareForwardChain()
 
 	// subnets won't change most of the time, and is append-only, so for now we don't need
 	// to handle removing old subnet
-	ipt.NewMaintainForwardRulesForSubnets(subnets)
+	ipt.MaintainForwardRulesForSubnets(subnets)
 
 	if MASQOutgoing {
 		// configureOutboundRules
@@ -107,7 +112,7 @@ func TestGenerateAgentRules(t *testing.T) {
 		} else {
 			ipt.CreateFabEdgeNatOutgoingChain()
 		}
-		ipt.NewMaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
+		ipt.MaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
 	}
 
 	str := ipt.GenerateInputFromRuleSet()
@@ -120,20 +125,17 @@ func TestGenerateAgentRules(t *testing.T) {
 }
 
 func TestGenerateAndClearRules(t *testing.T) {
-	ipt, err := NewIPTablesHelper()
-	if err != nil {
-		t.Error(err)
-	}
+	ipt := NewIPTablesHelper()
 
 	// Sync forward
 	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
 	ipt.CreateFabEdgeForwardChain()
-	ipt.NewMaintainForwardRulesForIPSet([]string{ipsetName})
+	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
 
 	// Sync PostRouting
-	ipt.NewPreparePostRoutingChain()
-	ipt.NewAddPostRoutingRuleForKubernetes()
-	ipt.NewAddPostRoutingRulesForIPSet(ipsetName)
+	ipt.PreparePostRoutingChain()
+	ipt.AddPostRoutingRuleForKubernetes()
+	ipt.AddPostRoutingRulesForIPSet(ipsetName)
 
 	str := ipt.GenerateInputFromRuleSet()
 	println("Old:")

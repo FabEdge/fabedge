@@ -32,32 +32,22 @@ type IptablesHandler struct {
 	helper     *iptables.IPTablesHelper
 }
 
-func newIptableHandler() (*IptablesHandler, error) {
-	iptHelper, err := iptables.NewIPTablesHelper()
-	if err != nil {
-		return nil, err
-	}
-
+func newIptableHandler() *IptablesHandler {
 	return &IptablesHandler{
 		ipset:      ipsetutil.New(),
 		ipsetName:  IPSetRemotePodCIDR,
 		hashFamily: ipsetutil.ProtocolFamilyIPV4,
-		helper:     iptHelper,
-	}, nil
+		helper:     iptables.NewIPTablesHelper(),
+	}
 }
 
-func newIp6tableHandler() (*IptablesHandler, error) {
-	iptHelper, err := iptables.NewIP6TablesHelper()
-	if err != nil {
-		return nil, err
-	}
-
+func newIp6tableHandler() *IptablesHandler {
 	return &IptablesHandler{
 		ipset:      ipsetutil.New(),
 		ipsetName:  IPSetRemotePodCIDR6,
 		hashFamily: ipsetutil.ProtocolFamilyIPV6,
-		helper:     iptHelper,
-	}, nil
+		helper:     iptables.NewIP6TablesHelper(),
+	}
 }
 
 func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
@@ -69,10 +59,10 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 
 	h.helper.ClearAllRules()
 	h.helper.CreateFabEdgeForwardChain()
-	h.helper.NewMaintainForwardRulesForIPSet([]string{h.ipsetName})
-	h.helper.NewPreparePostRoutingChain()
-	h.helper.NewAddPostRoutingRuleForKubernetes()
-	h.helper.NewAddPostRoutingRulesForIPSet(h.ipsetName)
+	h.helper.MaintainForwardRulesForIPSet([]string{h.ipsetName})
+	h.helper.PreparePostRoutingChain()
+	h.helper.AddPostRoutingRuleForKubernetes()
+	h.helper.AddPostRoutingRulesForIPSet(h.ipsetName)
 
 	if err := h.helper.ReplaceRules(); err != nil {
 		logger.Error(err, "failed to sync iptables rules")
