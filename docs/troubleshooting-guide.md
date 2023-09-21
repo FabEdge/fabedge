@@ -135,7 +135,7 @@ Your cert is ok
 
 
 
-## Collect diagnostic informaiton
+## Collect diagnostic information
 
 You can use the script below to quickly collect the diagnostic information. If support is needed, please submit the generated files. 
 
