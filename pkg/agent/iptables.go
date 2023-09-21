@@ -76,21 +76,38 @@ func (m *Manager) ensureIPTablesRules() error {
 		},
 	}
 
-	clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
+	// As we will generate the full rule set, we du not need to calculate if subnets are equal
+	// clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
 
 	for _, c := range configs {
-		if err := m.ensureIPForwardRules(c.helper, c.subnets); err != nil {
-			return err
-		}
+		c.helper.ClearAllRules()
+
+		// ensureIPForwardRules
+		c.helper.CreateFabEdgeForwardChain()
+		c.helper.NewPrepareForwardChain()
+
+		// subnets won't change most of the time, and is append-only, so for now we don't need
+		// to handle removing old subnet
+		c.helper.NewMaintainForwardRulesForSubnets(c.subnets)
 
 		if m.MASQOutgoing {
-			if err := m.configureOutboundRules(c.helper, c.peerIPSet, c.subnets, clearOutgoingChain); err != nil {
+			c.helper.CreateFabEdgeNatOutgoingChain()
+			if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
+				m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
 				return err
 			}
+			c.helper.NewMaintainNatOutgoingRulesForSubnets(c.subnets, c.peerIPSet.IPSet.Name)
+		}
+
+		if err := c.helper.ReplaceRules(); err != nil {
+			m.log.Error(err, "failed to sync iptables rules")
+		} else {
+			m.log.V(5).Info("iptables rules is synced")
 		}
 	}
+
 	// must be done after configureOutboundRules are executed
-	m.lastSubnets = current.Subnets
+	// m.lastSubnets = current.Subnets
 
 	return nil
 }

@@ -237,6 +237,11 @@ func (h *IPTablesHelper) CreateFabEdgeForwardChain() {
 	h.CreateChain(TableFilter, ChainFabEdgeForward)
 }
 
+func (h *IPTablesHelper) CreateFabEdgeNatOutgoingChain() {
+	h.CreateChain(TableNat, ChainFabEdgeNatOutgoing)
+}
+
+// To remove
 func (h *IPTablesHelper) ClearOrCreateFabEdgeNatOutgoingChain() (err error) {
 	return h.ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing)
 }
@@ -267,6 +272,11 @@ func (h *IPTablesHelper) NewPreparePostRoutingChain() {
 	h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 }
 
+func (h *IPTablesHelper) NewPrepareForwardChain() {
+	h.CreateChain(TableFilter, ChainFabEdgeForward)
+	h.AppendUniqueRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+}
+
 // To remove
 func (h *IPTablesHelper) PrepareForwardChain() (err error) {
 	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
@@ -284,7 +294,7 @@ func (h *IPTablesHelper) PrepareForwardChain() (err error) {
 
 func (h *IPTablesHelper) NewMaintainForwardRulesForIPSet(ipsetNames []string) {
 	// Prepare
-	h.AppendUniqueRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+	h.NewPrepareForwardChain()
 	// Add connection track rule
 	h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
 	// Accept forward packets for ipset
@@ -334,6 +344,14 @@ func (h *IPTablesHelper) MaintainForwardRulesForIPSet(ipsetNames []string) (err 
 	return nil
 }
 
+func (h *IPTablesHelper) NewMaintainForwardRulesForSubnets(subnets []string) {
+	for _, subnet := range subnets {
+		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
+		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+	}
+}
+
+// To remove
 func (h *IPTablesHelper) MaintainForwardRulesForSubnets(subnets []string) (err error, errRule string) {
 	for _, subnet := range subnets {
 		if err := h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
@@ -347,6 +365,16 @@ func (h *IPTablesHelper) MaintainForwardRulesForSubnets(subnets []string) (err e
 	return nil, ""
 }
 
+func (h *IPTablesHelper) NewMaintainNatOutgoingRulesForSubnets(subnets []string, ipsetName string) {
+	for _, subnet := range subnets {
+		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
+		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
+		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade)
+		h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing)
+	}
+}
+
+// To remove
 func (h *IPTablesHelper) MaintainNatOutgoingRulesForSubnets(subnets []string, ipsetName string) (err error, errRule string) {
 	for _, subnet := range subnets {
 		if err := h.ipt.AppendUnique(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN"); err != nil {

@@ -79,6 +79,46 @@ func TestGenerateConnectorRules(t *testing.T) {
 	//}
 }
 
+func TestGenerateAgentRules(t *testing.T) {
+	ipt, err := NewIPTablesHelper()
+	if err != nil {
+		t.Error(err)
+	}
+
+	MASQOutgoing := true
+	clearFabEdgeNatOutgoingChain := true
+	subnets := []string{"192.168.1.0/24", "192.168.2.0/24"}
+	ipsetName := "IPSET"
+
+	ipt.ClearAllRules()
+
+	// ensureIPForwardRules
+	ipt.CreateFabEdgeForwardChain()
+	ipt.NewPrepareForwardChain()
+
+	// subnets won't change most of the time, and is append-only, so for now we don't need
+	// to handle removing old subnet
+	ipt.NewMaintainForwardRulesForSubnets(subnets)
+
+	if MASQOutgoing {
+		// configureOutboundRules
+		if clearFabEdgeNatOutgoingChain {
+			ipt.CreateFabEdgeNatOutgoingChain()
+		} else {
+			ipt.CreateFabEdgeNatOutgoingChain()
+		}
+		ipt.NewMaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
+	}
+
+	str := ipt.GenerateInputFromRuleSet()
+	println(str)
+
+	//err = ipt.ReplaceRules()
+	//if err != nil {
+	//	t.Error(err)
+	//}
+}
+
 func TestGenerateAndClearRules(t *testing.T) {
 	ipt, err := NewIPTablesHelper()
 	if err != nil {
