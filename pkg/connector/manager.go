@@ -203,33 +203,37 @@ func (m *Manager) runLeaderElection() {
 	lock := newLock(m.LeaderElection.LockName, m.kubeClient)
 	leaderID := lock.Identity()
 
-	leaderelection.RunOrDie(context.Background(), leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		ReleaseOnCancel: true,
-		LeaseDuration:   m.LeaderElection.LeaseDuration,
-		RenewDeadline:   m.LeaderElection.RenewDeadline,
-		RetryPeriod:     m.LeaderElection.RetryPeriod,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(c context.Context) {
-				m.log.V(3).Info("Get leader role, clear iptables rules generated as cloud agent")
-				m.cloudAgent.CleanAll()
-				m.isLeader.Store(true)
-				m.notify()
+	for {
+		m.log.V(3).Info("Begin acquiring leader lock", "id", leaderID)
+		leaderelection.RunOrDie(context.Background(), leaderelection.LeaderElectionConfig{
+			Lock:            lock,
+			ReleaseOnCancel: true,
+			LeaseDuration:   m.LeaderElection.LeaseDuration,
+			RenewDeadline:   m.LeaderElection.RenewDeadline,
+			RetryPeriod:     m.LeaderElection.RetryPeriod,
+			Callbacks: leaderelection.LeaderCallbacks{
+				OnStartedLeading: func(c context.Context) {
+					m.log.V(3).Info("Get leader role, clear iptables rules generated as cloud agent")
+					m.cloudAgent.CleanAll()
+					m.isLeader.Store(true)
+					m.notify()
+				},
+				OnStoppedLeading: func() {
+					m.log.V(3).Info("Lose leader role, clear iptables and routes")
+					m.clearAll()
+					m.isLeader.Store(false)
+				},
+				OnNewLeader: func(currentID string) {
+					if currentID == leaderID {
+						m.log.V(5).Info("Still be the leader!")
+					} else {
+						m.log.V(3).Info("Leader has changed", "NewLeaderID", currentID)
+					}
+				},
 			},
-			OnStoppedLeading: func() {
-				m.log.V(3).Info("Lose leader role, clear iptables and routes")
-				m.clearAll()
-				m.isLeader.Store(false)
-			},
-			OnNewLeader: func(currentID string) {
-				if currentID == leaderID {
-					m.log.V(5).Info("Still be the leader!")
-				} else {
-					m.log.V(3).Info("Leader has changed", "NewLeaderID", currentID)
-				}
-			},
-		},
-	})
+		})
+		m.log.V(3).Info("Give up leader election", "id", leaderID)
+	}
 }
 
 func (m *Manager) gracefulShutdown() {
