@@ -10,7 +10,3 @@ type IPTablesRule struct {
 	chain string
 	rule  []string
 }
-
-func NewRuleSets() []IPTablesRuleSet {
-	return []IPTablesRuleSet{}
-}

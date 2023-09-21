@@ -254,7 +254,9 @@ func (m *Manager) clearAll() {
 
 func (m *Manager) cleanSNatIPTablesRules() {
 	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
-		if err := ipt.helper.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
+		ipt.helper.ClearAllRules()
+		ipt.helper.CreateFabEdgePostRoutingChain()
+		if err := ipt.helper.ReplaceRules(); err != nil {
 			m.log.Error(err, "failed to clean iptables")
 		}
 	}
@@ -328,16 +330,9 @@ func (m *Manager) workLoop() {
 		m.broadcastConnectorPrefixes()
 
 		m.iptHandler.maintainIPSet()
-
-		m.iptHandler.helper.Mutex.Lock()
 		m.iptHandler.maintainIPTables()
-		m.iptHandler.helper.Mutex.Unlock()
-
 		m.ipt6Handler.maintainIPSet()
-
-		m.ipt6Handler.helper.Mutex.Lock()
 		m.ipt6Handler.maintainIPTables()
-		m.ipt6Handler.helper.Mutex.Unlock()
 	}
 }
 

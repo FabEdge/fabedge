@@ -125,76 +125,45 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 }
 
 func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
-	err := h.helper.ClearOrCreateFabEdgeInputChain()
-	if err != nil {
-		return err
-	}
-	err = h.helper.ClearOrCreateFabEdgeForwardChain()
-	if err != nil {
-		return err
-	}
-	return h.helper.ClearOrCreateFabEdgePostRoutingChain()
-}
-
-func (h *IPTablesHandler) ensureForwardIPTablesRules() (err error) {
-	// ensure rules exist
-	if err = h.helper.MaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h *IPTablesHandler) ensureNatIPTablesRules() (err error) {
-	if err = h.helper.PreparePostRoutingChain(); err != nil {
-		return err
-	}
-
-	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	if err = h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR); err != nil {
-		return err
-	}
-
-	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	if err = h.helper.AllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR); err != nil {
-		return err
-	}
-
-	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	if err = h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR); err != nil {
-		return err
-	}
-
-	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	if err = h.helper.MasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR); err != nil {
-		return err
-	}
-
-	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	return h.helper.MasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
-}
-
-func (h *IPTablesHandler) ensureIPSpecInputRules() (err error) {
-	return h.helper.AllowIPSec()
+	h.helper.ClearAllRules()
+	h.helper.CreateFabEdgeInputChain()
+	h.helper.CreateFabEdgeForwardChain()
+	h.helper.CreateFabEdgePostRoutingChain()
+	return h.helper.ReplaceRules()
 }
 
 func (h *IPTablesHandler) maintainIPTables() {
-	if err := h.ensureForwardIPTablesRules(); err != nil {
-		h.log.Error(err, "failed to add iptables forward rules")
-	} else {
-		h.log.V(5).Info("iptables forward rules are added")
-	}
+	h.helper.ClearAllRules()
 
-	if err := h.ensureNatIPTablesRules(); err != nil {
-		h.log.Error(err, "failed to add iptables nat rules")
-	} else {
-		h.log.V(5).Info("iptables nat rules are added")
-	}
+	// ensureForwardIPTablesRules
+	// ensure rules exist
+	h.helper.NewMaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR})
 
-	if err := h.ensureIPSpecInputRules(); err != nil {
-		h.log.Error(err, "failed to add iptables input rules")
+	// ensureNatIPTablesRules
+	h.helper.NewPreparePostRoutingChain()
+
+	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
+	h.helper.NewAllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
+
+	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
+	h.helper.NewAllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
+
+	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
+	h.helper.NewAllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
+
+	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
+	h.helper.NewMasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
+
+	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
+	h.helper.NewMasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
+
+	// ensureIPSpecInputRules
+	h.helper.NewAllowIPSec()
+
+	if err := h.helper.ReplaceRules(); err != nil {
+		h.log.Error(err, "failed to sync iptables rules")
 	} else {
-		h.log.V(5).Info("iptables input rules are added")
+		h.log.V(5).Info("iptables rules is synced")
 	}
 }
 

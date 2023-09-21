@@ -67,8 +67,7 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
 	}
 
-	h.helper.Mutex.Lock()
-
+	h.helper.ClearAllRules()
 	h.helper.CreateFabEdgeForwardChain()
 	h.helper.NewMaintainForwardRulesForIPSet([]string{h.ipsetName})
 	h.helper.NewPreparePostRoutingChain()
@@ -80,7 +79,6 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 	} else {
 		logger.V(5).Info("iptables rules is synced")
 	}
-	h.helper.Mutex.Unlock()
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
@@ -94,12 +92,8 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 }
 
 func (h IptablesHandler) clearRules() error {
-	h.helper.Mutex.Lock()
-	defer h.helper.Mutex.Unlock()
-
-	if err := h.helper.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
-		return err
-	}
-
-	return h.helper.ClearOrCreateFabEdgeForwardChain()
+	h.helper.ClearAllRules()
+	h.helper.CreateFabEdgePostRoutingChain()
+	h.helper.CreateFabEdgeForwardChain()
+	return h.helper.ReplaceRules()
 }

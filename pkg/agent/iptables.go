@@ -79,19 +79,15 @@ func (m *Manager) ensureIPTablesRules() error {
 	clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
 
 	for _, c := range configs {
-		c.helper.Mutex.Lock()
 		if err := m.ensureIPForwardRules(c.helper, c.subnets); err != nil {
-			c.helper.Mutex.Unlock()
 			return err
 		}
 
 		if m.MASQOutgoing {
 			if err := m.configureOutboundRules(c.helper, c.peerIPSet, c.subnets, clearOutgoingChain); err != nil {
-				c.helper.Mutex.Unlock()
 				return err
 			}
 		}
-		c.helper.Mutex.Unlock()
 	}
 	// must be done after configureOutboundRules are executed
 	m.lastSubnets = current.Subnets

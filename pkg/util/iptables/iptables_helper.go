@@ -21,7 +21,6 @@ import (
 	"io"
 	"os/exec"
 	"strings"
-	"sync"
 )
 
 const (
@@ -50,7 +49,6 @@ type IPTablesHelper struct {
 	protocol       iptables.Protocol
 	restoreCommand string
 	ruleSets       []IPTablesRuleSet
-	Mutex          sync.RWMutex
 }
 
 func NewIPTablesHelper() (*IPTablesHelper, error) {
@@ -77,7 +75,7 @@ func doCreateIPTablesHelper(proto iptables.Protocol) (*IPTablesHelper, error) {
 		ipt:            t,
 		protocol:       proto,
 		restoreCommand: command,
-		ruleSets:       NewRuleSets(),
+		ruleSets:       []IPTablesRuleSet{},
 	}, err
 }
 
@@ -104,10 +102,7 @@ func (h *IPTablesHelper) ReplaceRules() error {
 
 	stdout, stderr, err := h.runRestoreCommand([]string{}, bytes.NewBuffer([]byte(rules)))
 	if err != nil {
-		print(err)
-		print("out:", stdout)
-		print("err:", stderr)
-		return err
+		return fmt.Errorf("iptables-helper: fail to replace rules. stdout = %s; stderr = %s; error = %w", stdout, stderr, err)
 	}
 	return nil
 }
@@ -226,17 +221,16 @@ func (h *IPTablesHelper) rulesEqual(one, other []string) bool {
 	return true
 }
 
-func (h *IPTablesHelper) ClearOrCreateFabEdgePostRoutingChain() (err error) {
-	return h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting)
+func (h *IPTablesHelper) ClearAllRules() {
+	h.ruleSets = []IPTablesRuleSet{}
 }
 
-func (h *IPTablesHelper) ClearOrCreateFabEdgeInputChain() (err error) {
-	return h.ipt.ClearChain(TableFilter, ChainFabEdgeInput)
+func (h *IPTablesHelper) CreateFabEdgePostRoutingChain() {
+	h.CreateChain(TableNat, ChainFabEdgePostRouting)
 }
 
-// To remove
-func (h *IPTablesHelper) ClearOrCreateFabEdgeForwardChain() (err error) {
-	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+func (h *IPTablesHelper) CreateFabEdgeInputChain() {
+	h.CreateChain(TableFilter, ChainFabEdgeInput)
 }
 
 func (h *IPTablesHelper) CreateFabEdgeForwardChain() {
@@ -271,24 +265,6 @@ func (h *IPTablesHelper) CheckOrCreateFabEdgeNatOutgoingChain() (err error) {
 func (h *IPTablesHelper) NewPreparePostRoutingChain() {
 	h.CreateChain(TableNat, ChainFabEdgePostRouting)
 	h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
-}
-
-// To remove
-func (h *IPTablesHelper) PreparePostRoutingChain() (err error) {
-	if err = h.ClearOrCreateFabEdgePostRoutingChain(); err != nil {
-		return err
-	}
-	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // To remove
@@ -425,6 +401,15 @@ func (h *IPTablesHelper) AddPostRoutingRulesForIPSet(ipsetName string) (err erro
 	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
 }
 
+func (h *IPTablesHelper) NewAllowIPSec() {
+	h.AppendUniqueRule(TableFilter, ChainInput, "-j", ChainFabEdgeInput)
+	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
+	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
+	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
+	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
+}
+
+// To remove
 func (h *IPTablesHelper) AllowIPSec() (err error) {
 	if err = h.ipt.AppendUnique(TableFilter, ChainInput, "-j", ChainFabEdgeInput); err != nil {
 		return err
@@ -445,10 +430,20 @@ func (h *IPTablesHelper) AllowIPSec() (err error) {
 	return nil
 }
 
+func (h *IPTablesHelper) NewAllowPostRoutingForIPSet(src, dst string) {
+	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
+}
+
+// To remove
 func (h *IPTablesHelper) AllowPostRoutingForIPSet(src, dst string) (err error) {
 	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
 }
 
+func (h *IPTablesHelper) NewMasqueradePostRoutingForIPSet(src, dst string) {
+	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
+}
+
+// To remove
 func (h *IPTablesHelper) MasqueradePostRoutingForIPSet(src, dst string) (err error) {
 	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
 }
