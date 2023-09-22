@@ -15,6 +15,7 @@
 package cloud_agent
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
 	"github.com/fabedge/fabedge/pkg/util/iptables"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -59,16 +60,30 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 
 	h.helper.ClearAllRules()
 	h.helper.CreateFabEdgeForwardChain()
+	h.helper.PrepareForwardChain()
 	h.helper.MaintainForwardRulesForIPSet([]string{h.ipsetName})
 	h.helper.PreparePostRoutingChain()
-	h.helper.AddPostRoutingRuleForKubernetes()
-	h.helper.AddPostRoutingRulesForIPSet(h.ipsetName)
+	h.addPostRoutingRuleForKubernetes()
+	h.addPostRoutingRulesForIPSet(h.ipsetName)
 
 	if err := h.helper.ReplaceRules(); err != nil {
 		logger.Error(err, "failed to sync iptables rules")
 	} else {
 		logger.V(5).Info("iptables rules is synced")
 	}
+}
+
+func (h IptablesHandler) addPostRoutingRulesForIPSet(ipsetName string) {
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+}
+
+func (h IptablesHandler) addPostRoutingRuleForKubernetes() {
+	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
+	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
+	// and this would cause response packets are dropped
+	h.helper.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {

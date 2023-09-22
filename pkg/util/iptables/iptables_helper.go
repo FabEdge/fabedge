@@ -17,25 +17,10 @@ package iptables
 import (
 	"bytes"
 	"fmt"
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"io"
 	"os/exec"
 	"strings"
-)
-
-const (
-	TableFilter  = "filter"
-	TableNat     = "nat"
-	ChainInput   = "INPUT"
-	ChainForward = "FORWARD"
-)
-
-const (
-	ChainPostRouting        = "POSTROUTING"
-	ChainMasquerade         = "MASQUERADE"
-	ChainFabEdgeInput       = "FABEDGE-INPUT"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
 )
 
 const (
@@ -226,84 +211,29 @@ func (h *IPTablesHelper) ClearAllRules() {
 }
 
 func (h *IPTablesHelper) CreateFabEdgePostRoutingChain() {
-	h.CreateChain(TableNat, ChainFabEdgePostRouting)
-}
-
-func (h *IPTablesHelper) CreateFabEdgeInputChain() {
-	h.CreateChain(TableFilter, ChainFabEdgeInput)
+	h.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHelper) CreateFabEdgeForwardChain() {
-	h.CreateChain(TableFilter, ChainFabEdgeForward)
-}
-
-func (h *IPTablesHelper) CreateFabEdgeNatOutgoingChain() {
-	h.CreateChain(TableNat, ChainFabEdgeNatOutgoing)
+	h.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
 }
 
 func (h *IPTablesHelper) PreparePostRoutingChain() {
-	h.CreateChain(TableNat, ChainFabEdgePostRouting)
-	h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	h.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	h.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHelper) PrepareForwardChain() {
-	h.CreateChain(TableFilter, ChainFabEdgeForward)
-	h.AppendUniqueRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
+	h.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
+	h.AppendUniqueRule(constants.TableFilter, constants.ChainForward, "-j", constants.ChainFabEdgeForward)
 }
 
 func (h *IPTablesHelper) MaintainForwardRulesForIPSet(ipsetNames []string) {
-	// Prepare
-	h.PrepareForwardChain()
 	// Add connection track rule
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
+	h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
 	// Accept forward packets for ipset
 	for _, ipsetName := range ipsetNames {
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
+		h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+		h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
 	}
-}
-
-func (h *IPTablesHelper) MaintainForwardRulesForSubnets(subnets []string) {
-	for _, subnet := range subnets {
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
-	}
-}
-
-func (h *IPTablesHelper) MaintainNatOutgoingRulesForSubnets(subnets []string, ipsetName string) {
-	for _, subnet := range subnets {
-		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
-		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
-		h.AppendUniqueRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade)
-		h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing)
-	}
-}
-
-func (h *IPTablesHelper) AddPostRoutingRuleForKubernetes() {
-	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
-	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
-	// and this would cause response packets are dropped
-	h.CreateChain(TableNat, "KUBE-POSTROUTING")
-	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
-}
-
-func (h *IPTablesHelper) AddPostRoutingRulesForIPSet(ipsetName string) {
-	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
-	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-}
-
-func (h *IPTablesHelper) AllowIPSec() {
-	h.AppendUniqueRule(TableFilter, ChainInput, "-j", ChainFabEdgeInput)
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
-}
-
-func (h *IPTablesHelper) AllowPostRoutingForIPSet(src, dst string) {
-	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
-}
-
-func (h *IPTablesHelper) MasqueradePostRoutingForIPSet(src, dst string) {
-	h.AppendUniqueRule(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
 }

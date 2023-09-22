@@ -15,6 +15,7 @@
 package iptables
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"testing"
 )
 
@@ -25,12 +26,22 @@ func TestGenerateCloudAgentRules(t *testing.T) {
 	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
 	ipt.ClearAllRules()
 	ipt.CreateFabEdgeForwardChain()
+	ipt.PrepareForwardChain()
 	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
 
 	// Sync PostRouting
 	ipt.PreparePostRoutingChain()
-	ipt.AddPostRoutingRuleForKubernetes()
-	ipt.AddPostRoutingRulesForIPSet(ipsetName)
+
+	// ipt.AddPostRoutingRuleForKubernetes()
+	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
+	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
+	// and this would cause response packets are dropped
+	ipt.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
+
+	// AddPostRoutingRulesForIPSet(ipsetName)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
 
 	str := ipt.GenerateInputFromRuleSet()
 	println(str)
@@ -55,28 +66,33 @@ func TestGenerateConnectorRules(t *testing.T) {
 
 	// ensureForwardIPTablesRules
 	// ensure rules exist
+	ipt.PrepareForwardChain()
 	ipt.MaintainForwardRulesForIPSet([]string{IPSetCloudPodCIDR, IPSetCloudNodeCIDR})
 
 	// ensureNatIPTablesRules
 	ipt.PreparePostRoutingChain()
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	ipt.AllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgePodCIDR)
+	allowPostRoutingForIPSet(ipt, IPSetCloudPodCIDR, IPSetEdgePodCIDR)
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	ipt.AllowPostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudPodCIDR)
+	allowPostRoutingForIPSet(ipt, IPSetEdgePodCIDR, IPSetCloudPodCIDR)
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	ipt.AllowPostRoutingForIPSet(IPSetCloudPodCIDR, IPSetEdgeNodeCIDR)
+	allowPostRoutingForIPSet(ipt, IPSetCloudPodCIDR, IPSetEdgeNodeCIDR)
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	ipt.MasqueradePostRoutingForIPSet(IPSetEdgePodCIDR, IPSetCloudNodeCIDR)
+	masqueradePostRoutingForIPSet(ipt, IPSetEdgePodCIDR, IPSetCloudNodeCIDR)
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	ipt.MasqueradePostRoutingForIPSet(IPSetEdgeNodeCIDR, IPSetCloudPodCIDR)
+	masqueradePostRoutingForIPSet(ipt, IPSetEdgeNodeCIDR, IPSetCloudPodCIDR)
 
 	// ensureIPSpecInputRules
-	ipt.AllowIPSec()
+	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainInput, "-j", constants.ChainFabEdgeInput)
+	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
+	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
+	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
+	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
 
 	str := ipt.GenerateInputFromRuleSet()
 	println(str)
@@ -85,6 +101,14 @@ func TestGenerateConnectorRules(t *testing.T) {
 	//if err != nil {
 	//	t.Error(err)
 	//}
+}
+
+func allowPostRoutingForIPSet(helper *IPTablesHelper, src, dst string) {
+	helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
+}
+
+func masqueradePostRoutingForIPSet(helper *IPTablesHelper, src, dst string) {
+	helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
 }
 
 func TestGenerateAgentRules(t *testing.T) {
@@ -103,16 +127,28 @@ func TestGenerateAgentRules(t *testing.T) {
 
 	// subnets won't change most of the time, and is append-only, so for now we don't need
 	// to handle removing old subnet
-	ipt.MaintainForwardRulesForSubnets(subnets)
+
+	// ipt.MaintainForwardRulesForSubnets(subnets)
+	for _, subnet := range subnets {
+		ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
+		ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+	}
 
 	if MASQOutgoing {
 		// configureOutboundRules
 		if clearFabEdgeNatOutgoingChain {
-			ipt.CreateFabEdgeNatOutgoingChain()
+			ipt.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
 		} else {
-			ipt.CreateFabEdgeNatOutgoingChain()
+			ipt.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
 		}
-		ipt.MaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
+
+		// ipt.MaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
+		for _, subnet := range subnets {
+			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
+			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
+			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", constants.ChainMasquerade)
+			ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgeNatOutgoing)
+		}
 	}
 
 	str := ipt.GenerateInputFromRuleSet()
@@ -130,12 +166,22 @@ func TestGenerateAndClearRules(t *testing.T) {
 	// Sync forward
 	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
 	ipt.CreateFabEdgeForwardChain()
+	ipt.PrepareForwardChain()
 	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
 
 	// Sync PostRouting
 	ipt.PreparePostRoutingChain()
-	ipt.AddPostRoutingRuleForKubernetes()
-	ipt.AddPostRoutingRulesForIPSet(ipsetName)
+
+	// ipt.AddPostRoutingRuleForKubernetes()
+	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
+	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
+	// and this would cause response packets are dropped
+	ipt.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
+
+	// AddPostRoutingRulesForIPSet(ipsetName)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
 
 	str := ipt.GenerateInputFromRuleSet()
 	println("Old:")

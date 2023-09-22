@@ -15,6 +15,7 @@
 package agent
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -78,16 +79,17 @@ func (m *Manager) ensureIPTablesRules() error {
 
 		// subnets won't change most of the time, and is append-only, so for now we don't need
 		// to handle removing old subnet
-		c.helper.MaintainForwardRulesForSubnets(c.subnets)
+		maintainForwardRulesForSubnets(c.helper, c.subnets)
 
 		if m.MASQOutgoing {
 			// outbound NAT from pods to outside the cluster
-			c.helper.CreateFabEdgeNatOutgoingChain()
+			// Create FabEdge NAT outgoing chain
+			c.helper.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
 			if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
 				m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
 				return err
 			}
-			c.helper.MaintainNatOutgoingRulesForSubnets(c.subnets, c.peerIPSet.IPSet.Name)
+			maintainNatOutgoingRulesForSubnets(c.helper, c.subnets, c.peerIPSet.IPSet.Name)
 		}
 
 		if err := c.helper.ReplaceRules(); err != nil {
@@ -101,6 +103,22 @@ func (m *Manager) ensureIPTablesRules() error {
 	// m.lastSubnets = current.Subnets
 
 	return nil
+}
+
+func maintainNatOutgoingRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string, ipsetName string) {
+	for _, subnet := range subnets {
+		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
+		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
+		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", constants.ChainMasquerade)
+		helper.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgeNatOutgoing)
+	}
+}
+
+func maintainForwardRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string) {
+	for _, subnet := range subnets {
+		helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
+		helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+	}
 }
 
 func (m *Manager) areSubnetsEqual(sa1, sa2 []string) bool {

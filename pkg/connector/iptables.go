@@ -15,6 +15,7 @@
 package connector
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/constants"
 	"sync"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
@@ -116,10 +117,14 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 
 func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
 	h.helper.ClearAllRules()
-	h.helper.CreateFabEdgeInputChain()
+	h.createFabEdgeInputChain()
 	h.helper.CreateFabEdgeForwardChain()
 	h.helper.CreateFabEdgePostRoutingChain()
 	return h.helper.ReplaceRules()
+}
+
+func (h *IPTablesHandler) createFabEdgeInputChain() {
+	h.helper.CreateChain(constants.TableFilter, constants.ChainFabEdgeInput)
 }
 
 func (h *IPTablesHandler) maintainIPTables() {
@@ -127,34 +132,51 @@ func (h *IPTablesHandler) maintainIPTables() {
 
 	// ensureForwardIPTablesRules
 	// ensure rules exist
+	h.helper.PrepareForwardChain()
 	h.helper.MaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR})
 
 	// ensureNatIPTablesRules
 	h.helper.PreparePostRoutingChain()
 
 	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
+	h.allowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
 
 	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	h.helper.AllowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
+	h.allowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
 
 	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	h.helper.AllowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
+	h.allowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
 
 	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	h.helper.MasqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
+	h.masqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
 
 	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	h.helper.MasqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
+	h.masqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
 
 	// ensureIPSpecInputRules
-	h.helper.AllowIPSec()
+	h.allowIPSec()
 
 	if err := h.helper.ReplaceRules(); err != nil {
 		h.log.Error(err, "failed to sync iptables rules")
 	} else {
 		h.log.V(5).Info("iptables rules is synced")
 	}
+}
+
+func (h *IPTablesHandler) allowPostRoutingForIPSet(src, dst string) {
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
+}
+
+func (h *IPTablesHandler) masqueradePostRoutingForIPSet(src, dst string) {
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
+}
+
+func (h *IPTablesHandler) allowIPSec() {
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainInput, "-j", constants.ChainFabEdgeInput)
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
 }
 
 func (h *IPTablesHandler) maintainIPSet() {
