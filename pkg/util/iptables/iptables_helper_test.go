@@ -16,185 +16,69 @@ package iptables
 
 import (
 	"github.com/fabedge/fabedge/pkg/common/constants"
+	"strings"
 	"testing"
 )
 
-func TestGenerateCloudAgentRules(t *testing.T) {
+func TestCreateChain(t *testing.T) {
 	ipt := NewIPTablesHelper()
-
-	// Sync forward
-	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
 	ipt.ClearAllRules()
-	ipt.CreateFabEdgeForwardChain()
-	ipt.PrepareForwardChain()
-	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
-
-	// Sync PostRouting
-	ipt.PreparePostRoutingChain()
-
-	// ipt.AddPostRoutingRuleForKubernetes()
-	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
-	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
-	// and this would cause response packets are dropped
-	ipt.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
-
-	// AddPostRoutingRulesForIPSet(ipsetName)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-
-	str := ipt.GenerateInputFromRuleSet()
-	println(str)
-
-	//err = ipt.ReplaceRules()
-	//if err != nil {
-	//	t.Error(err)
-	//}
-}
-
-func TestGenerateConnectorRules(t *testing.T) {
-	ipt := NewIPTablesHelper()
-
-	ipt.ClearAllRules()
-
-	const (
-		IPSetEdgePodCIDR   = "FABEDGE-EDGE-POD-CIDR"
-		IPSetEdgeNodeCIDR  = "FABEDGE-EDGE-NODE-CIDR"
-		IPSetCloudPodCIDR  = "FABEDGE-CLOUD-POD-CIDR"
-		IPSetCloudNodeCIDR = "FABEDGE-CLOUD-NODE-CIDR"
-	)
-
-	// ensureForwardIPTablesRules
-	// ensure rules exist
-	ipt.PrepareForwardChain()
-	ipt.MaintainForwardRulesForIPSet([]string{IPSetCloudPodCIDR, IPSetCloudNodeCIDR})
-
-	// ensureNatIPTablesRules
-	ipt.PreparePostRoutingChain()
-
-	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	allowPostRoutingForIPSet(ipt, IPSetCloudPodCIDR, IPSetEdgePodCIDR)
-
-	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	allowPostRoutingForIPSet(ipt, IPSetEdgePodCIDR, IPSetCloudPodCIDR)
-
-	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	allowPostRoutingForIPSet(ipt, IPSetCloudPodCIDR, IPSetEdgeNodeCIDR)
-
-	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	masqueradePostRoutingForIPSet(ipt, IPSetEdgePodCIDR, IPSetCloudNodeCIDR)
-
-	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	masqueradePostRoutingForIPSet(ipt, IPSetEdgeNodeCIDR, IPSetCloudPodCIDR)
-
-	// ensureIPSpecInputRules
-	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainInput, "-j", constants.ChainFabEdgeInput)
-	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
-	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
-	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
-	ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
-
-	str := ipt.GenerateInputFromRuleSet()
-	println(str)
-
-	//err = ipt.ReplaceRules()
-	//if err != nil {
-	//	t.Error(err)
-	//}
-}
-
-func allowPostRoutingForIPSet(helper *IPTablesHelper, src, dst string) {
-	helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
-}
-
-func masqueradePostRoutingForIPSet(helper *IPTablesHelper, src, dst string) {
-	helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
-}
-
-func TestGenerateAgentRules(t *testing.T) {
-	ipt := NewIPTablesHelper()
-
-	MASQOutgoing := true
-	clearFabEdgeNatOutgoingChain := true
-	subnets := []string{"192.168.1.0/24", "192.168.2.0/24"}
-	ipsetName := "IPSET"
-
-	ipt.ClearAllRules()
-
-	// ensureIPForwardRules
-	ipt.CreateFabEdgeForwardChain()
-	ipt.PrepareForwardChain()
-
-	// subnets won't change most of the time, and is append-only, so for now we don't need
-	// to handle removing old subnet
-
-	// ipt.MaintainForwardRulesForSubnets(subnets)
-	for _, subnet := range subnets {
-		ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
-		ipt.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	actual := ipt.GenerateInputFromRuleSet()
+	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+	if actual != expect {
+		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
-
-	if MASQOutgoing {
-		// configureOutboundRules
-		if clearFabEdgeNatOutgoingChain {
-			ipt.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
-		} else {
-			ipt.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
-		}
-
-		// ipt.MaintainNatOutgoingRulesForSubnets(subnets, ipsetName)
-		for _, subnet := range subnets {
-			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
-			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
-			ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", constants.ChainMasquerade)
-			ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgeNatOutgoing)
-		}
-	}
-
-	str := ipt.GenerateInputFromRuleSet()
-	println(str)
-
-	//err = ipt.ReplaceRules()
-	//if err != nil {
-	//	t.Error(err)
-	//}
 }
 
-func TestGenerateAndClearRules(t *testing.T) {
+func TestCreateInternalChain(t *testing.T) {
 	ipt := NewIPTablesHelper()
-
-	// Sync forward
-	ipsetName := "FABEDGE-REMOTE-POD-CIDR"
-	ipt.CreateFabEdgeForwardChain()
-	ipt.PrepareForwardChain()
-	ipt.MaintainForwardRulesForIPSet([]string{ipsetName})
-
-	// Sync PostRouting
-	ipt.PreparePostRoutingChain()
-
-	// ipt.AddPostRoutingRuleForKubernetes()
-	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
-	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
-	// and this would cause response packets are dropped
-	ipt.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
-
-	// AddPostRoutingRulesForIPSet(ipsetName)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-
-	str := ipt.GenerateInputFromRuleSet()
-	println("Old:")
-	println(str)
-
 	ipt.ClearAllRules()
-	ipt.CreateFabEdgeForwardChain()
-	str = ipt.GenerateInputFromRuleSet()
-	println("New:")
-	println(str)
+	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
+	actual := ipt.GenerateInputFromRuleSet()
+	expect := strings.Join([]string{"*nat\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "COMMIT\n"}, "")
+	if actual != expect {
+		t.Fatalf("expect: %s, actual: %s", expect, actual)
+	}
+}
 
-	//err = ipt.ReplaceRules()
-	//if err != nil {
-	//	t.Error(err)
-	//}
+func TestCreateDuplicatedChains(t *testing.T) {
+	ipt := NewIPTablesHelper()
+	ipt.ClearAllRules()
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	actual := ipt.GenerateInputFromRuleSet()
+	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+	if actual != expect {
+		t.Fatalf("expect: %s, actual: %s", expect, actual)
+	}
+}
+
+func TestCreateChainAndAppendRule(t *testing.T) {
+	ipt := NewIPTablesHelper()
+	ipt.ClearAllRules()
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	actual := ipt.GenerateInputFromRuleSet()
+	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+	if actual != expect {
+		t.Fatalf("expect: %s, actual: %s", expect, actual)
+	}
+}
+
+func TestCreateChainAndAppendDuplicatedRules(t *testing.T) {
+	ipt := NewIPTablesHelper()
+	ipt.ClearAllRules()
+	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	actual := ipt.GenerateInputFromRuleSet()
+	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+	if actual != expect {
+		t.Fatalf("expect: %s, actual: %s", expect, actual)
+	}
 }
