@@ -23,77 +23,106 @@ import (
 
 const (
 	IPSetRemotePodCIDR  = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetEdgeNodeCIDR   = "FABEDGE-EDGE-NODE-CIDR"
 	IPSetRemotePodCIDR6 = "FABEDGE-REMOTE-POD-CIDR6"
+	IPSetEdgeNodeCIDR6  = "FABEDGE-EDGE-NODE-CIDR6"
 )
 
 type IptablesHandler struct {
-	ipset      ipsetutil.Interface
-	ipsetName  string
-	hashFamily string
-	helper     *iptables.IPTablesHelper
+	ipset                ipsetutil.Interface
+	nameForRemotePodCIDR string
+	nameForEdgeNodeCIDR  string
+	hashFamily           string
+	helper               *iptables.IPTablesHelper
 }
 
 func newIptableHandler() *IptablesHandler {
 	return &IptablesHandler{
-		ipset:      ipsetutil.New(),
-		ipsetName:  IPSetRemotePodCIDR,
-		hashFamily: ipsetutil.ProtocolFamilyIPV4,
-		helper:     iptables.NewIPTablesHelper(),
+		ipset:                ipsetutil.New(),
+		nameForRemotePodCIDR: IPSetRemotePodCIDR,
+		nameForEdgeNodeCIDR:  IPSetEdgeNodeCIDR,
+		hashFamily:           ipsetutil.ProtocolFamilyIPV4,
+		helper:               iptables.NewIPTablesHelper(),
 	}
 }
 
 func newIp6tableHandler() *IptablesHandler {
 	return &IptablesHandler{
-		ipset:      ipsetutil.New(),
-		ipsetName:  IPSetRemotePodCIDR6,
-		hashFamily: ipsetutil.ProtocolFamilyIPV6,
-		helper:     iptables.NewIP6TablesHelper(),
+		ipset:                ipsetutil.New(),
+		nameForRemotePodCIDR: IPSetRemotePodCIDR6,
+		nameForEdgeNodeCIDR:  IPSetEdgeNodeCIDR6,
+		hashFamily:           ipsetutil.ProtocolFamilyIPV6,
+		helper:               iptables.NewIP6TablesHelper(),
 	}
 }
 
-func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
+func (h IptablesHandler) maintainRules(remotePodCIDRs, edgeNodeCIDRs []string) {
 	if err := h.syncRemotePodCIDRSet(remotePodCIDRs); err != nil {
-		logger.Error(err, "failed to sync ipset", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+		logger.Error(err, "failed to sync ipset", "setName", h.nameForRemotePodCIDR)
 	} else {
-		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
+		logger.V(5).Info("ipset is synced", "setName", h.nameForRemotePodCIDR)
+	}
+
+	if err := h.syncEdgeNodeCIDRSet(edgeNodeCIDRs); err != nil {
+		logger.Error(err, "failed to sync ipset", "setName", h.nameForEdgeNodeCIDR)
+	} else {
+		logger.V(5).Info("ipset is synced", "setName", h.nameForEdgeNodeCIDR)
 	}
 
 	h.helper.ClearAllRules()
-	h.helper.CreateFabEdgeForwardChain()
-	h.helper.PrepareForwardChain()
-	h.helper.MaintainForwardRulesForIPSet([]string{h.ipsetName})
-	h.helper.PreparePostRoutingChain()
-	h.addPostRoutingRuleForKubernetes()
-	h.addPostRoutingRulesForIPSet(h.ipsetName)
+	h.syncForwardRules()
+	h.syncPostRoutingRules()
 
 	if err := h.helper.ReplaceRules(); err != nil {
 		logger.Error(err, "failed to sync iptables rules")
 	} else {
 		logger.V(5).Info("iptables rules is synced")
 	}
+
 }
 
-func (h IptablesHandler) addPostRoutingRulesForIPSet(ipsetName string) {
-	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+func (h IptablesHandler) syncForwardRules() {
+	h.helper.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainForward, "-j", constants.ChainFabEdgeForward)
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "src", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "dst", "-j", "ACCEPT")
 }
 
-func (h IptablesHandler) addPostRoutingRuleForKubernetes() {
+func (h IptablesHandler) syncPostRoutingRules() {
+	h.helper.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+
 	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
 	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
 	// and this would cause response packets are dropped
 	h.helper.CreateChain(constants.TableNat, "KUBE-POSTROUTING")
 	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING")
+
+	// todo: set pod cidr of current node as src filter
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForEdgeNodeCIDR, "dst", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "dst", "-j", "ACCEPT")
+	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "src", "-j", "ACCEPT")
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 	set := &ipsetutil.IPSet{
-		Name:       h.ipsetName,
+		Name:       h.nameForRemotePodCIDR,
 		HashFamily: h.hashFamily,
 		SetType:    ipsetutil.HashNet,
 	}
 
 	return h.ipset.EnsureIPSet(set, sets.NewString(remotePodCIDRs...))
+}
+
+func (h IptablesHandler) syncEdgeNodeCIDRSet(edgeNodeCIDRs []string) error {
+	set := &ipsetutil.IPSet{
+		Name:       h.nameForEdgeNodeCIDR,
+		HashFamily: h.hashFamily,
+		SetType:    ipsetutil.HashNet,
+	}
+
+	return h.ipset.EnsureIPSet(set, sets.NewString(edgeNodeCIDRs...))
 }
 
 func (h IptablesHandler) clearRules() error {

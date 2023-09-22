@@ -298,8 +298,11 @@ func (m *Manager) broadcastConnectorPrefixes() {
 		m.log.Error(err, "failed to get connector prefixes")
 		return
 	}
+	// temporary implementation, will be changed in later version
+	cp.EdgeNodeCIDRs = m.iptHandler.getEdgeNodeCIDRs()
 
 	log := m.log.WithValues("connectorPrefixes", cp)
+
 	log.V(5).Info("get connector prefixes")
 	b, err := json.Marshal(cp)
 	if err != nil {
@@ -331,12 +334,13 @@ func (m *Manager) workLoop() {
 
 		m.maintainTunnels()
 		m.maintainRoutes()
-		m.broadcastConnectorPrefixes()
 
 		m.iptHandler.maintainIPSet()
 		m.iptHandler.maintainIPTables()
 		m.ipt6Handler.maintainIPSet()
 		m.ipt6Handler.maintainIPTables()
+
+		m.broadcastConnectorPrefixes()
 	}
 }
 

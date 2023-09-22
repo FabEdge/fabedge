@@ -200,3 +200,17 @@ func (h *IPTablesHandler) maintainIPSet() {
 		}
 	}
 }
+
+func (h *IPTablesHandler) getEdgeNodeCIDRs() []string {
+	h.lock.RLock()
+	specs := h.specs
+	h.lock.RUnlock()
+
+	for _, spec := range specs {
+		if spec.Name == IPSetEdgeNodeCIDR {
+			return spec.EntrySet.List()
+		}
+	}
+
+	return nil
+}

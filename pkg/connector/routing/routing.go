@@ -38,6 +38,9 @@ type ConnectorPrefixes struct {
 	LocalPrefixes6  []string `json:"local-prefixes6"`
 	RemotePrefixes  []string `json:"remote-prefixes"`
 	RemotePrefixes6 []string `json:"remote-prefixes6"`
+
+	// Since FabEdge don't support IPv6 for host, there will be no EdgeNodeCIDRs6
+	EdgeNodeCIDRs []string `json:"edgeNodeCIDRs"`
 }
 
 type Routing interface {
