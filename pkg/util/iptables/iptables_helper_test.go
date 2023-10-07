@@ -25,7 +25,8 @@ func TestCreateChain(t *testing.T) {
 	ipt.ClearAllRules()
 	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
-	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+	expect := strings.Join([]string{"*nat\n",
+		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
@@ -36,7 +37,8 @@ func TestCreateInternalChain(t *testing.T) {
 	ipt.ClearAllRules()
 	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
-	expect := strings.Join([]string{"*nat\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "COMMIT\n"}, "")
+	expect := strings.Join([]string{"*nat\n",
+		":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
@@ -49,7 +51,8 @@ func TestCreateDuplicatedChains(t *testing.T) {
 	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
 	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
-	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+	expect := strings.Join([]string{"*nat\n",
+		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
@@ -62,7 +65,9 @@ func TestCreateChainAndAppendRule(t *testing.T) {
 	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
 	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
-	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+	expect := strings.Join([]string{"*nat\n",
+		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n",
+		"-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
@@ -77,7 +82,9 @@ func TestCreateChainAndAppendDuplicatedRules(t *testing.T) {
 	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
 	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
-	expect := strings.Join([]string{"*nat\n", ":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+	expect := strings.Join([]string{"*nat\n",
+		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n",
+		"-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}

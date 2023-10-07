@@ -82,16 +82,12 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs, edgeNodeCIDRs []string) {
 }
 
 func (h IptablesHandler) syncForwardRules() {
-	h.helper.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainForward, "-j", constants.ChainFabEdgeForward)
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "src", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", h.nameForRemotePodCIDR, "dst", "-j", "ACCEPT")
+	h.helper.PrepareForwardChain()
+	h.helper.MaintainForwardRulesForIPSet([]string{h.nameForRemotePodCIDR})
 }
 
 func (h IptablesHandler) syncPostRoutingRules() {
-	h.helper.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	h.helper.PreparePostRoutingChain()
 
 	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
 	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,

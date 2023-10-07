@@ -92,6 +92,16 @@ func (h *IPTablesHelper) ReplaceRules() error {
 	return nil
 }
 
+func (h *IPTablesHelper) AppendRules() error {
+	rules := h.GenerateInputFromRuleSet()
+
+	stdout, stderr, err := h.runRestoreCommand([]string{"--noflush"}, bytes.NewBuffer([]byte(rules)))
+	if err != nil {
+		return fmt.Errorf("iptables-helper: fail to replace rules. stdout = %s; stderr = %s; error = %w", stdout, stderr, err)
+	}
+	return nil
+}
+
 func (h *IPTablesHelper) isInternalChain(table string, chain string) bool {
 	if table == "filter" {
 		if chain == "INPUT" || chain == "OUTPUT" || chain == "FORWARD" {
