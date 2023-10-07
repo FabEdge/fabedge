@@ -180,7 +180,7 @@ func (m *Manager) notify() {
 func (m *Manager) Start() {
 	about.DisplayVersion()
 
-	m.clearFabEdgeIptablesChains()
+	m.removeAllChains()
 
 	go m.runLeaderElection()
 	go m.runHTTPServer()
@@ -239,34 +239,33 @@ func (m *Manager) runLeaderElection() {
 func (m *Manager) gracefulShutdown() {
 	err := m.router.CleanRoutes(m.connections)
 	if err != nil {
-		m.log.Error(err, "failed to clean routers")
+		m.log.Error(err, "failed to clean routes")
 	}
 
-	m.cleanSNatIPTablesRules()
+	m.removeAllChains()
 }
 
 func (m *Manager) clearAll() {
 	err := m.router.CleanRoutes(m.connections)
 	if err != nil {
-		m.log.Error(err, "failed to clean routers")
+		m.log.Error(err, "failed to clean routes")
 	}
 
-	m.cleanSNatIPTablesRules()
-	m.clearFabEdgeIptablesChains()
+	m.flushAllChains()
 	m.clearConnections()
 }
 
-func (m *Manager) cleanSNatIPTablesRules() {
-	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
-		if err := ipt.CleanSNatIPTablesRules(); err != nil {
-			m.log.Error(err, "failed to clean iptables")
+func (m *Manager) flushAllChains() {
+	for _, h := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
+		if err := h.ipt.Flush(); err != nil {
+			m.log.Error(err, "failed to flush iptables rules")
 		}
 	}
 }
 
-func (m *Manager) clearFabEdgeIptablesChains() {
-	for _, ipt := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
-		if err := ipt.clearFabEdgeIptablesChains(); err != nil {
+func (m *Manager) removeAllChains() {
+	for _, h := range []*IPTablesHandler{m.iptHandler, m.ipt6Handler} {
+		if err := h.ipt.Remove(); err != nil {
 			m.log.Error(err, "failed to clean iptables")
 		}
 	}
@@ -333,10 +332,7 @@ func (m *Manager) workLoop() {
 		m.maintainTunnels()
 		m.maintainRoutes()
 
-		m.iptHandler.maintainIPSet()
 		m.iptHandler.maintainIPTables()
-
-		m.ipt6Handler.maintainIPSet()
 		m.ipt6Handler.maintainIPTables()
 
 		m.broadcastConnectorPrefixes()
