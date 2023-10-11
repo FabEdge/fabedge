@@ -17,7 +17,6 @@ package iptables
 import (
 	"bytes"
 	"fmt"
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"io"
 	"os/exec"
 	"strings"
@@ -214,29 +213,29 @@ func (h *IPTablesHelper) ClearAllRules() {
 }
 
 func (h *IPTablesHelper) CreateFabEdgePostRoutingChain() {
-	h.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	h.CreateChain(TableNat, ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHelper) CreateFabEdgeForwardChain() {
-	h.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
+	h.CreateChain(TableFilter, ChainFabEdgeForward)
 }
 
 func (h *IPTablesHelper) PreparePostRoutingChain() {
-	h.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	h.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	h.CreateChain(TableNat, ChainFabEdgePostRouting)
+	h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 }
 
 func (h *IPTablesHelper) PrepareForwardChain() {
-	h.CreateChain(constants.TableFilter, constants.ChainFabEdgeForward)
-	h.AppendUniqueRule(constants.TableFilter, constants.ChainForward, "-j", constants.ChainFabEdgeForward)
+	h.CreateChain(TableFilter, ChainFabEdgeForward)
+	h.AppendUniqueRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
 }
 
 func (h *IPTablesHelper) MaintainForwardRulesForIPSet(ipsetNames []string) {
 	// Add connection track rule
-	h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
+	h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
 	// Accept forward packets for ipset
 	for _, ipsetName := range ipsetNames {
-		h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-		h.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
+		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
 	}
 }

@@ -15,7 +15,6 @@
 package agent
 
 import (
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -84,7 +83,7 @@ func (m *Manager) ensureIPTablesRules() error {
 		if m.MASQOutgoing {
 			// outbound NAT from pods to outside the cluster
 			// Create FabEdge NAT outgoing chain
-			c.helper.CreateChain(constants.TableNat, constants.ChainFabEdgeNatOutgoing)
+			c.helper.CreateChain(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing)
 			if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
 				m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
 				return err
@@ -107,17 +106,17 @@ func (m *Manager) ensureIPTablesRules() error {
 
 func maintainNatOutgoingRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string, ipsetName string) {
 	for _, subnet := range subnets {
-		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
-		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
-		helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", constants.ChainMasquerade)
-		helper.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgeNatOutgoing)
+		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
+		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
+		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", iptables.ChainMasquerade)
+		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainPostRouting, "-j", iptables.ChainFabEdgeNatOutgoing)
 	}
 }
 
 func maintainForwardRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string) {
 	for _, subnet := range subnets {
-		helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
-		helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+		helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
+		helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
 	}
 }
 

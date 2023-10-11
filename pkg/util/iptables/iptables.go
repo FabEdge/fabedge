@@ -22,25 +22,7 @@ import (
 
 type Table = utiliptables.Table
 
-// iptables tables
-const (
-	TableFilter utiliptables.Table = "filter"
-	TableNAT                       = "nat"
-)
-
 type Chain = utiliptables.Chain
-
-// iptables chains
-const (
-	ChainInput       utiliptables.Chain = "INPUT"
-	ChainForward                        = "FORWARD"
-	ChainPostRouting                    = "POSTROUTING"
-
-	ChainFabEdgeInput       = "FABEDGE-INPUT"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
-)
 
 type RulePosition = utiliptables.RulePosition
 

@@ -15,76 +15,75 @@
 package iptables
 
 import (
-	"github.com/fabedge/fabedge/pkg/common/constants"
 	"strings"
 	"testing"
 )
 
 func TestCreateChain(t *testing.T) {
-	ipt := NewIPTablesHelper()
+	ipt := NewIP4TablesHelper()
 	ipt.ClearAllRules()
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
 	expect := strings.Join([]string{"*nat\n",
-		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+		":", ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
 }
 
 func TestCreateInternalChain(t *testing.T) {
-	ipt := NewIPTablesHelper()
+	ipt := NewIP4TablesHelper()
 	ipt.ClearAllRules()
-	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
+	ipt.CreateChain(TableNat, ChainPostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
 	expect := strings.Join([]string{"*nat\n",
-		":", constants.ChainPostRouting, " ACCEPT [0:0]\n", "COMMIT\n"}, "")
+		":", ChainPostRouting, " ACCEPT [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
 }
 
 func TestCreateDuplicatedChains(t *testing.T) {
-	ipt := NewIPTablesHelper()
+	ipt := NewIP4TablesHelper()
 	ipt.ClearAllRules()
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
 	expect := strings.Join([]string{"*nat\n",
-		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
+		":", ChainFabEdgePostRouting, " - [0:0]\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
 }
 
 func TestCreateChainAndAppendRule(t *testing.T) {
-	ipt := NewIPTablesHelper()
+	ipt := NewIP4TablesHelper()
 	ipt.ClearAllRules()
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainPostRouting)
+	ipt.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
 	expect := strings.Join([]string{"*nat\n",
-		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n",
-		"-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+		":", ChainFabEdgePostRouting, " - [0:0]\n", ":", ChainPostRouting, " ACCEPT [0:0]\n",
+		"-A ", ChainPostRouting, " -j ", ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}
 }
 
 func TestCreateChainAndAppendDuplicatedRules(t *testing.T) {
-	ipt := NewIPTablesHelper()
+	ipt := NewIP4TablesHelper()
 	ipt.ClearAllRules()
-	ipt.CreateChain(constants.TableNat, constants.ChainFabEdgePostRouting)
-	ipt.CreateChain(constants.TableNat, constants.ChainPostRouting)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
-	ipt.AppendUniqueRule(constants.TableNat, constants.ChainPostRouting, "-j", constants.ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainFabEdgePostRouting)
+	ipt.CreateChain(TableNat, ChainPostRouting)
+	ipt.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	ipt.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
+	ipt.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
 	actual := ipt.GenerateInputFromRuleSet()
 	expect := strings.Join([]string{"*nat\n",
-		":", constants.ChainFabEdgePostRouting, " - [0:0]\n", ":", constants.ChainPostRouting, " ACCEPT [0:0]\n",
-		"-A ", constants.ChainPostRouting, " -j ", constants.ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
+		":", ChainFabEdgePostRouting, " - [0:0]\n", ":", ChainPostRouting, " ACCEPT [0:0]\n",
+		"-A ", ChainPostRouting, " -j ", ChainFabEdgePostRouting, "\n", "COMMIT\n"}, "")
 	if actual != expect {
 		t.Fatalf("expect: %s, actual: %s", expect, actual)
 	}

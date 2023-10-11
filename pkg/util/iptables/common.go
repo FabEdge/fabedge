@@ -22,3 +22,19 @@ const (
 	ProtocolIPv4 Protocol = "IPv4"
 	ProtocolIPv6 Protocol = "IPv6"
 )
+
+const (
+	TableFilter  = "filter"
+	TableNat     = "nat"
+	ChainInput   = "INPUT"
+	ChainForward = "FORWARD"
+)
+
+const (
+	ChainPostRouting        = "POSTROUTING"
+	ChainMasquerade         = "MASQUERADE"
+	ChainFabEdgeInput       = "FABEDGE-INPUT"
+	ChainFabEdgeForward     = "FABEDGE-FORWARD"
+	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
+	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
+)
