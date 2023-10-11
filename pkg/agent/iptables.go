@@ -51,7 +51,7 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet4,
 			},
 			subnets: subnetsIP4,
-			helper:  iptables.NewIPTablesHelper(),
+			helper:  iptables.NewIP4TablesHelper(),
 		},
 		{
 			peerIPSet: IPSet{

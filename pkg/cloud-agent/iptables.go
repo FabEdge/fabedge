@@ -38,7 +38,7 @@ func newIptableHandler() *IptablesHandler {
 		ipset:      ipsetutil.New(),
 		ipsetName:  IPSetRemotePodCIDR,
 		hashFamily: ipsetutil.ProtocolFamilyIPV4,
-		helper:     iptables.NewIPTablesHelper(),
+		helper:     iptables.NewIP4TablesHelper(),
 	}
 }
 

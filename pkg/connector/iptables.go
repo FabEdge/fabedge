@@ -15,26 +15,50 @@
 package connector
 
 import (
-	"github.com/fabedge/fabedge/pkg/common/constants"
+	"bytes"
 	"sync"
+	"text/template"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
-	"github.com/fabedge/fabedge/pkg/util/iptables"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2/klogr"
+
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 )
 
-const (
-	IPSetEdgePodCIDR    = "FABEDGE-EDGE-POD-CIDR"
-	IPSetEdgePodCIDR6   = "FABEDGE-EDGE-POD-CIDR6"
-	IPSetEdgeNodeCIDR   = "FABEDGE-EDGE-NODE-CIDR"
-	IPSetEdgeNodeCIDR6  = "FABEDGE-EDGE-NODE-CIDR6"
-	IPSetCloudPodCIDR   = "FABEDGE-CLOUD-POD-CIDR"
-	IPSetCloudPodCIDR6  = "FABEDGE-CLOUD-POD-CIDR6"
-	IPSetCloudNodeCIDR  = "FABEDGE-CLOUD-NODE-CIDR"
-	IPSetCloudNodeCIDR6 = "FABEDGE-CLOUD-NODE-CIDR6"
-)
+var tmpl = template.Must(template.New("iptables").Parse(`
+*filter
+:FABEDGE-INPUT - [0:0]
+:FABEDGE-FORWARD - [0:0]
+
+-A FABEDGE-INPUT -p udp -m udp --dport 500 -j ACCEPT
+-A FABEDGE-INPUT -p udp -m udp --dport 4500 -j ACCEPT
+-A FABEDGE-INPUT -p esp -j ACCEPT
+-A FABEDGE-INPUT -p ah -j ACCEPT
+
+-A FABEDGE-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .CloudPodCIDR }} src -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .CloudPodCIDR }} dst -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .CloudNodeCIDR }} src -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .CloudNodeCIDR }} dst -j ACCEPT
+COMMIT
+
+*nat
+:FABEDGE-POSTROUTING - [0:0]
+-A FABEDGE-POSTROUTING -m set --match-set {{ .CloudPodCIDR }} src -m set --match-set {{ .EdgePodCIDR}} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .EdgePodCIDR }} src -m set --match-set {{ .CloudPodCIDR }} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .CloudPodCIDR }} src -m set --match-set {{ .EdgeNodeCIDR }} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .EdgePodCIDR }} src -m set --match-set {{ .CloudNodeCIDR }} dst -j MASQUERADE
+-A FABEDGE-POSTROUTING -m set --match-set {{ .EdgeNodeCIDR }} src -m set --match-set {{ .CloudPodCIDR}} dst -j MASQUERADE
+COMMIT
+`))
+
+var jumpChains = []iptables.JumpChain{
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainInput, DstChain: iptables.ChainFabEdgeInput, Position: iptables.Append},
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
+	{Table: iptables.TableNAT, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgePostRouting, Position: iptables.Prepend},
+}
 
 type IPSetSpec struct {
 	Name     string
@@ -49,45 +73,49 @@ type IPSetNames struct {
 }
 
 type IPTablesHandler struct {
+	ipt   iptables.ApplierCleaner
 	ipset ipset.Interface
 	log   logr.Logger
 
-	names      IPSetNames
+	names      ipset.IPSetNames
 	hashFamily string
+
+	rulesData []byte
 
 	specs []IPSetSpec
 	lock  sync.RWMutex
-
-	helper *iptables.IPTablesHelper
 }
 
 func newIP4TablesHandler() (*IPTablesHandler, error) {
+	names := ipset.Names4
+	rulesData := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(rulesData, names); err != nil {
+		return nil, err
+	}
+
 	return &IPTablesHandler{
-		log:        klogr.New().WithName("iptablesHandler"),
+		log:        klogr.New().WithName("iptables-handler"),
+		ipt:        iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, rulesData.Bytes()),
 		ipset:      ipset.New(),
 		hashFamily: ipset.ProtocolFamilyIPV4,
-		names: IPSetNames{
-			EdgeNodeCIDR:  IPSetEdgeNodeCIDR,
-			EdgePodCIDR:   IPSetEdgePodCIDR,
-			CloudPodCIDR:  IPSetCloudPodCIDR,
-			CloudNodeCIDR: IPSetCloudNodeCIDR,
-		},
-		helper: iptables.NewIPTablesHelper(),
+		names:      names,
+		rulesData:  rulesData.Bytes(),
 	}, nil
 }
 
 func newIP6TablesHandler() (*IPTablesHandler, error) {
+	names := ipset.Names6
+	rulesData := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(rulesData, names); err != nil {
+		return nil, err
+	}
+
 	return &IPTablesHandler{
-		log:        klogr.New().WithName("ip6tablesHandler"),
+		log:        klogr.New().WithName("ip6tables-handler"),
+		ipt:        iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, rulesData.Bytes()),
 		ipset:      ipset.New(),
 		hashFamily: ipset.ProtocolFamilyIPV6,
-		names: IPSetNames{
-			EdgeNodeCIDR:  IPSetEdgeNodeCIDR6,
-			EdgePodCIDR:   IPSetEdgePodCIDR6,
-			CloudPodCIDR:  IPSetCloudPodCIDR6,
-			CloudNodeCIDR: IPSetCloudNodeCIDR6,
-		},
-		helper: iptables.NewIP6TablesHelper(),
+		names:      names,
 	}, nil
 }
 
@@ -115,70 +143,6 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 	}
 }
 
-func (h *IPTablesHandler) clearFabEdgeIptablesChains() error {
-	h.helper.ClearAllRules()
-	h.createFabEdgeInputChain()
-	h.helper.CreateFabEdgeForwardChain()
-	h.helper.CreateFabEdgePostRoutingChain()
-	return h.helper.ReplaceRules()
-}
-
-func (h *IPTablesHandler) createFabEdgeInputChain() {
-	h.helper.CreateChain(constants.TableFilter, constants.ChainFabEdgeInput)
-}
-
-func (h *IPTablesHandler) maintainIPTables() {
-	h.helper.ClearAllRules()
-
-	// ensureForwardIPTablesRules
-	// ensure rules exist
-	h.helper.PrepareForwardChain()
-	h.helper.MaintainForwardRulesForIPSet([]string{h.names.CloudPodCIDR, h.names.CloudNodeCIDR})
-
-	// ensureNatIPTablesRules
-	h.helper.PreparePostRoutingChain()
-
-	// for cloud-pod to edge-pod, not masquerade, in order to avoid flannel issue
-	h.allowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgePodCIDR)
-
-	// for edge-pod to cloud-pod, not masquerade, in order to avoid flannel issue
-	h.allowPostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudPodCIDR)
-
-	// for cloud-pod to edge-node, not masquerade, in order to avoid flannel issue
-	h.allowPostRoutingForIPSet(h.names.CloudPodCIDR, h.names.EdgeNodeCIDR)
-
-	// for edge-pod to cloud-node, to masquerade it, in order to avoid rp_filter issue
-	h.masqueradePostRoutingForIPSet(h.names.EdgePodCIDR, h.names.CloudNodeCIDR)
-
-	// for edge-node to cloud-pod, to masquerade it, or the return traffic will not come back to connector node.
-	h.masqueradePostRoutingForIPSet(h.names.EdgeNodeCIDR, h.names.CloudPodCIDR)
-
-	// ensureIPSpecInputRules
-	h.allowIPSec()
-
-	if err := h.helper.ReplaceRules(); err != nil {
-		h.log.Error(err, "failed to sync iptables rules")
-	} else {
-		h.log.V(5).Info("iptables rules is synced")
-	}
-}
-
-func (h *IPTablesHandler) allowPostRoutingForIPSet(src, dst string) {
-	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "ACCEPT")
-}
-
-func (h *IPTablesHandler) masqueradePostRoutingForIPSet(src, dst string) {
-	h.helper.AppendUniqueRule(constants.TableNat, constants.ChainFabEdgePostRouting, "-m", "set", "--match-set", src, "src", "-m", "set", "--match-set", dst, "dst", "-j", "MASQUERADE")
-}
-
-func (h *IPTablesHandler) allowIPSec() {
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainInput, "-j", constants.ChainFabEdgeInput)
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "500", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "udp", "-m", "udp", "--dport", "4500", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "esp", "-j", "ACCEPT")
-	h.helper.AppendUniqueRule(constants.TableFilter, constants.ChainFabEdgeInput, "-p", "ah", "-j", "ACCEPT")
-}
-
 func (h *IPTablesHandler) maintainIPSet() {
 	var specs []IPSetSpec
 
@@ -199,4 +163,26 @@ func (h *IPTablesHandler) maintainIPSet() {
 			h.log.V(5).Info("ipset are synced", "name", spec.Name)
 		}
 	}
+}
+
+func (h *IPTablesHandler) maintainIPTables() {
+	h.maintainIPSet()
+
+	if err := h.ipt.Apply(); err != nil {
+		h.log.Error(err, "failed to restore iptables rules")
+	}
+}
+
+func (h *IPTablesHandler) getEdgeNodeCIDRs() []string {
+	h.lock.RLock()
+	specs := h.specs
+	h.lock.RUnlock()
+
+	for _, spec := range specs {
+		if spec.Name == ipset.IPSetEdgeNodeCIDR {
+			return spec.EntrySet.List()
+		}
+	}
+
+	return nil
 }

@@ -28,20 +28,13 @@ const (
 	IP6TablesRestoreCommand = "ip6tables-restore"
 )
 
-const (
-	ProtocolIPv4 = "ipv4"
-	ProtocolIPv6 = "ipv6"
-)
-
-type Protocol string
-
 type IPTablesHelper struct {
 	protocol       Protocol
 	restoreCommand string
 	ruleSets       []IPTablesRuleSet
 }
 
-func NewIPTablesHelper() *IPTablesHelper {
+func NewIP4TablesHelper() *IPTablesHelper {
 	return doCreateIPTablesHelper(ProtocolIPv4)
 }
 

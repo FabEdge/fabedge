@@ -139,10 +139,14 @@ func (a *CloudAgent) addAndSaveRoutes(cp routing.ConnectorPrefixes) {
 	}
 
 	routes := a.syncRoutes(cp.LocalPrefixes, cp.RemotePrefixes)
+
 	routes = append(routes, a.syncRoutes(cp.LocalPrefixes6, cp.RemotePrefixes6)...)
 
-	whitelist := sets.NewString(cp.RemotePrefixes...)
-	whitelist.Insert(cp.RemotePrefixes6...)
+	whitelist := sets.NewString()
+	for _, route := range routes {
+		whitelist.Insert(route.Dst.String())
+	}
+
 	if err := routeutil.PurgeStrongSwanRoutes(routeutil.NewDstWhitelist(whitelist)); err != nil {
 		logger.Error(err, "failed to purge stale routes in strongswan table")
 	}
