@@ -28,6 +28,59 @@ type IPSet struct {
 	EntrySet sets.String
 }
 
+var jumpChains = []iptables.JumpChain{
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
+	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgeNatOutgoing, Position: iptables.Prepend},
+}
+
+func buildRuleData(ipsetName string, subnets []string) []byte {
+	var builder strings.Builder
+	builder.WriteString(`
+*filter
+:FABEDGE-FORWARD - [0:0]
+
+`)
+
+	for _, subnet := range subnets {
+		builder.WriteString("-A FABEDGE-FORWARD -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j ACCEPT\n")
+
+		builder.WriteString("-A FABEDGE-FORWARD -d ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j ACCEPT\n")
+	}
+
+	builder.WriteString(`COMMIT
+
+*nat
+:FABEDGE-NAT-OUTGOING - [0:0]
+
+`)
+
+	for _, subnet := range subnets {
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -m set --match-set ")
+		builder.WriteString(ipsetName)
+		builder.WriteString(" dst -j RETURN\n")
+
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -d ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j RETURN\n")
+
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j MASQUERADE\n")
+	}
+
+	builder.WriteString("COMMIT\n")
+
+	return []byte(builder.String())
+}
+
 func (m *Manager) ensureIPTablesRules() error {
 	current := m.getCurrentEndpoint()
 
@@ -38,7 +91,7 @@ func (m *Manager) ensureIPTablesRules() error {
 		peerIPSet     IPSet
 		loopbackIPSet IPSet
 		subnets       []string
-		helper        *iptables.IPTablesHelper
+		helper        iptables.ApplierCleaner
 	}{
 		{
 			peerIPSet: IPSet{
@@ -50,7 +103,7 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet4,
 			},
 			subnets: subnetsIP4,
-			helper:  iptables.NewIP4TablesHelper(),
+			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR, subnetsIP4)),
 		},
 		{
 			peerIPSet: IPSet{
@@ -62,53 +115,22 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet6,
 			},
 			subnets: subnetsIP6,
-			helper:  iptables.NewIP6TablesHelper(),
+			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR6, subnetsIP6)),
 		},
 	}
 
-	// As we will generate the full rule set, we du not need to calculate if subnets are equal
-	// clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
-
 	for _, c := range configs {
-		c.helper.ClearAllRules()
-
-		// ensureIPForwardRules
-		c.helper.CreateChain(iptables.TableFilter, iptables.ChainFabEdgeForward)
-		c.helper.CreateChain(iptables.TableFilter, iptables.ChainFabEdgeForward)
-		c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainForward, "-j", iptables.ChainFabEdgeForward)
-
-		// subnets won't change most of the time, and is append-only, so for now we don't need
-		// to handle removing old subnet
-		for _, subnet := range c.subnets {
-			c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
-			c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+		if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
+			m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
+			return err
 		}
 
-		if m.MASQOutgoing {
-			// outbound NAT from pods to outside the cluster
-			// Create FabEdge NAT outgoing chain
-			c.helper.CreateChain(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing)
-			if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
-				m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
-				return err
-			}
-			for _, subnet := range c.subnets {
-				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", c.peerIPSet.IPSet.Name, "dst", "-j", "RETURN")
-				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
-				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", iptables.ChainMasquerade)
-				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainPostRouting, "-j", iptables.ChainFabEdgeNatOutgoing)
-			}
-		}
-
-		if err := c.helper.ReplaceRules(); err != nil {
+		if err := c.helper.Apply(); err != nil {
 			m.log.Error(err, "failed to sync iptables rules")
 		} else {
 			m.log.V(5).Info("iptables rules is synced")
 		}
 	}
-
-	// must be done after configureOutboundRules are executed
-	// m.lastSubnets = current.Subnets
 
 	return nil
 }
