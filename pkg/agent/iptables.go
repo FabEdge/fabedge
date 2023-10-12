@@ -73,12 +73,16 @@ func (m *Manager) ensureIPTablesRules() error {
 		c.helper.ClearAllRules()
 
 		// ensureIPForwardRules
-		c.helper.CreateFabEdgeForwardChain()
-		c.helper.PrepareForwardChain()
+		c.helper.CreateChain(iptables.TableFilter, iptables.ChainFabEdgeForward)
+		c.helper.CreateChain(iptables.TableFilter, iptables.ChainFabEdgeForward)
+		c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainForward, "-j", iptables.ChainFabEdgeForward)
 
 		// subnets won't change most of the time, and is append-only, so for now we don't need
 		// to handle removing old subnet
-		maintainForwardRulesForSubnets(c.helper, c.subnets)
+		for _, subnet := range c.subnets {
+			c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
+			c.helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
+		}
 
 		if m.MASQOutgoing {
 			// outbound NAT from pods to outside the cluster
@@ -88,7 +92,12 @@ func (m *Manager) ensureIPTablesRules() error {
 				m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
 				return err
 			}
-			maintainNatOutgoingRulesForSubnets(c.helper, c.subnets, c.peerIPSet.IPSet.Name)
+			for _, subnet := range c.subnets {
+				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", c.peerIPSet.IPSet.Name, "dst", "-j", "RETURN")
+				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
+				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", iptables.ChainMasquerade)
+				c.helper.AppendUniqueRule(iptables.TableNat, iptables.ChainPostRouting, "-j", iptables.ChainFabEdgeNatOutgoing)
+			}
 		}
 
 		if err := c.helper.ReplaceRules(); err != nil {
@@ -102,22 +111,6 @@ func (m *Manager) ensureIPTablesRules() error {
 	// m.lastSubnets = current.Subnets
 
 	return nil
-}
-
-func maintainNatOutgoingRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string, ipsetName string) {
-	for _, subnet := range subnets {
-		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", ipsetName, "dst", "-j", "RETURN")
-		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN")
-		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainFabEdgeNatOutgoing, "-s", subnet, "-j", iptables.ChainMasquerade)
-		helper.AppendUniqueRule(iptables.TableNat, iptables.ChainPostRouting, "-j", iptables.ChainFabEdgeNatOutgoing)
-	}
-}
-
-func maintainForwardRulesForSubnets(helper *iptables.IPTablesHelper, subnets []string) {
-	for _, subnet := range subnets {
-		helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT")
-		helper.AppendUniqueRule(iptables.TableFilter, iptables.ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT")
-	}
 }
 
 func (m *Manager) areSubnetsEqual(sa1, sa2 []string) bool {

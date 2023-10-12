@@ -211,31 +211,3 @@ func (h *IPTablesHelper) rulesEqual(one, other []string) bool {
 func (h *IPTablesHelper) ClearAllRules() {
 	h.ruleSets = []IPTablesRuleSet{}
 }
-
-func (h *IPTablesHelper) CreateFabEdgePostRoutingChain() {
-	h.CreateChain(TableNat, ChainFabEdgePostRouting)
-}
-
-func (h *IPTablesHelper) CreateFabEdgeForwardChain() {
-	h.CreateChain(TableFilter, ChainFabEdgeForward)
-}
-
-func (h *IPTablesHelper) PreparePostRoutingChain() {
-	h.CreateChain(TableNat, ChainFabEdgePostRouting)
-	h.AppendUniqueRule(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
-}
-
-func (h *IPTablesHelper) PrepareForwardChain() {
-	h.CreateChain(TableFilter, ChainFabEdgeForward)
-	h.AppendUniqueRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
-}
-
-func (h *IPTablesHelper) MaintainForwardRulesForIPSet(ipsetNames []string) {
-	// Add connection track rule
-	h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT")
-	// Accept forward packets for ipset
-	for _, ipsetName := range ipsetNames {
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-		h.AppendUniqueRule(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", ipsetName, "dst", "-j", "ACCEPT")
-	}
-}
