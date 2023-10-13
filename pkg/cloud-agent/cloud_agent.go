@@ -19,11 +19,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bep/debounce"
 	"github.com/coreos/go-iptables/iptables"
+	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	flag "github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -180,7 +182,18 @@ func (a *CloudAgent) syncRoutes(localPrefixes []string, remotePrefixes []string)
 
 	var routes []netlink.Route
 	for _, rp := range remotePrefixes {
-		_, dst, err := net.ParseCIDR(rp)
+		var dst *net.IPNet
+
+		// turn IP to CIDR format
+		if !strings.Contains(rp, "/") {
+			if netutil.IsIPv4String(rp) {
+				rp = rp + "/32"
+			} else {
+				rp = rp + "/128"
+			}
+		}
+
+		_, dst, err = net.ParseCIDR(rp)
 		if err != nil {
 			logger.Error(err, "failed to parse a remote prefix", "remotePrefix", rp)
 			continue
