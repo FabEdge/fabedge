@@ -45,6 +45,8 @@ const (
 	IPSetCloudPodCIDR6  = "FABEDGE-CLOUD-POD-CIDR6"
 	IPSetCloudNodeCIDR  = "FABEDGE-CLOUD-NODE-CIDR"
 	IPSetCloudNodeCIDR6 = "FABEDGE-CLOUD-NODE-CIDR6"
+	IPSetRemotePodCIDR  = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetRemotePodCIDR6 = "FABEDGE-REMOTE-POD-CIDR6"
 )
 
 type IPSetNames struct {
@@ -52,6 +54,7 @@ type IPSetNames struct {
 	EdgeNodeCIDR  string
 	CloudPodCIDR  string
 	CloudNodeCIDR string
+	RemotePodCIDR string
 }
 
 var (
@@ -60,6 +63,7 @@ var (
 		EdgePodCIDR:   IPSetEdgePodCIDR,
 		CloudPodCIDR:  IPSetCloudPodCIDR,
 		CloudNodeCIDR: IPSetCloudNodeCIDR,
+		RemotePodCIDR: IPSetRemotePodCIDR,
 	}
 
 	Names6 = IPSetNames{
@@ -67,6 +71,7 @@ var (
 		EdgePodCIDR:   IPSetEdgePodCIDR6,
 		CloudPodCIDR:  IPSetCloudPodCIDR6,
 		CloudNodeCIDR: IPSetCloudNodeCIDR6,
+		RemotePodCIDR: IPSetRemotePodCIDR6,
 	}
 )
 

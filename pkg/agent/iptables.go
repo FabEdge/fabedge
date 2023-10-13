@@ -15,18 +15,70 @@
 package agent
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/coreos/go-iptables/iptables"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 )
 
 type IPSet struct {
 	IPSet    *ipset.IPSet
 	EntrySet sets.String
+}
+
+var jumpChains = []iptables.JumpChain{
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
+	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgeNatOutgoing, Position: iptables.Prepend},
+}
+
+func buildRuleData(ipsetName string, subnets []string) []byte {
+	var builder strings.Builder
+	builder.WriteString(`
+*filter
+:FABEDGE-FORWARD - [0:0]
+
+`)
+
+	for _, subnet := range subnets {
+		builder.WriteString("-A FABEDGE-FORWARD -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j ACCEPT\n")
+
+		builder.WriteString("-A FABEDGE-FORWARD -d ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j ACCEPT\n")
+	}
+
+	builder.WriteString(`COMMIT
+
+*nat
+:FABEDGE-NAT-OUTGOING - [0:0]
+
+`)
+
+	for _, subnet := range subnets {
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -m set --match-set ")
+		builder.WriteString(ipsetName)
+		builder.WriteString(" dst -j RETURN\n")
+
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -d ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j RETURN\n")
+
+		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
+		builder.WriteString(subnet)
+		builder.WriteString(" -j MASQUERADE\n")
+	}
+
+	builder.WriteString("COMMIT\n")
+
+	return []byte(builder.String())
 }
 
 func (m *Manager) ensureIPTablesRules() error {
@@ -36,13 +88,12 @@ func (m *Manager) ensureIPTablesRules() error {
 	subnetsIP4, subnetsIP6 := classifySubnets(current.Subnets)
 
 	configs := []struct {
-		ipt           *iptables.IPTables
 		peerIPSet     IPSet
 		loopbackIPSet IPSet
 		subnets       []string
+		helper        iptables.ApplierCleaner
 	}{
 		{
-			ipt: m.ipt4,
 			peerIPSet: IPSet{
 				IPSet: &ipset.IPSet{
 					Name:       IPSetFabEdgePeerCIDR,
@@ -52,9 +103,9 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet4,
 			},
 			subnets: subnetsIP4,
+			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR, subnetsIP4)),
 		},
 		{
-			ipt: m.ipt6,
 			peerIPSet: IPSet{
 				IPSet: &ipset.IPSet{
 					Name:       IPSetFabEdgePeerCIDR6,
@@ -64,98 +115,20 @@ func (m *Manager) ensureIPTablesRules() error {
 				EntrySet: peerIPSet6,
 			},
 			subnets: subnetsIP6,
+			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR6, subnetsIP6)),
 		},
 	}
 
-	clearOutgoingChain := !m.areSubnetsEqual(current.Subnets, m.lastSubnets)
 	for _, c := range configs {
-		if err := m.ensureIPForwardRules(c.ipt, c.subnets); err != nil {
+		if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
+			m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
 			return err
 		}
 
-		if m.MASQOutgoing {
-			if err := m.configureOutboundRules(c.ipt, c.peerIPSet, c.subnets, clearOutgoingChain); err != nil {
-				return err
-			}
-		}
-	}
-	// must be done after configureOutboundRules are executed
-	m.lastSubnets = current.Subnets
-
-	return nil
-}
-
-func (m *Manager) ensureIPForwardRules(ipt *iptables.IPTables, subnets []string) error {
-	if err := ensureChain(ipt, TableFilter, ChainFabEdgeForward); err != nil {
-		m.log.Error(err, "failed to check or create iptables chain", "table", TableFilter, "chain", ChainFabEdgeForward)
-		return err
-	}
-
-	ensureRule := ipt.AppendUnique
-	if err := ensureRule(TableFilter, ChainForward, "-j", ChainFabEdgeForward); err != nil {
-		m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainForward, "rule", "-j FABEDGE")
-		return err
-	}
-
-	// subnets won't change most of the time, and is append-only, so for now we don't need
-	// to handle removing old subnet
-	for _, subnet := range subnets {
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-s", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-s %s -j ACCEPT", subnet))
-			return err
-		}
-
-		if err := ensureRule(TableFilter, ChainFabEdgeForward, "-d", subnet, "-j", "ACCEPT"); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableFilter, "chain", ChainFabEdgeForward, "rule", fmt.Sprintf("-d %s -j ACCEPT", subnet))
-			return err
-		}
-	}
-
-	return nil
-}
-
-// outbound NAT from pods to outside the cluster
-func (m *Manager) configureOutboundRules(ipt *iptables.IPTables, peerIPSet IPSet, subnets []string, clearFabEdgeNatOutgoingChain bool) error {
-	if clearFabEdgeNatOutgoingChain {
-		m.log.V(3).Info("Subnets are changed, clear iptables chain FABEDGE-NAT-OUTGOING")
-		if err := ipt.ClearChain(TableNat, ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
-			return err
-		}
-	} else {
-		if err := ensureChain(ipt, TableNat, ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to check or add rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing)
-			return err
-		}
-	}
-
-	if err := m.ipset.EnsureIPSet(peerIPSet.IPSet, peerIPSet.EntrySet); err != nil {
-		m.log.Error(err, "failed to sync ipset", "ipsetName", peerIPSet.IPSet.Name)
-		return err
-	}
-
-	for _, subnet := range subnets {
-		m.log.V(3).Info("configure outgoing NAT iptables rules")
-
-		ensureRule := ipt.AppendUnique
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-m", "set", "--match-set", peerIPSet.IPSet.Name, "dst", "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -m set --match-set %s dst -j RETURN", subnet, peerIPSet.IPSet.Name))
-			continue
-		}
-
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-d", subnet, "-j", "RETURN"); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -d %s -j RETURN", subnet, subnet))
-			continue
-		}
-
-		if err := ensureRule(TableNat, ChainFabEdgeNatOutgoing, "-s", subnet, "-j", ChainMasquerade); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainFabEdgeNatOutgoing, "rule", fmt.Sprintf("-s %s -j %s", subnet, ChainMasquerade))
-			continue
-		}
-
-		if err := ensureRule(TableNat, ChainPostRouting, "-j", ChainFabEdgeNatOutgoing); err != nil {
-			m.log.Error(err, "failed to append rule", "table", TableNat, "chain", ChainPostRouting, "rule", fmt.Sprintf("-j %s", ChainFabEdgeNatOutgoing))
-			continue
+		if err := c.helper.Apply(); err != nil {
+			m.log.Error(err, "failed to sync iptables rules")
+		} else {
+			m.log.V(5).Info("iptables rules is synced")
 		}
 	}
 
@@ -174,19 +147,6 @@ func (m *Manager) areSubnetsEqual(sa1, sa2 []string) bool {
 	}
 
 	return true
-}
-
-func ensureChain(ipt *iptables.IPTables, table, chain string) error {
-	exists, err := ipt.ChainExists(table, chain)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return nil
-	}
-
-	return ipt.NewChain(table, chain)
 }
 
 func (m *Manager) getAllPeerCIDRs() (cidrSet4, cidrSet6 sets.String) {

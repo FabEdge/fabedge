@@ -297,6 +297,7 @@ func (m *Manager) broadcastConnectorPrefixes() {
 	}
 
 	log := m.log.WithValues("connectorPrefixes", cp)
+
 	log.V(5).Info("get connector prefixes")
 	b, err := json.Marshal(cp)
 	if err != nil {
@@ -331,7 +332,6 @@ func (m *Manager) workLoop() {
 
 		m.iptHandler.maintainIPTables()
 		m.ipt6Handler.maintainIPTables()
-
 		m.broadcastConnectorPrefixes()
 	}
 }

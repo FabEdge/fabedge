@@ -57,7 +57,7 @@ COMMIT
 var jumpChains = []iptables.JumpChain{
 	{Table: iptables.TableFilter, SrcChain: iptables.ChainInput, DstChain: iptables.ChainFabEdgeInput, Position: iptables.Append},
 	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
-	{Table: iptables.TableNAT, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgePostRouting, Position: iptables.Prepend},
+	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgePostRouting, Position: iptables.Prepend},
 }
 
 type IPSetSpec struct {

@@ -20,40 +20,40 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
+type Protocol = utiliptables.Protocol
+
+const (
+	ProtocolIPv4 Protocol = "IPv4"
+	ProtocolIPv6 Protocol = "IPv6"
+)
+
 type Table = utiliptables.Table
 
-// iptables tables
 const (
-	TableFilter utiliptables.Table = "filter"
-	TableNAT                       = "nat"
+	TableFilter Table = "filter"
+	TableNat    Table = "nat"
 )
 
 type Chain = utiliptables.Chain
 
-// iptables chains
 const (
-	ChainInput       utiliptables.Chain = "INPUT"
-	ChainForward                        = "FORWARD"
-	ChainPostRouting                    = "POSTROUTING"
+	ChainInput       Chain = "INPUT"
+	ChainForward     Chain = "FORWARD"
+	ChainPostRouting Chain = "POSTROUTING"
+)
 
-	ChainFabEdgeInput       = "FABEDGE-INPUT"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
+const (
+	ChainFabEdgeInput       Chain = "FABEDGE-INPUT"
+	ChainFabEdgeForward     Chain = "FABEDGE-FORWARD"
+	ChainFabEdgePostRouting Chain = "FABEDGE-POSTROUTING"
+	ChainFabEdgeNatOutgoing Chain = "FABEDGE-NAT-OUTGOING"
 )
 
 type RulePosition = utiliptables.RulePosition
 
 const (
 	Append  RulePosition = utiliptables.Append
-	Prepend              = utiliptables.Prepend
-)
-
-type Protocol = utiliptables.Protocol
-
-const (
-	ProtocolIPv4 Protocol = "IPv4"
-	ProtocolIPv6 Protocol = "IPv6"
+	Prepend RulePosition = utiliptables.Prepend
 )
 
 type FlushFlag = utiliptables.FlushFlag
