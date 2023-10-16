@@ -46,7 +46,6 @@ const (
 	ChainFabEdgeInput       Chain = "FABEDGE-INPUT"
 	ChainFabEdgeForward     Chain = "FABEDGE-FORWARD"
 	ChainFabEdgePostRouting Chain = "FABEDGE-POSTROUTING"
-	ChainFabEdgeNatOutgoing Chain = "FABEDGE-NAT-OUTGOING"
 )
 
 type RulePosition = utiliptables.RulePosition
