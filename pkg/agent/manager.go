@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -37,15 +36,8 @@ import (
 )
 
 const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainMasquerade         = "MASQUERADE"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgeNatOutgoing = "FABEDGE-NAT-OUTGOING"
-	IPSetFabEdgePeerCIDR    = "FABEDGE-PEER-CIDR"
-	IPSetFabEdgePeerCIDR6   = "FABEDGE-PEER-CIDR6"
+	IPSetFabEdgePeerCIDR  = "FABEDGE-PEER-CIDR"
+	IPSetFabEdgePeerCIDR6 = "FABEDGE-PEER-CIDR6"
 )
 
 type Manager struct {
@@ -54,10 +46,8 @@ type Manager struct {
 	ipvs    ipvs.Interface
 	ipset   ipset.Interface
 
-	tm   tunnel.Manager
-	ipt4 *iptables.IPTables
-	ipt6 *iptables.IPTables
-	log  logr.Logger
+	tm  tunnel.Manager
+	log logr.Logger
 
 	currentEndpoint  Endpoint
 	mediatorEndpoint *Endpoint

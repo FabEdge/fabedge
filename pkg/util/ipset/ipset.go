@@ -36,6 +36,45 @@ const (
 	ProtocolFamilyIPV6 = ipset.ProtocolFamilyIPV6
 )
 
+const (
+	IPSetEdgePodCIDR    = "FABEDGE-EDGE-POD-CIDR"
+	IPSetEdgePodCIDR6   = "FABEDGE-EDGE-POD-CIDR6"
+	IPSetEdgeNodeCIDR   = "FABEDGE-EDGE-NODE-CIDR"
+	IPSetEdgeNodeCIDR6  = "FABEDGE-EDGE-NODE-CIDR6"
+	IPSetCloudPodCIDR   = "FABEDGE-CLOUD-POD-CIDR"
+	IPSetCloudPodCIDR6  = "FABEDGE-CLOUD-POD-CIDR6"
+	IPSetCloudNodeCIDR  = "FABEDGE-CLOUD-NODE-CIDR"
+	IPSetCloudNodeCIDR6 = "FABEDGE-CLOUD-NODE-CIDR6"
+	IPSetRemotePodCIDR  = "FABEDGE-REMOTE-POD-CIDR"
+	IPSetRemotePodCIDR6 = "FABEDGE-REMOTE-POD-CIDR6"
+)
+
+type IPSetNames struct {
+	EdgePodCIDR   string
+	EdgeNodeCIDR  string
+	CloudPodCIDR  string
+	CloudNodeCIDR string
+	RemotePodCIDR string
+}
+
+var (
+	Names4 = IPSetNames{
+		EdgeNodeCIDR:  IPSetEdgeNodeCIDR,
+		EdgePodCIDR:   IPSetEdgePodCIDR,
+		CloudPodCIDR:  IPSetCloudPodCIDR,
+		CloudNodeCIDR: IPSetCloudNodeCIDR,
+		RemotePodCIDR: IPSetRemotePodCIDR,
+	}
+
+	Names6 = IPSetNames{
+		EdgeNodeCIDR:  IPSetEdgeNodeCIDR6,
+		EdgePodCIDR:   IPSetEdgePodCIDR6,
+		CloudPodCIDR:  IPSetCloudPodCIDR6,
+		CloudNodeCIDR: IPSetCloudNodeCIDR6,
+		RemotePodCIDR: IPSetRemotePodCIDR6,
+	}
+)
+
 type Interface interface {
 	// EnsureIPSet ensure specified are created and ensure this ipset only contains all entries
 	// specified in entrySet.

@@ -15,57 +15,76 @@
 package cloud_agent
 
 import (
-	"fmt"
-
-	"github.com/coreos/go-iptables/iptables"
+	"bytes"
+	"github.com/fabedge/fabedge/pkg/util/ipset"
 	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 	"k8s.io/apimachinery/pkg/util/sets"
-)
-
-const (
-	TableFilter             = "filter"
-	TableNat                = "nat"
-	ChainForward            = "FORWARD"
-	ChainPostRouting        = "POSTROUTING"
-	ChainFabEdgeForward     = "FABEDGE-FORWARD"
-	ChainFabEdgePostRouting = "FABEDGE-POSTROUTING"
-	IPSetRemotePodCIDR      = "FABEDGE-REMOTE-POD-CIDR"
-	IPSetRemotePodCIDR6     = "FABEDGE-REMOTE-POD-CIDR6"
+	"text/template"
 )
 
 type IptablesHandler struct {
-	ipt        *iptables.IPTables
 	ipset      ipsetutil.Interface
 	ipsetName  string
 	hashFamily string
+	helper     iptables.ApplierCleaner
+	rulesData  []byte
 }
 
-func newIptableHandler(version iptables.Protocol) (*IptablesHandler, error) {
-	var (
-		ipsetName  string
-		hashFamily string
-	)
-
-	switch version {
-	case iptables.ProtocolIPv4:
-		ipsetName, hashFamily = IPSetRemotePodCIDR, ipsetutil.ProtocolFamilyIPV4
-	case iptables.ProtocolIPv6:
-		ipsetName, hashFamily = IPSetRemotePodCIDR6, ipsetutil.ProtocolFamilyIPV6
-	default:
-		return nil, fmt.Errorf("unknown version")
-	}
-
-	ipt, err := iptables.NewWithProtocol(version)
-	if err != nil {
+func newIptableHandler() (*IptablesHandler, error) {
+	names := ipset.Names4
+	rulesData := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(rulesData, names); err != nil {
 		return nil, err
 	}
 
 	return &IptablesHandler{
-		ipt:        ipt,
 		ipset:      ipsetutil.New(),
-		ipsetName:  ipsetName,
-		hashFamily: hashFamily,
+		ipsetName:  ipset.IPSetRemotePodCIDR,
+		hashFamily: ipsetutil.ProtocolFamilyIPV4,
+		helper:     iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, rulesData.Bytes()),
+		rulesData:  rulesData.Bytes(),
 	}, nil
+}
+
+func newIp6tableHandler() (*IptablesHandler, error) {
+	names := ipset.Names6
+	rulesData := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(rulesData, names); err != nil {
+		return nil, err
+	}
+
+	return &IptablesHandler{
+		ipset:      ipsetutil.New(),
+		ipsetName:  ipset.IPSetRemotePodCIDR6,
+		hashFamily: ipsetutil.ProtocolFamilyIPV6,
+		helper:     iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, rulesData.Bytes()),
+		rulesData:  rulesData.Bytes(),
+	}, nil
+}
+
+var tmpl = template.Must(template.New("iptables").Parse(`
+*filter
+:FABEDGE-FORWARD - [0:0]
+
+-A FABEDGE-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .RemotePodCIDR }} src -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .RemotePodCIDR }} dst -j ACCEPT
+COMMIT
+
+*nat
+:FABEDGE-POSTROUTING - [0:0]
+:KUBE-POSTROUTING - [0:0]
+
+-A FABEDGE-POSTROUTING -m mark --mark 0x4000/0x4000 -j KUBE-POSTROUTING
+-A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} src -j ACCEPT
+COMMIT
+`))
+
+var jumpChains = []iptables.JumpChain{
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
+	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgePostRouting, Position: iptables.Prepend},
 }
 
 func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
@@ -75,76 +94,11 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
 	}
 
-	if err := h.syncForwardRules(); err != nil {
-		logger.Error(err, "failed to sync iptables forward chain")
+	if err := h.helper.Apply(); err != nil {
+		logger.Error(err, "failed to sync iptables rules")
 	} else {
-		logger.V(5).Info("iptables forward chain is synced")
+		logger.V(5).Info("iptables rules is synced")
 	}
-
-	if err := h.syncPostRoutingRules(); err != nil {
-		logger.Error(err, "failed to sync iptables post-routing chain")
-	} else {
-		logger.V(5).Info("iptables post-routing chain is synced")
-	}
-}
-
-func (h IptablesHandler) syncForwardRules() (err error) {
-	if err = h.ipt.ClearChain(TableFilter, ChainFabEdgeForward); err != nil {
-		return err
-	}
-	exists, err := h.ipt.Exists(TableFilter, ChainForward, "-j", ChainFabEdgeForward)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(TableFilter, ChainForward, 1, "-j", ChainFabEdgeForward); err != nil {
-			return err
-		}
-	}
-
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	if err = h.ipt.AppendUnique(TableFilter, ChainFabEdgeForward, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (h IptablesHandler) syncPostRoutingRules() (err error) {
-	if err = h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
-		return err
-	}
-	exists, err := h.ipt.Exists(TableNat, ChainPostRouting, "-j", ChainFabEdgePostRouting)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		if err = h.ipt.Insert(TableNat, ChainPostRouting, 1, "-j", ChainFabEdgePostRouting); err != nil {
-			return err
-		}
-	}
-
-	// If packets have 0x4000/0x4000 mark, then traffic should be handled by KUBE-POSTROUTING chain,
-	// otherwise traffic to nodePort service, sometimes load balancer service, won't be masqueraded,
-	// and this would cause response packets are dropped
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "mark", "--mark", "0x4000/0x4000", "-j", "KUBE-POSTROUTING"); err != nil {
-		return err
-	}
-
-	if err = h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "dst", "-j", "ACCEPT"); err != nil {
-		return err
-	}
-
-	return h.ipt.AppendUnique(TableNat, ChainFabEdgePostRouting, "-m", "set", "--match-set", h.ipsetName, "src", "-j", "ACCEPT")
 }
 
 func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
@@ -158,9 +112,5 @@ func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
 }
 
 func (h IptablesHandler) clearRules() error {
-	if err := h.ipt.ClearChain(TableNat, ChainFabEdgePostRouting); err != nil {
-		return err
-	}
-
-	return h.ipt.ClearChain(TableFilter, ChainFabEdgeForward)
+	return h.helper.Remove()
 }

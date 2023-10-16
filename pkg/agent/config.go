@@ -1,4 +1,4 @@
-// Copyright 2021 BoCloud
+// Copyright 2021 FabEdge Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import (
 	"time"
 
 	debpkg "github.com/bep/debounce"
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/exec"
@@ -174,21 +173,9 @@ func (cfg Config) Manager() (*Manager, error) {
 		return nil, err
 	}
 
-	ipt, err := iptables.New()
-	if err != nil {
-		return nil, err
-	}
-
-	ipt6, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
-	if err != nil {
-		return nil, err
-	}
-
 	m := &Manager{
 		Config: cfg,
 		tm:     tm,
-		ipt4:   ipt,
-		ipt6:   ipt6,
 		log:    klogr.New().WithName("manager"),
 
 		events:        make(chan struct{}),
