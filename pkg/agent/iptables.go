@@ -15,8 +15,11 @@
 package agent
 
 import (
+	"bytes"
 	"strings"
+	"text/template"
 
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/fabedge/fabedge/pkg/util/ipset"
@@ -28,57 +31,39 @@ type IPSet struct {
 	EntrySet sets.String
 }
 
-var jumpChains = []iptables.JumpChain{
-	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
-	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgeNatOutgoing, Position: iptables.Prepend},
-}
-
-func buildRuleData(ipsetName string, subnets []string) []byte {
-	var builder strings.Builder
-	builder.WriteString(`
+var tmpl = template.Must(template.New("iptables").Parse(`
 *filter
 :FABEDGE-FORWARD - [0:0]
-
-`)
-
-	for _, subnet := range subnets {
-		builder.WriteString("-A FABEDGE-FORWARD -s ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -j ACCEPT\n")
-
-		builder.WriteString("-A FABEDGE-FORWARD -d ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -j ACCEPT\n")
-	}
-
-	builder.WriteString(`COMMIT
+{{- range $cidr := .edgePodCIDRs }}
+-A FABEDGE-FORWARD -s {{ $cidr }} -j ACCEPT
+-A FABEDGE-FORWARD -d {{ $cidr }} -j ACCEPT
+{{- end }}
+COMMIT
 
 *nat
-:FABEDGE-NAT-OUTGOING - [0:0]
+:FABEDGE-POSTROUTING - [0:0]
+{{- range $cidr := .edgePodCIDRs }}
+-A FABEDGE-POSTROUTING -s {{ $cidr }} -m set --match-set {{ $.ipsetName }} dst -j RETURN
+-A FABEDGE-POSTROUTING -s {{ $cidr }} -d {{ $cidr }} -j RETURN
+-A FABEDGE-POSTROUTING -s {{ $cidr }} -j MASQUERADE
+{{- end }}
+COMMIT
+`))
 
-`)
+var jumpChains = []iptables.JumpChain{
+	{Table: iptables.TableFilter, SrcChain: iptables.ChainForward, DstChain: iptables.ChainFabEdgeForward, Position: iptables.Append},
+	{Table: iptables.TableNat, SrcChain: iptables.ChainPostRouting, DstChain: iptables.ChainFabEdgePostRouting, Position: iptables.Prepend},
+}
 
-	for _, subnet := range subnets {
-		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -m set --match-set ")
-		builder.WriteString(ipsetName)
-		builder.WriteString(" dst -j RETURN\n")
+func buildRuleData(ipsetName string, edgePodCIDRs []string) []byte {
+	buf := bytes.NewBuffer(nil)
 
-		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -d ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -j RETURN\n")
+	_ = tmpl.Execute(buf, map[string]interface{}{
+		"ipsetName":    ipsetName,
+		"edgePodCIDRs": edgePodCIDRs,
+	})
 
-		builder.WriteString("-A FABEDGE-NAT-OUTGOING -s ")
-		builder.WriteString(subnet)
-		builder.WriteString(" -j MASQUERADE\n")
-	}
-
-	builder.WriteString("COMMIT\n")
-
-	return []byte(builder.String())
+	return buf.Bytes()
 }
 
 func (m *Manager) ensureIPTablesRules() error {
@@ -87,66 +72,44 @@ func (m *Manager) ensureIPTablesRules() error {
 	peerIPSet4, peerIPSet6 := m.getAllPeerCIDRs()
 	subnetsIP4, subnetsIP6 := classifySubnets(current.Subnets)
 
-	configs := []struct {
-		peerIPSet     IPSet
-		loopbackIPSet IPSet
-		subnets       []string
-		helper        iptables.ApplierCleaner
-	}{
-		{
-			peerIPSet: IPSet{
-				IPSet: &ipset.IPSet{
-					Name:       IPSetFabEdgePeerCIDR,
-					SetType:    ipset.HashNet,
-					HashFamily: ipset.ProtocolFamilyIPV4,
-				},
-				EntrySet: peerIPSet4,
-			},
-			subnets: subnetsIP4,
-			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR, subnetsIP4)),
-		},
-		{
-			peerIPSet: IPSet{
-				IPSet: &ipset.IPSet{
-					Name:       IPSetFabEdgePeerCIDR6,
-					SetType:    ipset.HashNet,
-					HashFamily: ipset.ProtocolFamilyIPV6,
-				},
-				EntrySet: peerIPSet6,
-			},
-			subnets: subnetsIP6,
-			helper:  iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR6, subnetsIP6)),
-		},
+	if !areSubnetsEqual(current.Subnets, m.lastSubnets) {
+		m.ipt = iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR, subnetsIP4))
+		m.ipt6 = iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR6, subnetsIP6))
+		m.lastSubnets = current.Subnets
 	}
 
+	configs := []struct {
+		name       string
+		hashFamily string
+		peerIPSet  sets.String
+		ipt        iptables.ApplierCleaner
+	}{
+		{IPSetFabEdgePeerCIDR, ipset.ProtocolFamilyIPV4, peerIPSet4, m.ipt},
+		{IPSetFabEdgePeerCIDR6, ipset.ProtocolFamilyIPV6, peerIPSet6, m.ipt6},
+	}
+
+	var errors []error
 	for _, c := range configs {
-		if err := m.ipset.EnsureIPSet(c.peerIPSet.IPSet, c.peerIPSet.EntrySet); err != nil {
-			m.log.Error(err, "failed to sync ipset", "ipsetName", c.peerIPSet.IPSet.Name)
-			return err
+		ipSet := &ipset.IPSet{
+			Name:       c.name,
+			HashFamily: c.hashFamily,
+			SetType:    ipset.HashNet,
 		}
 
-		if err := c.helper.Apply(); err != nil {
+		if err := m.ipset.EnsureIPSet(ipSet, c.peerIPSet); err != nil {
+			m.log.Error(err, "failed to sync ipset", "ipsetName", c.name)
+			errors = append(errors, err)
+		}
+
+		if err := c.ipt.Apply(); err != nil {
 			m.log.Error(err, "failed to sync iptables rules")
+			errors = append(errors, err)
 		} else {
 			m.log.V(5).Info("iptables rules is synced")
 		}
 	}
 
-	return nil
-}
-
-func (m *Manager) areSubnetsEqual(sa1, sa2 []string) bool {
-	if len(sa1) != len(sa2) {
-		return false
-	}
-
-	for i := range sa1 {
-		if sa1[i] != sa2[i] {
-			return false
-		}
-	}
-
-	return true
+	return utilerrors.NewAggregate(errors)
 }
 
 func (m *Manager) getAllPeerCIDRs() (cidrSet4, cidrSet6 sets.String) {
@@ -187,4 +150,18 @@ func classifySubnets(subnets []string) (ipv4, ipv6 []string) {
 
 func isIPv6(addr string) bool {
 	return strings.Index(addr, ":") != -1
+}
+
+func areSubnetsEqual(sa1, sa2 []string) bool {
+	if len(sa1) != len(sa2) {
+		return false
+	}
+
+	for i := range sa1 {
+		if sa1[i] != sa2[i] {
+			return false
+		}
+	}
+
+	return true
 }

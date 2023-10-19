@@ -30,6 +30,7 @@ import (
 	apis "github.com/fabedge/fabedge/pkg/apis/v1alpha1"
 	"github.com/fabedge/fabedge/pkg/tunnel"
 	"github.com/fabedge/fabedge/pkg/util/ipset"
+	"github.com/fabedge/fabedge/pkg/util/iptables"
 	netutil "github.com/fabedge/fabedge/pkg/util/net"
 	routeutil "github.com/fabedge/fabedge/pkg/util/route"
 	"github.com/fabedge/fabedge/third_party/ipvs"
@@ -42,9 +43,12 @@ const (
 
 type Manager struct {
 	Config
+
 	netLink ipvs.NetLinkHandle
 	ipvs    ipvs.Interface
 	ipset   ipset.Interface
+	ipt     iptables.ApplierCleaner
+	ipt6    iptables.ApplierCleaner
 
 	tm  tunnel.Manager
 	log logr.Logger
@@ -55,7 +59,7 @@ type Manager struct {
 	// endpointLock is used to protect currentEndpoint and peerEndpoints
 	endpointLock sync.RWMutex
 
-	// lastSubnets is used to determine whether to clear chain FABEDGE-NAT-OUTGOING
+	// lastSubnets is used to determine if current node's pod CIDR are changed
 	lastSubnets []string
 
 	events   chan struct{}
