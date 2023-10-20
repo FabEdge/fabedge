@@ -38,19 +38,19 @@ var tmpl = template.Must(template.New("iptables").Parse(`
 -A FABEDGE-INPUT -p ah -j ACCEPT
 
 -A FABEDGE-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
--A FABEDGE-FORWARD -m set --match-set {{ .CloudPodCIDR }} src -j ACCEPT
--A FABEDGE-FORWARD -m set --match-set {{ .CloudPodCIDR }} dst -j ACCEPT
--A FABEDGE-FORWARD -m set --match-set {{ .CloudNodeCIDR }} src -j ACCEPT
--A FABEDGE-FORWARD -m set --match-set {{ .CloudNodeCIDR }} dst -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .LocalPodCIDR }} src -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .LocalPodCIDR }} dst -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .LocalNodeCIDR }} src -j ACCEPT
+-A FABEDGE-FORWARD -m set --match-set {{ .LocalNodeCIDR }} dst -j ACCEPT
 COMMIT
 
 *nat
 :FABEDGE-POSTROUTING - [0:0]
--A FABEDGE-POSTROUTING -m set --match-set {{ .CloudPodCIDR }} src -m set --match-set {{ .EdgePodCIDR}} dst -j ACCEPT
--A FABEDGE-POSTROUTING -m set --match-set {{ .EdgePodCIDR }} src -m set --match-set {{ .CloudPodCIDR }} dst -j ACCEPT
--A FABEDGE-POSTROUTING -m set --match-set {{ .CloudPodCIDR }} src -m set --match-set {{ .EdgeNodeCIDR }} dst -j ACCEPT
--A FABEDGE-POSTROUTING -m set --match-set {{ .EdgePodCIDR }} src -m set --match-set {{ .CloudNodeCIDR }} dst -j MASQUERADE
--A FABEDGE-POSTROUTING -m set --match-set {{ .EdgeNodeCIDR }} src -m set --match-set {{ .CloudPodCIDR}} dst -j MASQUERADE
+-A FABEDGE-POSTROUTING -m set --match-set {{ .LocalPodCIDR }} src -m set --match-set {{ .RemotePodCIDR}} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} src -m set --match-set {{ .LocalPodCIDR }} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .LocalPodCIDR }} src -m set --match-set {{ .RemoteNodeCIDR }} dst -j ACCEPT
+-A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} src -m set --match-set {{ .LocalNodeCIDR }} dst -j MASQUERADE
+-A FABEDGE-POSTROUTING -m set --match-set {{ .RemoteNodeCIDR }} src -m set --match-set {{ .LocalPodCIDR}} dst -j MASQUERADE
 COMMIT
 `))
 
@@ -125,19 +125,19 @@ func (h *IPTablesHandler) setIPSetEntrySet(edgePodCIDRSet, edgeNodeCIDRSet, clou
 
 	h.specs = []IPSetSpec{
 		{
-			Name:     h.names.EdgePodCIDR,
+			Name:     h.names.RemotePodCIDR,
 			EntrySet: edgePodCIDRSet,
 		},
 		{
-			Name:     h.names.EdgeNodeCIDR,
+			Name:     h.names.RemoteNodeCIDR,
 			EntrySet: edgeNodeCIDRSet,
 		},
 		{
-			Name:     h.names.CloudPodCIDR,
+			Name:     h.names.LocalPodCIDR,
 			EntrySet: cloudPodCIDRSet,
 		},
 		{
-			Name:     h.names.CloudNodeCIDR,
+			Name:     h.names.LocalNodeCIDR,
 			EntrySet: cloudNodeCIDRSet,
 		},
 	}
@@ -179,7 +179,7 @@ func (h *IPTablesHandler) getEdgeNodeCIDRs() []string {
 	h.lock.RUnlock()
 
 	for _, spec := range specs {
-		if spec.Name == ipset.IPSetEdgeNodeCIDR {
+		if spec.Name == ipset.RemoteNodeCIDR {
 			return spec.EntrySet.List()
 		}
 	}

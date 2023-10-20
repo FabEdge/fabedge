@@ -36,42 +36,44 @@ const (
 	ProtocolFamilyIPV6 = ipset.ProtocolFamilyIPV6
 )
 
+// Remote refers to nodes or pods in different LANs, maybe even not in the same cluster,
+// while Local refers to nodes or pods in the same LAN and the same cluster.
 const (
-	IPSetEdgePodCIDR    = "FABEDGE-EDGE-POD-CIDR"
-	IPSetEdgePodCIDR6   = "FABEDGE-EDGE-POD-CIDR6"
-	IPSetEdgeNodeCIDR   = "FABEDGE-EDGE-NODE-CIDR"
-	IPSetEdgeNodeCIDR6  = "FABEDGE-EDGE-NODE-CIDR6"
-	IPSetCloudPodCIDR   = "FABEDGE-CLOUD-POD-CIDR"
-	IPSetCloudPodCIDR6  = "FABEDGE-CLOUD-POD-CIDR6"
-	IPSetCloudNodeCIDR  = "FABEDGE-CLOUD-NODE-CIDR"
-	IPSetCloudNodeCIDR6 = "FABEDGE-CLOUD-NODE-CIDR6"
-	IPSetRemotePodCIDR  = "FABEDGE-REMOTE-POD-CIDR"
-	IPSetRemotePodCIDR6 = "FABEDGE-REMOTE-POD-CIDR6"
+	RemotePodCIDR   = "FABEDGE-REMOTE-POD-CIDR"
+	RemotePodCIDR6  = "FABEDGE-REMOTE-POD-CIDR6"
+	RemoteNodeCIDR  = "FABEDGE-REMOTE-NODE-CIDR"
+	RemoteNodeCIDR6 = "FABEDGE-REMOTE-NODE-CIDR6"
+	LocalPodCIDR    = "FABEDGE-LOCAL-POD-CIDR"
+	LocalPodCIDR6   = "FABEDGE-LOCAL-POD-CIDR6"
+	LocalNodeCIDR   = "FABEDGE-LOCAL-NODE-CIDR"
+	LocalNodeCIDR6  = "FABEDGE-LOCAL-NODE-CIDR6"
+	RemoteCIDR      = "FABEDGE-REMOTE-CIDR"
+	RemoteCIDR6     = "FABEDGE-REMOTE-CIDR6"
 )
 
 type IPSetNames struct {
-	EdgePodCIDR   string
-	EdgeNodeCIDR  string
-	CloudPodCIDR  string
-	CloudNodeCIDR string
-	RemotePodCIDR string
+	RemotePodCIDR  string
+	RemoteNodeCIDR string
+	LocalPodCIDR   string
+	LocalNodeCIDR  string
+	RemoteCIDR     string
 }
 
 var (
 	Names4 = IPSetNames{
-		EdgeNodeCIDR:  IPSetEdgeNodeCIDR,
-		EdgePodCIDR:   IPSetEdgePodCIDR,
-		CloudPodCIDR:  IPSetCloudPodCIDR,
-		CloudNodeCIDR: IPSetCloudNodeCIDR,
-		RemotePodCIDR: IPSetRemotePodCIDR,
+		RemoteNodeCIDR: RemoteNodeCIDR,
+		RemotePodCIDR:  RemotePodCIDR,
+		LocalPodCIDR:   LocalPodCIDR,
+		LocalNodeCIDR:  LocalNodeCIDR,
+		RemoteCIDR:     RemoteCIDR,
 	}
 
 	Names6 = IPSetNames{
-		EdgeNodeCIDR:  IPSetEdgeNodeCIDR6,
-		EdgePodCIDR:   IPSetEdgePodCIDR6,
-		CloudPodCIDR:  IPSetCloudPodCIDR6,
-		CloudNodeCIDR: IPSetCloudNodeCIDR6,
-		RemotePodCIDR: IPSetRemotePodCIDR6,
+		RemoteNodeCIDR: RemoteNodeCIDR6,
+		RemotePodCIDR:  RemotePodCIDR6,
+		LocalPodCIDR:   LocalPodCIDR6,
+		LocalNodeCIDR:  LocalNodeCIDR6,
+		RemoteCIDR:     RemoteCIDR6,
 	}
 )
 

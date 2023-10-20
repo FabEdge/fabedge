@@ -73,8 +73,8 @@ func (m *Manager) ensureIPTablesRules() error {
 	subnetsIP4, subnetsIP6 := classifySubnets(current.Subnets)
 
 	if !areSubnetsEqual(current.Subnets, m.lastSubnets) {
-		m.ipt = iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR, subnetsIP4))
-		m.ipt6 = iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(IPSetFabEdgePeerCIDR6, subnetsIP6))
+		m.ipt = iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, buildRuleData(ipset.RemoteCIDR, subnetsIP4))
+		m.ipt6 = iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, buildRuleData(ipset.RemoteCIDR6, subnetsIP6))
 		m.lastSubnets = current.Subnets
 	}
 
@@ -84,8 +84,8 @@ func (m *Manager) ensureIPTablesRules() error {
 		peerIPSet  sets.String
 		ipt        iptables.ApplierCleaner
 	}{
-		{IPSetFabEdgePeerCIDR, ipset.ProtocolFamilyIPV4, peerIPSet4, m.ipt},
-		{IPSetFabEdgePeerCIDR6, ipset.ProtocolFamilyIPV6, peerIPSet6, m.ipt6},
+		{ipset.RemoteCIDR, ipset.ProtocolFamilyIPV4, peerIPSet4, m.ipt},
+		{ipset.RemoteCIDR6, ipset.ProtocolFamilyIPV6, peerIPSet6, m.ipt6},
 	}
 
 	var errors []error

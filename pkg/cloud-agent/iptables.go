@@ -16,19 +16,22 @@ package cloud_agent
 
 import (
 	"bytes"
+	"text/template"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/fabedge/fabedge/pkg/util/ipset"
 	ipsetutil "github.com/fabedge/fabedge/pkg/util/ipset"
 	"github.com/fabedge/fabedge/pkg/util/iptables"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"text/template"
 )
 
 type IptablesHandler struct {
-	ipset      ipsetutil.Interface
 	ipsetName  string
 	hashFamily string
-	helper     iptables.ApplierCleaner
-	rulesData  []byte
+	ipset      ipsetutil.Interface
+
+	helper    iptables.ApplierCleaner
+	rulesData []byte
 }
 
 func newIptableHandler() (*IptablesHandler, error) {
@@ -40,7 +43,7 @@ func newIptableHandler() (*IptablesHandler, error) {
 
 	return &IptablesHandler{
 		ipset:      ipsetutil.New(),
-		ipsetName:  ipset.IPSetRemotePodCIDR,
+		ipsetName:  ipset.RemotePodCIDR,
 		hashFamily: ipsetutil.ProtocolFamilyIPV4,
 		helper:     iptables.NewApplierCleaner(iptables.ProtocolIPv4, jumpChains, rulesData.Bytes()),
 		rulesData:  rulesData.Bytes(),
@@ -56,7 +59,7 @@ func newIp6tableHandler() (*IptablesHandler, error) {
 
 	return &IptablesHandler{
 		ipset:      ipsetutil.New(),
-		ipsetName:  ipset.IPSetRemotePodCIDR6,
+		ipsetName:  ipset.RemotePodCIDR6,
 		hashFamily: ipsetutil.ProtocolFamilyIPV6,
 		helper:     iptables.NewApplierCleaner(iptables.ProtocolIPv6, jumpChains, rulesData.Bytes()),
 		rulesData:  rulesData.Bytes(),
@@ -88,7 +91,7 @@ var jumpChains = []iptables.JumpChain{
 }
 
 func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
-	if err := h.syncRemotePodCIDRSet(remotePodCIDRs); err != nil {
+	if err := h.ensureIPSet(remotePodCIDRs); err != nil {
 		logger.Error(err, "failed to sync ipset", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
 	} else {
 		logger.V(5).Info("ipset is synced", "setName", h.ipsetName, "remotePodCIDRs", remotePodCIDRs)
@@ -101,7 +104,7 @@ func (h IptablesHandler) maintainRules(remotePodCIDRs []string) {
 	}
 }
 
-func (h IptablesHandler) syncRemotePodCIDRSet(remotePodCIDRs []string) error {
+func (h IptablesHandler) ensureIPSet(remotePodCIDRs []string) error {
 	set := &ipsetutil.IPSet{
 		Name:       h.ipsetName,
 		HashFamily: h.hashFamily,
