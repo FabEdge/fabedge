@@ -36,11 +36,6 @@ import (
 	"github.com/fabedge/fabedge/third_party/ipvs"
 )
 
-const (
-	IPSetFabEdgePeerCIDR  = "FABEDGE-PEER-CIDR"
-	IPSetFabEdgePeerCIDR6 = "FABEDGE-PEER-CIDR6"
-)
-
 type Manager struct {
 	Config
 
