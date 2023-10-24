@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/strongswan/govici/vici"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -95,6 +96,13 @@ func New(opts ...option) (*StrongSwanManager, error) {
 	for _, opt := range opts {
 		opt(manager)
 	}
+
+	go func() {
+		for {
+			manager.checkConnections()
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	return manager, nil
 }
@@ -413,6 +421,43 @@ func (m StrongSwanManager) UnloadConn(name string) error {
 	}
 
 	return m.terminateSA(name)
+}
+
+// checkConnections will remove any in-memory connection from manager if
+// its counterpart does not exist in strongswan, this will keep StrongswanManager
+// keep in sync with strongswan in a certain extent
+func (m StrongSwanManager) checkConnections() {
+	nameSet := sets.NewString()
+	err := m.do(func(session *vici.Session) error {
+		msg := vici.NewMessage()
+		streamMsg, err := session.StreamedCommandRequest("list-conns", "list-conn", msg)
+		if err != nil {
+			return err
+		}
+
+		for _, msg := range streamMsg.Messages() {
+			if len(msg.Keys()) == 0 {
+				continue
+			}
+
+			nameSet.Insert(msg.Keys()[0])
+		}
+		return err
+	})
+
+	// If error happens, skip checking this time. Normally list-conns won't return error,
+	// unless strongswan is not running
+	if err != nil {
+		return
+	}
+
+	m.mu.Lock()
+	m.mu.Unlock()
+	for name := range m.connectionByName {
+		if !nameSet.Has(name) {
+			delete(m.connectionByName, name)
+		}
+	}
 }
 
 func (m StrongSwanManager) do(fn func(session *vici.Session) error) error {
