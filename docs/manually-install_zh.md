@@ -127,7 +127,7 @@ agent:
 
 *注:  示例的`values.yaml`并非完整内容，完整的values文件可以通过执行`helm show values fabedge/fabedge`的方式获取。*
 
-8. 安装Fabedge
+8. 安装FabEdge
 
    ```shell
    helm install fabedge fabedge/fabedge -n fabedge --create-namespace -f values.yaml

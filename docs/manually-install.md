@@ -128,9 +128,9 @@ agent:
     ENABLE_DNS: "true"
 ```
 
-*PS:  The `values.yaml` in the example is not complete, you can get the complete `values.yaml` example by executing `helm show values fabedge/fabedge`.*
+*P.S.: The code snippet above shows part of `values.yaml`, while you can get the complete `values.yaml` example by executing `helm show values fabedge/fabedge`.*
 
-8. Deploy Fabedge
+8. Deploy FabEdge
 
    ```shell
    helm install fabedge fabedge/fabedge -n fabedge --create-namespace -f values.yaml
