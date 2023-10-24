@@ -40,8 +40,8 @@ FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
 
 * The cloud can be any Kubernetes cluster with supported CNI network plug-in, including Calico, Flannel, etc.
 * FabEdge builds a layer-3 data plane with tunnels in additional to the control plan managed by KubeEdge, SuperEdge, OpenYurt，etc.
-* Fabedge consists of **Operators, Connector, Agent, Cloud-Agent**.
-* Operator monitors k8s resources such as node, service, and endpoint in the cloud, and creates a configmap for each edge node, which contains the  configuration information such as the subnet, tunnel, and load balancing rules. The operator is also responsible to manage the life cycle of agent pod for each edge node.  
+* FabEdge consists of **Operators, Connector, Agent, Cloud-Agent**.
+* Operator monitors k8s resources such as nodes, services, and endpoints in the cloud, and creates a configmap for each edge node, which contains the  configuration information such as the subnet, tunnel, and load balancing rules. The operator is also responsible to manage the life cycle of agent pod for each edge node.  
 * Connector is responsible to terminate the tunnels from edge nodes, and forward traffic between the cloud and the edge. It relies on the cloud CNI plug-in to forward traffic to other non-connector nodes in the cloud.
 * Cloud-Agent runs on the non-connector nodes in the cluster and manages the routes to remote peers.
 * Each edge node runs an agent and consumes its own configmap including the following functions:
@@ -54,7 +54,7 @@ FabEdge is a sandbox project of the Cloud Native Computing Foundation (CNCF).
 
 ## FabEdge vs. Calico/Flannel/etc
 
-Fabedge is not to replace the traditional Kubernetes network plugins such as Calico/Flannel. As in the above architecture diagram, Calico/Flannel is used within the cloud for communication between cloud nodes, while Fabedge is a complement to it for the edge-cloud, edge-edge communication. 
+FabEdge is not to replace the traditional Kubernetes network plugins such as Calico/Flannel. As in the above architecture diagram, Calico/Flannel is used within the cloud for communication between cloud nodes, while FabEdge is a complement to it for the edge-cloud, edge-edge communication. 
 
 ## Documentation
 

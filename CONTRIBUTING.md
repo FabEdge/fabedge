@@ -1,4 +1,4 @@
-# Contributing Giude
+# Contributing Guide
 
 - Before you get started
   - Code of Conduct
@@ -38,7 +38,7 @@ This is a rough outline of what a contributor's workflow looks like:
 
 ## Creating Pull Requests
 
-Fabedge generally follows the standard [github pull request](https://help.github.com/articles/about-pull-requests/) process. 
+FabEdge generally follows the standard [github pull request](https://help.github.com/articles/about-pull-requests/) process. 
 
 ## Code Review
 
