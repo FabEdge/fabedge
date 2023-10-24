@@ -77,8 +77,6 @@ COMMIT
 
 *nat
 :FABEDGE-POSTROUTING - [0:0]
-:KUBE-POSTROUTING - [0:0]
-
 -A FABEDGE-POSTROUTING -m mark --mark 0x4000/0x4000 -j KUBE-POSTROUTING
 -A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} dst -j ACCEPT
 -A FABEDGE-POSTROUTING -m set --match-set {{ .RemotePodCIDR }} src -j ACCEPT
