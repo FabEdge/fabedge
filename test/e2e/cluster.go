@@ -11,6 +11,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -149,12 +150,12 @@ func (c Cluster) addAllEdgesToCommunity() {
 // Because coredns has cache, so to avoid old services DNS information
 // is cached, we give each service a random suffix per run
 func (c *Cluster) makeupServiceNames() {
-	c.serviceCloudNginx = getName(serviceCloudNginx)
-	c.serviceCloudNginx6 = getName(serviceCloudNginx6)
-	c.serviceEdgeNginx = getName(serviceEdgeNginx)
-	c.serviceEdgeNginx6 = getName(serviceEdgeNginx6)
-	c.serviceHostCloudNginx = getName(serviceHostCloudNginx)
-	c.serviceHostEdgeNginx = getName(serviceHostEdgeNginx)
+	c.serviceCloudNginx = serviceCloudNginx
+	c.serviceCloudNginx6 = serviceCloudNginx6
+	c.serviceEdgeNginx = serviceEdgeNginx
+	c.serviceEdgeNginx6 = serviceEdgeNginx6
+	c.serviceHostCloudNginx = serviceHostCloudNginx
+	c.serviceHostEdgeNginx = serviceHostEdgeNginx
 }
 
 func (c Cluster) cloudNginxServiceNames() []string {
@@ -176,12 +177,24 @@ func (c Cluster) edgeNginxServiceNames() []string {
 }
 
 func (c Cluster) prepareNamespace(namespace string) {
+	if framework.TestContext.ReuseResource {
+		var ns corev1.Namespace
+		err := c.client.Get(context.Background(), client.ObjectKey{Name: namespace}, &ns)
+		switch {
+		case err == nil:
+			return
+		case errors.IsNotFound(err):
+			// do nothing
+		default:
+			framework.Failf("Failed to check if namespace %q of cluster %s exists. Error: %v", c.name, namespace, err)
+		}
+	}
+
 	ns := corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespace,
 		},
 	}
-
 	_ = c.client.Delete(context.Background(), &ns)
 
 	// 等待上次的测试资源清除
