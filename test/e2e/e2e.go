@@ -27,6 +27,7 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -417,7 +418,12 @@ func podSpec(nodeName string, httpPort, httpsPort int32) corev1.PodSpec {
 }
 
 func createObject(cli client.Client, object client.Object) {
-	framework.ExpectNoError(cli.Create(context.TODO(), object))
+	err := cli.Create(context.TODO(), object)
+	if framework.TestContext.ReuseResource && errors.IsAlreadyExists(err) {
+		err = nil
+		framework.Logf("%s/%s exists", object.GetNamespace(), object.GetName())
+	}
+	framework.ExpectNoError(err)
 	framework.AddCleanupAction(func() {
 		if err := cli.Delete(context.TODO(), object); err != nil {
 			klog.Errorf("Failed to delete object %s, please delete it manually. Err: %s", object.GetName(), err)

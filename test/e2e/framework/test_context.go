@@ -45,6 +45,7 @@ type Context struct {
 	CurlTimeout         int64
 	NetToolImage        string
 	PreserveResources   string
+	ReuseResource       bool
 	ShowExecError       bool
 	CreateEdgeCommunity bool
 	IPv6Enabled         bool
@@ -82,6 +83,7 @@ func RegisterAndHandleFlags() {
 	flag.BoolVar(&TestContext.CreateEdgeCommunity, "create-edge-community", true,
 		"Create community for all edge nodes if set to true")
 	flag.BoolVar(&TestContext.IPv6Enabled, "6", false, "Whether to test IPv6 services")
+	flag.BoolVar(&TestContext.ReuseResource, "reuse-resources", true, "Whether to reuse pods and services created previously")
 
 	flag.Parse()
 
