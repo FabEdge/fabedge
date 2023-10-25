@@ -7,7 +7,6 @@ require (
 	github.com/bep/debounce v1.2.0
 	github.com/coredns/caddy v1.1.1
 	github.com/coredns/coredns v1.8.0
-	github.com/coreos/go-iptables v0.6.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-chi/chi/v5 v5.0.0
@@ -23,8 +22,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/strongswan/govici v0.5.1
 	github.com/vishvananda/netlink v1.1.0
-	golang.org/x/sys v0.5.0
-	gopkg.in/yaml.v3 v3.0.0
+	golang.org/x/sys v0.7.0
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.22.5
 	k8s.io/apimachinery v0.22.5
 	k8s.io/klog/v2 v2.9.0
@@ -42,7 +41,6 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.56.0 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest v0.11.18 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.9.13 // indirect
@@ -59,7 +57,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.1.0 // indirect
-	github.com/cespare/xxhash/v2 v2.1.1 // indirect
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/containerd/cgroups v0.0.0-20200531161412-0dbf7f05ba59 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
@@ -76,12 +74,12 @@ require (
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/cadvisor v0.39.2 // indirect
-	github.com/google/go-cmp v0.5.5 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/google/uuid v1.1.2 // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
@@ -126,7 +124,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.0 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.0 // indirect
-	go.opencensus.io v0.22.3 // indirect
+	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib v0.20.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.20.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.20.0 // indirect
@@ -138,20 +136,20 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v0.20.0 // indirect
 	go.opentelemetry.io/otel/trace v0.20.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.7.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.17.0 // indirect
-	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
+	golang.org/x/oauth2 v0.7.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/term v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/term v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
-	google.golang.org/grpc v1.38.0 // indirect
-	google.golang.org/protobuf v1.27.1 // indirect
+	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
+	google.golang.org/grpc v1.56.3 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/DataDog/dd-trace-go.v1 v1.27.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
@@ -170,10 +168,12 @@ require (
 )
 
 require (
+	cloud.google.com/go/compute v1.19.1 // indirect
+	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/net v0.9.0 // indirect
 )
 
 replace (
