@@ -84,12 +84,15 @@ type Interface interface {
 	utiliptables.Interface
 	// CreateChains create custom chains and insert them in specified positions
 	CreateChains(chains []JumpChain) error
-	// FlushAllChains flush rules of all custom chains
-	FlushAllChains(chains []JumpChain) error
-	// RemoveAllChains flush rules of all custom chains and remove them all
-	RemoveAllChains(chains []JumpChain) error
-	// RemoveChain flush rules of specified chain from specified table and remove the chain
-	RemoveChain(table Table, chain Chain) error
+	// SafeFlushChain flush rules of all custom chains, it won't return error if chain doesn't exist
+	SafeFlushChain(table Table, chain Chain) error
+	// FlushChains flush rules of all custom chains
+	FlushChains(chains []JumpChain) error
+	// DeleteChains flush rules of all custom chains and remove them all
+	DeleteChains(chains []JumpChain) error
+	// SafeDeleteChain flush rules of specified chain from specified table and delete the chain,
+	// it won't return error if chain doesn't exist
+	SafeDeleteChain(chain JumpChain) error
 	// NewApplierCleaner create a ApplierCleaner with specified custom chains and rules
 	NewApplierCleaner(chains []JumpChain, rulesData []byte) ApplierCleaner
 }
@@ -150,11 +153,11 @@ func (h *iptablesHelper) CreateChains(chains []JumpChain) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func (h *iptablesHelper) RemoveAllChains(chains []JumpChain) error {
+func (h *iptablesHelper) DeleteChains(chains []JumpChain) error {
 	var errors []error
 
 	for _, chain := range chains {
-		if err := h.RemoveChain(chain.Table, chain.DstChain); err != nil {
+		if err := h.SafeDeleteChain(chain); err != nil {
 			errors = append(errors, err)
 		}
 	}
@@ -162,11 +165,11 @@ func (h *iptablesHelper) RemoveAllChains(chains []JumpChain) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func (h *iptablesHelper) FlushAllChains(chains []JumpChain) error {
+func (h *iptablesHelper) FlushChains(chains []JumpChain) error {
 	var errors []error
 
 	for _, chain := range chains {
-		if err := h.ipt.FlushChain(chain.Table, chain.DstChain); err != nil {
+		if err := h.SafeFlushChain(chain.Table, chain.DstChain); err != nil {
 			errors = append(errors, err)
 		}
 	}
@@ -174,12 +177,34 @@ func (h *iptablesHelper) FlushAllChains(chains []JumpChain) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func (h *iptablesHelper) RemoveChain(table Table, chain Chain) error {
-	if err := h.FlushChain(table, chain); err != nil {
+func (h *iptablesHelper) SafeFlushChain(table Table, chain Chain) error {
+	exists, err := h.ChainExists(table, chain)
+	if exists {
+		return h.ipt.FlushChain(table, chain)
+	} else if err != nil && isNotFoundError(err) {
+		return nil
+	} else {
 		return err
 	}
+}
 
-	return h.ipt.DeleteChain(table, chain)
+func (h *iptablesHelper) SafeDeleteChain(chain JumpChain) error {
+	exists, err := h.ChainExists(chain.Table, chain.DstChain)
+	if exists {
+		if err = h.DeleteRule(chain.Table, chain.SrcChain, "-j", string(chain.DstChain)); err != nil {
+			return err
+		}
+
+		if err = h.FlushChain(chain.Table, chain.DstChain); err != nil {
+			return err
+		}
+
+		return h.ipt.DeleteChain(chain.Table, chain.DstChain)
+	} else if err != nil && isNotFoundError(err) {
+		return nil
+	} else {
+		return err
+	}
 }
 
 func (h *iptablesHelper) NewApplierCleaner(chains []JumpChain, rulesData []byte) ApplierCleaner {
@@ -199,9 +224,20 @@ func (ac *applierCleaner) Apply() error {
 }
 
 func (ac *applierCleaner) Flush() error {
-	return ac.helper.FlushAllChains(ac.chains)
+	return ac.helper.FlushChains(ac.chains)
 }
 
 func (ac *applierCleaner) Remove() error {
-	return ac.helper.RemoveAllChains(ac.chains)
+	return ac.helper.DeleteChains(ac.chains)
+}
+
+func isNotFoundError(err error) bool {
+	if utiliptables.IsNotFoundError(err) {
+		return true
+	}
+
+	if ee, isExitError := err.(utilexec.ExitError); isExitError {
+		return ee.ExitStatus() == 1
+	}
+	return false
 }
