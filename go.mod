@@ -7,7 +7,6 @@ require (
 	github.com/bep/debounce v1.2.0
 	github.com/coredns/caddy v1.1.1
 	github.com/coredns/coredns v1.8.0
-	github.com/coreos/go-iptables v0.6.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/go-chi/chi/v5 v5.0.0
@@ -138,7 +137,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v0.20.0 // indirect
 	go.opentelemetry.io/otel/trace v0.20.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.7.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.17.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
