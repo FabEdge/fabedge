@@ -103,6 +103,7 @@ func (c Config) Manager() (*Manager, error) {
 	tm, err := strongswan.New(
 		strongswan.SocketFile(c.ViciSocket),
 		strongswan.StartAction("none"),
+		strongswan.InitTimeout(10),
 	)
 	if err != nil {
 		return nil, err
@@ -179,8 +180,6 @@ func (m *Manager) notify() {
 
 func (m *Manager) Start() {
 	about.DisplayVersion()
-
-	m.removeAllChains()
 
 	go m.runLeaderElection()
 	go m.runHTTPServer()
@@ -327,12 +326,15 @@ func (m *Manager) workLoop() {
 			continue
 		}
 
-		m.maintainTunnels()
 		m.maintainRoutes()
 
 		m.iptHandler.maintainIPTables()
 		m.ipt6Handler.maintainIPTables()
 		m.broadcastConnectorPrefixes()
+
+		// maintainTunnels may last for minutes, so put it at the end, otherwise it may cause error, such as wrong iptables
+		// rules and wrong routes are generated after isLeader is set to false
+		m.maintainTunnels()
 	}
 }
 
