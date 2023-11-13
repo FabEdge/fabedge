@@ -95,6 +95,35 @@ var _ = Describe("FabEdge", func() {
 			}
 		})
 
+		It("let edge pods can access headless edge services [p2p][e2e]", func() {
+			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
+				client.InNamespace(namespaceSingle),
+				client.MatchingLabels{labelKeyInstance: instanceNetTool},
+			)
+			framework.ExpectNoError(err)
+
+			for _, serviceName := range cluster.edgeEdgeMySQLServiceNames() {
+				servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
+					client.InNamespace(namespaceSingle),
+					client.MatchingLabels{labelKeyService: serviceName},
+				)
+				framework.ExpectNoError(err)
+
+				replicas := len(edgePods)
+				for _, pod := range edgePods {
+					framework.Logf("pod %s visit service %s", pod.Name, serviceName)
+					cluster.checkServiceAvailability(pod, serviceName, servicePods)
+
+					for i := 0; i < replicas; i++ {
+						endpointName := fmt.Sprintf("%s-%d.%s:%d", serviceName, i, serviceName, defaultHttpPort)
+						framework.Logf("pod %s visit endpoint %s", pod.Name, endpointName)
+						_, _, e := cluster.execCurl(pod, endpointName)
+						framework.ExpectNoError(e)
+					}
+				}
+			}
+		})
+
 		It("let edge pods can access edge host service [p2n][e2e]", func() {
 			_, edgePods, err := framework.ListCloudAndEdgePods(cluster.client,
 				client.InNamespace(namespaceSingle),

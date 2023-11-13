@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,6 +41,8 @@ type Cluster struct {
 	serviceEdgeNginx6     string
 	serviceHostCloudNginx string
 	serviceHostEdgeNginx  string
+	serviceEdgeMySQL      string
+	serviceEdgeMySQL6     string
 	ready                 bool
 }
 
@@ -154,6 +157,8 @@ func (c *Cluster) makeupServiceNames() {
 	c.serviceCloudNginx6 = serviceCloudNginx6
 	c.serviceEdgeNginx = serviceEdgeNginx
 	c.serviceEdgeNginx6 = serviceEdgeNginx6
+	c.serviceEdgeMySQL = serviceEdgeMySQL
+	c.serviceEdgeMySQL6 = serviceEdgeMySQL6
 	c.serviceHostCloudNginx = serviceHostCloudNginx
 	c.serviceHostEdgeNginx = serviceHostEdgeNginx
 }
@@ -171,6 +176,15 @@ func (c Cluster) edgeNginxServiceNames() []string {
 	serviceNames := []string{c.serviceEdgeNginx}
 	if framework.TestContext.IPv6Enabled {
 		serviceNames = append(serviceNames, c.serviceEdgeNginx6)
+	}
+
+	return serviceNames
+}
+
+func (c Cluster) edgeEdgeMySQLServiceNames() []string {
+	serviceNames := []string{c.serviceEdgeMySQL}
+	if framework.TestContext.IPv6Enabled {
+		serviceNames = append(serviceNames, c.serviceEdgeMySQL6)
 	}
 
 	return serviceNames
@@ -230,6 +244,85 @@ func (c Cluster) preparePodsOnEachNode(namespace string) {
 	}
 }
 
+func (c Cluster) prepareEdgeStatefulSet(serviceName, namespace string) {
+	var replicas int32 = 0
+	var nodes corev1.NodeList
+	framework.ExpectNoError(c.client.List(context.TODO(), &nodes))
+	for _, node := range nodes.Items {
+		if nodeutil.IsEdgeNode(node) {
+			replicas += 1
+		}
+	}
+
+	mysql := appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				labelKeyApp:      appNetTool,
+				labelKeyInstance: instanceMySQL,
+			},
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					labelKeyApp:      appNetTool,
+					labelKeyInstance: instanceMySQL,
+					labelKeyService:  serviceName,
+				},
+			},
+			ServiceName: serviceName,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						labelKeyApp:      appNetTool,
+						labelKeyInstance: instanceMySQL,
+						labelKeyService:  serviceName,
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:            "net-tool",
+							Image:           framework.TestContext.NetToolImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "http",
+									ContainerPort: defaultHttpPort,
+								},
+								{
+									Name:          "https",
+									ContainerPort: defaultHttpsPort,
+								},
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "HTTP_PORT",
+									Value: fmt.Sprint(defaultHttpPort),
+								},
+								{
+									Name:  "HTTPS_PORT",
+									Value: fmt.Sprint(defaultHttpsPort),
+								},
+							},
+						},
+					},
+					Tolerations: []corev1.Toleration{
+						{
+							Key:      "",
+							Operator: corev1.TolerationOpExists,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	createObject(c.client, &mysql)
+}
+
 func (c Cluster) prepareHostNetworkPodsOnEachNode(namespace string) {
 	var nodes corev1.NodeList
 	framework.ExpectNoError(c.client.List(context.TODO(), &nodes))
@@ -253,11 +346,45 @@ func (c Cluster) prepareService(name, namespace string, ipFamily corev1.IPFamily
 			Namespace: namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:       corev1.ServiceTypeClusterIP,
+			Type:       corev1.ServiceTypeNodePort,
 			IPFamilies: []corev1.IPFamily{ipFamily},
 			Selector: map[string]string{
 				labelKeyLocation:       string(location),
 				labelKeyUseHostNetwork: fmt.Sprint(useHostNetwork),
+			},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.FromInt(defaultHttpPort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+				{
+					Name:       "https",
+					Port:       443,
+					TargetPort: intstr.FromInt(defaultHttpPort),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
+		},
+	}
+
+	createObject(c.client, &svc)
+}
+
+func (c Cluster) prepareHeadLessService(name, namespace string, ipFamily corev1.IPFamily) {
+	framework.Logf("create service %s/%s on %s", namespace, name, c.name)
+	svc := corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:       corev1.ServiceTypeClusterIP,
+			ClusterIP:  "None",
+			IPFamilies: []corev1.IPFamily{ipFamily},
+			Selector: map[string]string{
+				labelKeyInstance: instanceMySQL,
 			},
 			Ports: []corev1.ServicePort{
 				{
