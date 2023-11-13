@@ -54,9 +54,11 @@ const (
 	appNetTool          = "fabedge-net-tool"
 	instanceNetTool     = "net-tool"
 	instanceHostNetTool = "host-net-tool"
+	instanceMySQL       = "mysql"
 
 	labelKeyApp            = "app"
 	labelKeyInstance       = "instance"
+	labelKeyService        = "service"
 	labelKeyLocation       = "location"
 	labelKeyUseHostNetwork = "use-host-network"
 	// add a random label, prevent kubeedge to cache it
@@ -66,6 +68,8 @@ const (
 	serviceCloudNginx6    = "cloud-nginx6"
 	serviceEdgeNginx      = "edge-nginx"
 	serviceEdgeNginx6     = "edge-nginx6"
+	serviceEdgeMySQL      = "edge-mysql"
+	serviceEdgeMySQL6     = "edge-mysql6"
 	serviceHostCloudNginx = "host-cloud-nginx"
 	serviceHostEdgeNginx  = "host-edge-nginx"
 
@@ -168,6 +172,7 @@ func singleClusterE2eTestPrepare() {
 	}
 	prepareClustersNamespace(namespaceSingle)
 	preparePodsOnEachClusterNode(namespaceSingle)
+	prepareStatefulSets(namespaceSingle)
 	cluster.prepareHostNetworkPodsOnEachNode(namespaceSingle)
 	prepareServicesOnEachCluster(namespaceSingle)
 
@@ -261,11 +266,25 @@ func preparePodsOnEachClusterNode(namespace string) {
 	}
 }
 
+func prepareStatefulSets(namespace string) {
+	for _, cluster := range clusters {
+		cluster.prepareEdgeStatefulSet(serviceEdgeMySQL, namespace)
+		if framework.TestContext.IPv6Enabled {
+			cluster.prepareEdgeStatefulSet(serviceEdgeMySQL6, namespace)
+		}
+	}
+}
+
 func prepareServicesOnEachCluster(namespace string) {
 	for _, cluster := range clusters {
 		cluster.prepareService(cluster.serviceCloudNginx, namespace, corev1.IPv4Protocol, LocationCloud, false)
 		if framework.TestContext.IPv6Enabled {
 			cluster.prepareService(cluster.serviceCloudNginx6, namespace, corev1.IPv6Protocol, LocationCloud, false)
+		}
+
+		cluster.prepareHeadLessService(cluster.serviceEdgeMySQL, namespace, corev1.IPv4Protocol)
+		if framework.TestContext.IPv6Enabled {
+			cluster.prepareHeadLessService(cluster.serviceEdgeMySQL6, namespace, corev1.IPv6Protocol)
 		}
 
 		if !framework.TestContext.IsMultiClusterTest() {
