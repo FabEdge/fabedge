@@ -53,4 +53,7 @@ type ConnConfig struct {
 	// for detailed explanation for MediatedBy and MediationPeer
 	MediatedBy    string
 	MediationPeer string
+
+	// The address of the vxlan interface
+	EndpointAddress string
 }
