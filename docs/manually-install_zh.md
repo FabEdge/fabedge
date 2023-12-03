@@ -112,7 +112,7 @@ cluster:
   connectorAsMediator: false
   # 填入步骤2中的service-cluster-ip-range
   serviceClusterIPRange:
-  - 10.234.0.0/18
+  - 10.233.0.0/18
 
 fabDNS:
   # 如果是多集群通信，并且需要多集群服务发现功能，需要设置为true 

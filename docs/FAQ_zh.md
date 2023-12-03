@@ -67,7 +67,7 @@ agent:
 
 ## 云边通信的流量都由connector节点来负责，是否存在单点问题？
 
-是的，connector暂时还没有高可用方案，我们还在努力。另外建议，不要在connector节点部署其他应用。
+从v1.0.0起，FabEdge实现了connector高可用。
 
 ## 边边之间默认是否可以通信？
 

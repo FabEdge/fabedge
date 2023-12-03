@@ -176,7 +176,7 @@
 	> 说明：  
 	> **--connectors**: connector所在节点主机名，指定的节点会被打上node-role.kubernetes.io/connector标签    
 	> **--edges:** 边缘节点名称，指定的节点会被打上node-role.kubernetes.io/edge标签  
-	> **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置，并确保这个值不能跟集群的cluster-cidr参数重叠   
+	> **--edge-pod-cidr**: 用来分配给边缘Pod的网段, 使用Calico时必须配置。在v1.0.0版本前，这个值不能跟集群的cluster-cidr参数重叠，从v1.0.0起，建议该值是cluster-cidr的子集，但不要跟CALICO_IPV4POOL_CIDR/里的值重叠。   
 	> **--connector-public-addresses**: member集群connectors所在节点的ip地址  
 	> **--service-hub-api-server**: host集群serviceHub服务的地址和端口  
 	> **--operator-api-server**: host集群operator-api服务的地址和端口  
