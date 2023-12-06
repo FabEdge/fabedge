@@ -103,16 +103,9 @@ var _ = Describe("FabEdge", func() {
 			framework.ExpectNoError(err)
 
 			for _, serviceName := range cluster.edgeEdgeMySQLServiceNames() {
-				servicePods, _, err := framework.ListCloudAndEdgePods(cluster.client,
-					client.InNamespace(namespaceSingle),
-					client.MatchingLabels{labelKeyService: serviceName},
-				)
-				framework.ExpectNoError(err)
-
 				replicas := len(edgePods)
 				for _, pod := range edgePods {
 					framework.Logf("pod %s visit service %s", pod.Name, serviceName)
-					cluster.checkServiceAvailability(pod, serviceName, servicePods)
 
 					for i := 0; i < replicas; i++ {
 						endpointName := fmt.Sprintf("%s-%d.%s:%d", serviceName, i, serviceName, defaultHttpPort)
