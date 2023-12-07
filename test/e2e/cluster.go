@@ -282,6 +282,7 @@ func (c Cluster) prepareEdgeStatefulSet(serviceName, namespace string) {
 					},
 				},
 				Spec: corev1.PodSpec{
+					NodeSelector: nodeutil.GetEdgeNodeLabels(),
 					Containers: []corev1.Container{
 						{
 							Name:            "net-tool",
