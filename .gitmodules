@@ -1,0 +1,3 @@
+[submodule "build/agent/plugins"]
+	path = build/agent/plugins
+	url = https://github.com/containernetworking/plugins
