@@ -4,7 +4,6 @@ IMAGES := $(addsuffix -image, ${BINARIES})
 
 VERSION := $(shell git describe --tags)
 STRONGSWAN_VERSION = 5.9.1
-CNI_PLUGIN_VERSION := v0.9.1
 
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S%z')
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
@@ -79,7 +78,7 @@ buildx-install:
 
 ${IMAGES}: APP=$(subst -image,,$@)
 ${IMAGES}: buildx-install
-	docker build -t fabedge/${APP}:${VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) $(if $(subst agent,,${APP}),,--build-arg pluginVersion=${CNI_PLUGIN_VERSION}) -f build/${APP}/Dockerfile .
+	docker build -t fabedge/${APP}:${VERSION} $(if $(PLATFORM),--platform $(PLATFORM)) $(if $(PUSH),--push) -f build/${APP}/Dockerfile .
 
 fabedge-images: ${IMAGES}
 

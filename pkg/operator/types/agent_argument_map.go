@@ -18,7 +18,7 @@ func NewAgentArgumentMap() AgentArgumentMap {
 // NewAgentArgumentMapFromEnv extract arguments of agent pod
 // from ENV, each agent argument should be configured like:
 //
-// 			AGENT_ARG_ENABLE_IPAM=true
+//	AGENT_ARG_ENABLE_IPAM=true
 //
 // The return value is a map, each key is the ENV variable name but with
 // prefix 'AGENT_ARG_' stripped and the key is also lowered.

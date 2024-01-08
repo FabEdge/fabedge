@@ -208,7 +208,7 @@ var _ = Describe("AgentPodHandler", func() {
 		Expect(epContainer.Name).To(Equal("environment-prepare"))
 		Expect(epContainer.Image).To(Equal(agentImage))
 		Expect(epContainer.ImagePullPolicy).To(Equal(handler.imagePullPolicy))
-		Expect(epContainer.Command).To(ConsistOf("env_prepare.sh"))
+		Expect(epContainer.Command).To(ConsistOf("/plugins/env_prepare.sh"))
 		Expect(*epContainer.SecurityContext.Privileged).To(BeTrue())
 		Expect(epContainer.VolumeMounts).To(Equal([]corev1.VolumeMount{
 			{
