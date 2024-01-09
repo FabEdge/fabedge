@@ -181,7 +181,7 @@ func (handler *agentPodHandler) buildAgentPod(namespace, podName string, node co
 					Image:           handler.agentImage,
 					ImagePullPolicy: handler.imagePullPolicy,
 					Command: []string{
-						"env_prepare.sh",
+						"/plugins/env_prepare.sh",
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
