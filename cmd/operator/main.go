@@ -15,13 +15,25 @@
 package main
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/about"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	flag "github.com/spf13/pflag"
 	"os"
 
 	"github.com/fabedge/fabedge/pkg/operator"
 )
 
 func main() {
-	if err := operator.Execute(); err != nil {
+	opts := &operator.Options{}
+
+	fs := flag.CommandLine
+	logutil.AddFlags(fs)
+	about.AddFlags(fs)
+	opts.AddFlags(fs)
+
+	flag.Parse()
+
+	if err := operator.Execute(opts); err != nil {
 		os.Exit(1)
 	}
 }

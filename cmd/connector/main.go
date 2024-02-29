@@ -15,9 +15,21 @@
 package main
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/connector"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
-	connector.Execute()
+	fs := flag.CommandLine
+	cfg := &connector.Config{}
+
+	logutil.AddFlags(fs)
+	about.AddFlags(fs)
+	cfg.AddFlags(fs)
+
+	flag.Parse()
+
+	connector.Execute(cfg)
 }

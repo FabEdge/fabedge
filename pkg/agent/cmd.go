@@ -25,19 +25,10 @@ import (
 	"k8s.io/klog/v2/klogr"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
-	logutil "github.com/fabedge/fabedge/pkg/util/log"
 )
 
-func Execute() error {
+func Execute(cfg *Config) error {
 	defer klog.Flush()
-
-	fs := flag.CommandLine
-	cfg := &Config{}
-
-	logutil.AddFlags(fs)
-	cfg.AddFlags(fs)
-
-	flag.Parse()
 
 	// the version flag is added by importing kube-proxy packages,
 	// but I don't know how that happened

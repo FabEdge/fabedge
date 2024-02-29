@@ -15,13 +15,22 @@
 package main
 
 import (
-	"os"
-
 	"github.com/fabedge/fabedge/pkg/agent"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	flag "github.com/spf13/pflag"
+	"os"
 )
 
 func main() {
-	if err := agent.Execute(); err != nil {
+	fs := flag.CommandLine
+	cfg := &agent.Config{}
+
+	logutil.AddFlags(fs)
+	cfg.AddFlags(fs)
+
+	flag.Parse()
+
+	if err := agent.Execute(cfg); err != nil {
 		os.Exit(1)
 	}
 }
