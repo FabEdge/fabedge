@@ -50,6 +50,7 @@ spec:
             - --connector-subnets=10.233.0.0/18
             # 边缘节点生成的证书的ID的格式，{node}会被替换为节点名称
             - --endpoint-id-format=C=CN, O=fabedge.io, CN={node}
+            - --component=operator
             - -v=5
           # 用环境变量配置agent的参数，每个参数都是'AGENT_ARG_'开头
           # 需要注意的是，日志级别必须用'AGENT_ARG_LOG_LEVEL'来配置
@@ -67,7 +68,9 @@ spec:
             - name: AGENT_ARG_USE_XFRM
               value: "false"
             - name: AGENT_ARG_AUTO_NETWORKING
-                value: "false"
+              value: "false"
+            - name: AGENT_ARG_COMPONENT
+              value: "agent"
             - name: AGENT_ARG_MULTICAST_TOKEN
               value: "e6a7ca28-ae6a-45bf-8162-e2374a4a48c1"
           # ports, volumeMounts, readinessProbe配置仅限于cluster-role是host时使用
