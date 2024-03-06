@@ -87,15 +87,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.TunnelConfigFile, "tunnel-config", "/etc/fabedge/tunnels.yaml", "tunnel config file")
 	fs.StringVar(&c.CertFile, "cert-file", "/etc/ipsec.d/certs/tls.crt", "TLS certificate file")
 	fs.StringVar(&c.ViciSocket, "vici-socket", "/var/run/charon.vici", "vici socket file")
-	fs.StringVar(&c.CNIType, "cni-type", "flannel", "CNI type used in cloud")
-	fs.DurationVar(&c.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
 	fs.DurationVar(&c.DebounceDuration, "debounce-duration", 5*time.Second, "period to sync routes/rules")
-	fs.StringSliceVar(&c.InitMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
-	fs.UintVar(&c.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Unit: second")
 	fs.StringVar(&c.LeaderElection.LockName, "leader-lock-name", "connector", "The name of leader lock")
-	fs.DurationVar(&c.LeaderElection.LeaseDuration, "leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
-	fs.DurationVar(&c.LeaderElection.RenewDeadline, "leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
-	fs.DurationVar(&c.LeaderElection.RetryPeriod, "leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
 	fs.StringVar(&c.ListenAddress, "listen-address", "127.0.0.1:30306", "The address of http server")
 }
 

@@ -19,6 +19,7 @@ import (
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	flag "github.com/spf13/pflag"
 	"os"
+	"time"
 )
 
 func main() {
@@ -27,6 +28,8 @@ func main() {
 
 	logutil.AddFlags(fs)
 	cfg.AddFlags(fs)
+	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
+	fs.UintVar(&cfg.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Uint: second")
 
 	flag.Parse()
 

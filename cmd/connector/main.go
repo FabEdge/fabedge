@@ -19,6 +19,7 @@ import (
 	"github.com/fabedge/fabedge/pkg/connector"
 	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	flag "github.com/spf13/pflag"
+	"time"
 )
 
 func main() {
@@ -28,6 +29,14 @@ func main() {
 	logutil.AddFlags(fs)
 	about.AddFlags(fs)
 	cfg.AddFlags(fs)
+
+	fs.StringVar(&cfg.CNIType, "cni-type", "flannel", "CNI type used in cloud")
+	fs.DurationVar(&cfg.LeaderElection.LeaseDuration, "leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
+	fs.DurationVar(&cfg.LeaderElection.RenewDeadline, "leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
+	fs.DurationVar(&cfg.LeaderElection.RetryPeriod, "leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
+	fs.StringSliceVar(&cfg.InitMembers, "connector-node-addresses", []string{}, "internal address of all connector nodes")
+	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 5*time.Minute, "period to sync routes/rules")
+	fs.UintVar(&cfg.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Unit: second")
 
 	flag.Parse()
 
