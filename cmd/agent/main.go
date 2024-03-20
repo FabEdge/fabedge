@@ -15,13 +15,25 @@
 package main
 
 import (
-	"os"
-
 	"github.com/fabedge/fabedge/pkg/agent"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	flag "github.com/spf13/pflag"
+	"os"
+	"time"
 )
 
 func main() {
-	if err := agent.Execute(); err != nil {
+	fs := flag.CommandLine
+	cfg := &agent.Config{}
+
+	logutil.AddFlags(fs)
+	cfg.AddFlags(fs)
+	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
+	fs.UintVar(&cfg.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Uint: second")
+
+	flag.Parse()
+
+	if err := agent.Execute(cfg); err != nil {
 		os.Exit(1)
 	}
 }

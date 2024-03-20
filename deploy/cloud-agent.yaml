@@ -24,6 +24,7 @@ spec:
       containers:
         - args:
             - --connector-node-addresses=10.20.8.12
+            - --component=cloud-agent
             - -v=5
           image: fabedge/cloud-agent
           imagePullPolicy: IfNotPresent

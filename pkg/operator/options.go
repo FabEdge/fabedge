@@ -115,7 +115,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 	flag.StringVar(&opts.Cluster, "cluster", "", "The name of cluster must be unique among all clusters and be a valid dns name(RFC 1123)")
 	flag.StringVar(&opts.ClusterRole, "cluster-role", "host", "The role of cluster, possible values are: host, member")
 	flag.StringVar(&opts.Namespace, "namespace", "fabedge", "The namespace in which operator will get or create objects, includes pods, secrets and configmaps")
-	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
 	flag.BoolVar(&opts.AutoKeepIPPools, "auto-keep-ippools", true, "Let fabedge operator manage calico ippool, this will save you from manually configuring ippools of CIDRs of other clusters")
 	flag.StringSliceVar(&opts.ClusterCIDRs, "cluster-cidr", nil, "The value of cluster-cidr parameter of current kubernetes cluster")
 	flag.StringVar(&opts.EdgePodCIDRv4, "edge-pod-cidr", "", "Specify range of IPv4 addresses for the edge pod. If set, fabedge-operator will automatically allocate CIDRs for every edge node, configure this when you use Calico and want to use IPv4")
@@ -142,9 +141,6 @@ func (opts *Options) AddFlags(flag *pflag.FlagSet) {
 
 	flag.BoolVar(&opts.ManagerOpts.LeaderElection, "leader-election", false, "Determines whether or not to use leader election")
 	flag.StringVar(&opts.ManagerOpts.LeaderElectionID, "leader-election-id", "fabedge-operator-leader", "The name of the resource that leader election will use for holding the leader lock")
-	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
-	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
-	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
 
 	flag.StringVar(&opts.APIServerListenAddress, "api-server-listen-address", "0.0.0.0:3030", "The address on which for API server to listen")
 	flag.StringVar(&opts.APIServerAddress, "api-server-address", "", "The address of host cluster's API server")

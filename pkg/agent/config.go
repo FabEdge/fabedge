@@ -82,7 +82,6 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringSliceVar(&cfg.LocalCerts, "local-cert", []string{"edgecert.pem"}, "The path to cert files, comma separated. If it's a relative path, the cert file should be put under /etc/ipsec.d/certs")
 	fs.DurationVar(&cfg.DebounceDuration, "debounce", time.Second, "The debounce delay to avoid too much network reconfiguring")
-	fs.DurationVar(&cfg.SyncPeriod, "sync-period", 30*time.Second, "The period to synchronize network configuration")
 
 	fs.BoolVar(&cfg.EnableHairpinMode, "enable-hairpinmode", true, "enable the Hairpin feature")
 	fs.IntVar(&cfg.NetworkPluginMTU, "network-plugin-mtu", 1400, "Set network plugin MTU for edge nodes")
@@ -112,7 +111,6 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&cfg.BackupInterval, "backup-interval", 10*time.Second, "The interval between local endpoints backing up")
 	fs.DurationVar(&cfg.EndpointTTL, "endpoint-ttl", 20*time.Second, "The time to live for endpoint received from multicasting")
 
-	fs.UintVar(&cfg.TunnelInitTimeout, "tunnel-init-timeout", 10, "The timeout of tunnel initiation. Uint: second")
 }
 
 func (cfg *Config) Validate() error {

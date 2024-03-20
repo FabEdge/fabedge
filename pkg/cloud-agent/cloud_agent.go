@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/bep/debounce"
-	flag "github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -33,7 +32,6 @@ import (
 	"github.com/fabedge/fabedge/pkg/common/about"
 	"github.com/fabedge/fabedge/pkg/common/constants"
 	"github.com/fabedge/fabedge/pkg/connector/routing"
-	logutil "github.com/fabedge/fabedge/pkg/util/log"
 	"github.com/fabedge/fabedge/pkg/util/memberlist"
 	routeutil "github.com/fabedge/fabedge/pkg/util/route"
 )
@@ -52,16 +50,8 @@ type CloudAgent struct {
 	routesByHost map[string][]netlink.Route
 }
 
-func Execute() {
+func Execute(initMembers []string) {
 	defer klog.Flush()
-
-	var initMembers []string
-
-	flag.StringSliceVar(&initMembers, "connector-node-addresses", []string{}, "internal ip address of all connector nodes")
-	logutil.AddFlags(flag.CommandLine)
-	about.AddFlags(flag.CommandLine)
-
-	flag.Parse()
 
 	about.DisplayAndExitIfRequested()
 

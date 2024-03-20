@@ -29,7 +29,7 @@ var (
 )
 
 func AddFlags(fs *pflag.FlagSet) {
-	showVersion = fs.Bool("version", false, "Display version info")
+	showVersion = fs.Bool("show-version", false, "Display version info")
 }
 
 func DisplayAndExitIfRequested() {

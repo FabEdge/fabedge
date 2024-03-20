@@ -15,13 +15,31 @@
 package main
 
 import (
+	"github.com/fabedge/fabedge/pkg/common/about"
+	logutil "github.com/fabedge/fabedge/pkg/util/log"
+	flag "github.com/spf13/pflag"
 	"os"
+	"time"
 
 	"github.com/fabedge/fabedge/pkg/operator"
 )
 
 func main() {
-	if err := operator.Execute(); err != nil {
+	opts := &operator.Options{}
+
+	fs := flag.CommandLine
+	logutil.AddFlags(fs)
+	about.AddFlags(fs)
+	opts.AddFlags(fs)
+
+	flag.StringVar(&opts.CNIType, "cni-type", "", "The CNI name in your kubernetes cluster")
+	opts.ManagerOpts.LeaseDuration = flag.Duration("leader-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait to force acquire leadership")
+	opts.ManagerOpts.RenewDeadline = flag.Duration("leader-renew-deadline", 10*time.Second, "The duration that the acting controlplane will retry refreshing leadership before giving up")
+	opts.ManagerOpts.RetryPeriod = flag.Duration("leader-retry-period", 2*time.Second, "The duration that the LeaderElector clients should wait between tries of actions")
+
+	flag.Parse()
+
+	if err := operator.Execute(opts); err != nil {
 		os.Exit(1)
 	}
 }

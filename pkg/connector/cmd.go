@@ -15,24 +15,13 @@
 package connector
 
 import (
-	flag "github.com/spf13/pflag"
 	"k8s.io/klog/v2"
 
 	"github.com/fabedge/fabedge/pkg/common/about"
-	logutil "github.com/fabedge/fabedge/pkg/util/log"
 )
 
-func Execute() {
+func Execute(cfg *Config) {
 	defer klog.Flush()
-
-	fs := flag.CommandLine
-	cfg := &Config{}
-
-	logutil.AddFlags(fs)
-	about.AddFlags(fs)
-	cfg.AddFlags(fs)
-
-	flag.Parse()
 
 	about.DisplayAndExitIfRequested()
 
