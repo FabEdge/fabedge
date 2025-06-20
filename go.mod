@@ -9,7 +9,7 @@ require (
 	github.com/coredns/coredns v1.8.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fsnotify/fsnotify v1.4.9
-	github.com/go-chi/chi/v5 v5.0.0
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-logr/logr v0.4.0
 	github.com/golang-jwt/jwt/v4 v4.2.0
 	github.com/hashicorp/memberlist v0.1.3
