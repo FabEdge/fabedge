@@ -23,7 +23,7 @@ require (
 	github.com/strongswan/govici v0.5.1
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/sys v0.5.0
-	gopkg.in/yaml.v3 v3.0.0
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.22.5
 	k8s.io/apimachinery v0.22.5
 	k8s.io/klog/v2 v2.9.0
