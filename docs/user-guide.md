@@ -120,7 +120,7 @@ GlobalService is used to export a local/standard k8s service (ClusterIP or Headl
 
 1. create a service, e.g. namespace: default, name: web
 2. Label it with : `fabedge.io/global-service: true`  
-3. It can be accessed by the domain name: `web.defaut.svc.global`
+3. It can be accessed by the domain name: `web.default.svc.global`
 
 ## Configure fabedge-agent for a specific node
 

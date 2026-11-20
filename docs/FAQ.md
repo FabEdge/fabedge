@@ -267,7 +267,7 @@ agent:
 
 Don't change those parameters after you have deployed FabEdge, otherwise FabEdge might work improperly.
 
-## I can't use 500 and 4500 as public ports for connecotr, what should I do?
+## I can't use 500 and 4500 as public ports for connector, what should I do?
 
 Don't worry, since FabEdge v0.8.0, you can configure connector's public port. It is worth mentioning this doesn't change the listen ports of connector's strongswan, but change the port which strongswan of edge nodes use to establish tunnels. In addition, there is no need to map the public network port for 500. When a tunnel is created using a non-500 port, only port 4500 is actually used, so only port 4500 of the connector needs to be mapped. The configuration is as follows:
 

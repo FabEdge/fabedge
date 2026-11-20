@@ -420,7 +420,7 @@ func (opts Options) Validate() (err error) {
 		}
 
 		if opts.isOverlappedWithProvidedSubnets(subnet) {
-			return fmt.Errorf("EdgePodCIDR4 is overlaped with connector's subnets or cluster CIDR")
+			return fmt.Errorf("EdgePodCIDR4 is overlapped with connector's subnets or cluster CIDR")
 		}
 
 		if opts.EdgePodCIDRv6 != "" {
@@ -434,7 +434,7 @@ func (opts Options) Validate() (err error) {
 			}
 
 			if opts.isOverlappedWithProvidedSubnets(subnet) {
-				return fmt.Errorf("EdgePodCIDR6 is overlaped with connector's subnets or cluster CIDR")
+				return fmt.Errorf("EdgePodCIDR6 is overlapped with connector's subnets or cluster CIDR")
 			}
 		}
 	}

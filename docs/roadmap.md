@@ -33,7 +33,7 @@
   * Support settings strongswan's port
   * Support strongswan hole punching
   * Release fabctl which is a CLI to help diagnosing networking problems;
-  * Integerate fabedge-agent with coredns and kube-proxy
+  * Integrate fabedge-agent with coredns and kube-proxy
 
 ## v0.9.0
 
