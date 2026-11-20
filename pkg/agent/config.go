@@ -61,7 +61,7 @@ type Config struct {
 		//
 		Mode string
 		// clusterCIDR is the CIDR range of the pods in the cluster,
-		// this is a CIDR list seperated by comma, like "10.234.64.0/18,10.235.64.0/18".
+		// this is a CIDR list separated by comma, like "10.234.64.0/18,10.235.64.0/18".
 		// I use clusterCIDR as name because kube-proxy use this name
 		ClusterCIDR string
 	}
@@ -147,7 +147,7 @@ func (cfg *Config) Validate() error {
 		clusterCIDRs := strings.Split(cfg.Proxy.ClusterCIDR, ",")
 		for _, cidr := range clusterCIDRs {
 			if _, _, err := net.ParseCIDR(cidr); err != nil {
-				return fmt.Errorf("invalid cluser CIDR %s", cidr)
+				return fmt.Errorf("invalid cluster CIDR %s", cidr)
 			}
 
 			mode := cfg.Proxy.Mode

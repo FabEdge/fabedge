@@ -4,7 +4,7 @@ FabEdge has implemented HA in v1.0.0 and this article will show you how to deplo
 
 *PS: About how to configure edge frameworks and DNS, please checkout [Get Started](./get-started.md), We won't repeat it again.*       
 
-## Enviroment
+## Environment
 
 - Kubernetes v1.22.5
 
@@ -72,7 +72,7 @@ curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
 Parameter description:
 
 - connector-public-addresse: the public address of connectors and it should be accessible from edge nodes.
-- connector-public-port and connector-as-mediator: both are not required for HA deployment, they are here because it's necessary for this enviroment.
+- connector-public-port and connector-as-mediator: both are not required for HA deployment, they are here because it's necessary for this environment.
 - enable-keepalived： whether to use builtin keepalived, it is enabled in this example.
 - keepalived-vip： the virtual IP for connector and it should be an internal IP.
 - keepalived-interface： the interface which is used to assign virtual IP and make sure all interfaces on connector nodes share the same name.
@@ -103,7 +103,7 @@ NAME        HOLDER   AGE
 connector   node2    7m43s
 ```
 
- here are two connectors pods running, both will try to acquire connector lease and the one who get the lease will function as connector, while the other one will function as cloud-agent untill it acquire connector lease.       
+ here are two connectors pods running, both will try to acquire connector lease and the one who get the lease will function as connector, while the other one will function as cloud-agent until it acquire connector lease.       
 
 ## Manually Deploy
 

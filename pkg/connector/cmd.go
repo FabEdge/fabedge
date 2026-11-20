@@ -25,10 +25,10 @@ func Execute(cfg *Config) {
 
 	about.DisplayAndExitIfRequested()
 
-	manger, err := cfg.Manager()
+	manager, err := cfg.Manager()
 	if err != nil {
 		klog.Fatalf("failed to create Manager: %s", err)
 	}
 
-	manger.Start()
+	manager.Start()
 }
